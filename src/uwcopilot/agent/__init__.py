@@ -1,1 +1,1 @@
-"""Underwriting agent with a human-approval checkpoint (Phase 4)."""
+"""Underwriting agent with a human-approval checkpoint (Phase 5)."""
