@@ -1,0 +1,39 @@
+[project]
+name = "uwcopilot"
+version = "0.1.0"
+description = "Underwriting copilot for small-business loans and commercial insurance (portfolio project, public and synthetic data only)."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "kaggle>=1.6",
+    "pandas>=2.2",
+    "python-dotenv>=1.0",
+    "requests>=2.32",
+    "scikit-learn>=1.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/uwcopilot"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "BLE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "scripts"]
+addopts = "-q"
