@@ -6,8 +6,8 @@
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-setup:  ## Create the virtualenv from the lockfile (uv.lock)
-	uv sync --frozen
+setup:  ## Create the virtualenv from the lockfile (fails if uv.lock is out of date)
+	uv sync --locked
 
 lint:  ## Run ruff lint and format checks
 	uv run ruff check .
