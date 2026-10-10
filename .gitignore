@@ -1,0 +1,30 @@
+# Data is downloaded by scripts and never committed.
+data/*
+!data/.gitkeep
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Experiment tracking (local file store)
+mlruns/
+mlartifacts/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
