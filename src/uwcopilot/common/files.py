@@ -29,18 +29,20 @@ def human_size(num_bytes: int) -> str:
     return f"{size:.1f} GB"
 
 
-def append_checksum_log(log_path: Path, dataset: str, file_path: Path, source_url: str) -> dict:
-    """Hash a downloaded file and append one JSON line describing it to the log.
+def append_checksum_log(log_path: Path, dataset: str, file_path: Path, source_url: str, action: str) -> dict:
+    """Hash a data file and append one JSON line describing it to the log.
 
+    action says what happened to the file in this run, for example "downloaded" or "verified_existing".
     Returns the record that was written.
     """
     record = {
         "dataset": dataset,
         "file": file_path.name,
         "source": source_url,
+        "action": action,
         "size_bytes": file_path.stat().st_size,
         "sha256": sha256_of_file(file_path),
-        "downloaded_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "hashed_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as handle:

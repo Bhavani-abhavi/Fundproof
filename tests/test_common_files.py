@@ -25,11 +25,13 @@ def test_append_checksum_log_writes_one_json_line(tmp_path: Path) -> None:
     sample.write_text("a,b\n1,2\n", encoding="utf-8")
     log_path = tmp_path / "logs" / "checksums.jsonl"
 
-    record = append_checksum_log(log_path, "demo", sample, "https://example.org/sample.csv")
-    append_checksum_log(log_path, "demo", sample, "https://example.org/sample.csv")
+    record = append_checksum_log(log_path, "demo", sample, "https://example.org/sample.csv", "downloaded")
+    append_checksum_log(log_path, "demo", sample, "https://example.org/sample.csv", "verified_existing")
 
     lines = log_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     assert json.loads(lines[0])["sha256"] == record["sha256"]
     assert record["size_bytes"] == sample.stat().st_size
     assert record["dataset"] == "demo"
+    assert record["action"] == "downloaded"
+    assert json.loads(lines[1])["action"] == "verified_existing"
