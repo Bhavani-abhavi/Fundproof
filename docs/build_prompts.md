@@ -26,7 +26,7 @@ next piece of evidence worth requesting, and writes an auditable decision record
 | One-time model card | Continuous monitoring (drift, calibration, extraction errors, unsupported claims, overrides), versioned models, data, prompts, and eval sets, and a CI release gate. |
 | Agent eval on 4 metrics | Adds an adversarial regression suite: prompt injection in documents, fabricated citations, wrong tool, repeated tool calls, interrupted runs, approval-bypass attempts. |
 | No feedback loop | Records reviewer accept/override with a reason, and runs champion/challenger offline evaluation before any model update. Nothing changes production behavior silently. |
-| Governance references SR 11-7 | Bank pack cites the current interagency model-risk guidance. Insurance pack cites the NAIC AI bulletin. See "Regulatory references". |
+| Governance references SR 11-7 | SR 11-7 was superseded on April 17, 2026 by SR 26-2 / OCC Bulletin 2026-13. The bank pack follows SR 26-2 and governs the LLM and agent separately (SR 26-2 excludes generative and agentic AI). The insurance pack cites the NAIC AI bulletin. See "Regulatory references". |
 | API + memo | Web demo: upload a synthetic packet, inspect evidence and contradictions, run scenarios, approve or send back for more information. |
 | Resume metrics | Adds business-value metrics on the synthetic test set against a defined baseline (processing time, review workload, discrepancy recall, false-alert burden, cost per case). |
 
@@ -111,10 +111,12 @@ D) Scenario interface (NEW, used by the stress tests in Phase 4):
 
 E) Governance documents (docs/model_cards/), every number filled from results/*.json by
    scripts/render_reports.py, never typed by hand:
-   - credit_model_card.md, in the structure of current US interagency model-risk guidance (see "Regulatory
-     references" below): purpose and use, data, methodology, limitations, validation results, outcomes
-     analysis, ongoing monitoring plan and PSI thresholds, owner, version.
-   - insurance_model_card.md with the same sections, referencing the NAIC AI bulletin for insurer AI governance.
+   - credit_model_card.md, aligned to the structure of SR 26-2 / OCC Bulletin 2026-13 (April 2026; it
+     superseded SR 11-7, see "Regulatory references"): purpose and use, materiality, data, methodology,
+     limitations, validation results, outcomes analysis, ongoing monitoring plan and PSI thresholds, owner,
+     version. Do not write "SR 11-7-style" and do not claim compliance.
+   - insurance_model_card.md with the same sections, referencing the NAIC AI Model Bulletin (Dec 2023) and
+     NY DFS Circular Letter 7 (2024) for fairness testing.
    - validation_report.md summarizing tests, backtests, and failures found.
 
 F) Serving: FastAPI /score (product=credit|insurance_frequency|insurance_severity) returning prediction, risk
@@ -124,7 +126,8 @@ F) Serving: FastAPI /score (product=credit|insurance_frequency|insurance_severit
 
 G) results/risk_metrics.json, README table update via script, docs/walkthrough_phase1.md (every file, plus 10
    interview Q&As: why out-of-time, why KS, why PSI, leakage examples, calibration vs discrimination, Poisson
-   offset, frequency-severity split, SHAP caveats, model-risk guidance basics, why validate overrides).
+   offset, frequency-severity split, SHAP caveats, SR 26-2 vs SR 11-7 (what changed and why generative AI is out
+   of scope), why validate overrides).
    Commit and open the PR. Print the final metrics table.
 ```
 
@@ -379,10 +382,11 @@ D) Release gate: scripts/release_gate.py compares the latest results/*.json with
    resistance = 100%). Add it as a CI job.
 
 E) Governance packs, filled from results/*.json by scripts/render_reports.py:
-   - docs/governance/bank_model_risk.md: model inventory entry, tiering, validation, ongoing monitoring,
-     outcomes analysis, change management, mapped to the current interagency model-risk guidance.
-   - docs/governance/insurance_ai_program.md: AI systems program outline, governance, risk management and
-     internal controls, third-party considerations, fairness testing, mapped to the NAIC AI bulletin.
+   - docs/governance/bank_model_risk.md: model inventory entry, materiality tiering, validation, ongoing
+     monitoring, outcomes analysis, change management, mapped to SR 26-2. A separate section governs the LLM
+     extraction and the agent, because SR 26-2 places generative and agentic AI out of its scope.
+   - docs/governance/insurance_ai_program.md: AIS Program outline, governance, risk management and internal
+     controls, third-party considerations, fairness testing, mapped to the NAIC AI Model Bulletin.
    Both state that applicability depends on the institution and that this is a demonstration.
 
 F) results/governance_metrics.json, README update, docs/walkthrough_phase6.md (10 Q&As: drift vs calibration
@@ -442,7 +446,7 @@ Final phase.
       evidence to request (top-3 accuracy {nbe3}); every decline goes to a human."
    - "Credit default model on Lending Club with out-of-time testing: LightGBM AUC {auc} vs {base} logistic
       baseline (paired bootstrap), KS {ks}, PSI drift monitoring, SHAP reason codes, stress testing, and a
-      model card aligned to current interagency model-risk guidance."
+      model card aligned to SR 26-2 (the 2026 interagency model-risk guidance)."
    - "Insurance frequency-severity models (freMTPL2): Poisson deviance {dev}, Gini {gini}; expected-loss stress
       tests under frequency and severity shocks."
    - "Document extraction with page citations: field F1 {f1} [CI], citation accuracy {cite}; 100% of injected
@@ -459,11 +463,47 @@ Final phase.
 
 ## Regulatory references
 
-Being verified against primary sources (federalreserve.gov, occ.gov, fdic.gov, content.naic.org). This
-section will list the exact titles, identifiers, and dates once confirmed. Until then, no governance document
-should name a specific guidance letter.
+Checked against primary sources on 2026-10-10. Re-check before quoting in an interview; this area changes.
+None of this makes the project compliant with anything. It shows how the documents would be structured.
 
----
+**US banking: model risk management**
+- **SR 26-2 / OCC Bulletin 2026-13 / FDIC FIL-15-2026**, "Revised Guidance on Model Risk Management", issued
+  jointly by the Federal Reserve, OCC, and FDIC on **April 17, 2026**. It supersedes and replaces SR 11-7 (2011)
+  and SR 21-8 (BSA/AML models); the OCC also rescinded Bulletin 2011-12 and Bulletin 1997-24 (credit scoring).
+  - Fed: https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm
+  - OCC: https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html
+  - FDIC: https://www.fdic.gov/news/financial-institution-letters/2026/agencies-revise-interagency-model-risk-management-guidance
+- What matters for this project:
+  - **Applicability.** "Expected to be most relevant to banking organizations with over $30 billion in total
+    assets." Smaller banks are generally out of scope unless their model risk is significant.
+  - **Risk-based and proportionate.** Rigor scales with model materiality (purpose and exposure). It is
+    guidance, not an enforceable standard.
+  - **Model definition.** It excludes "simple arithmetic calculations" and "deterministic rule-based
+    processes". The credit and insurance ML models are models under the guidance. The Phase 4 financial
+    calculations and reconciliation rules are not, which is one reason to keep them deterministic.
+  - **Generative and agentic AI are out of scope.** Footnote 3: "Generative AI and agentic AI models are novel
+    and rapidly evolving. As such, they are not within the scope of this guidance." The LLM extraction and the
+    agent therefore need their own governance (Phase 5 evaluation and Phase 6 monitoring, release gate, and
+    human approval). Say this explicitly in the governance pack rather than stretching SR 26-2 to cover them.
+  - **Kept from SR 11-7:** model inventory, documentation, effective challenge, outcomes analysis, ongoing
+    monitoring, vendor-model oversight.
+- Use "aligned to the structure of SR 26-2" in docs, never "SR 11-7-style" (superseded) and never "compliant".
+
+**US insurance: AI governance**
+- **NAIC Model Bulletin, "Use of Artificial Intelligence Systems by Insurers"**, adopted December 4, 2023.
+  Insurers are expected to keep a written AIS Program covering governance, risk management and internal
+  controls, and third-party AI systems, in proportion to the potential harm to consumers. The NAIC adoption map
+  dated October 8, 2026 lists 29 jurisdictions; adopted wording varies by state.
+  - Bulletin: https://content.naic.org/sites/default/files/cmte-h-big-data-artificial-intelligence-wg-ai-model-bulletin.pdf.pdf
+  - Adoption map: https://content.naic.org/sites/default/files/legal-adoption-map-ai-model-bulletin.pdf
+- **New York DFS Insurance Circular Letter No. 7 (July 11, 2024)**: AI and external data in underwriting and
+  pricing. Expects quantitative fairness testing (for example adverse impact ratio) and says an insurer may not
+  rely solely on a vendor's claim of non-discrimination. https://www.dfs.ny.gov/industry-guidance/circular-letters/cl2024-07
+- **Colorado SB21-169**, implemented by 3 CCR 702-10: governance and testing for unfair discrimination from
+  external consumer data and models; amended in 2025 to extend to private passenger auto and health insurers.
+- In progress at the NAIC as of October 2026: an AI Risk Evaluation Supplement for examinations, a third-party
+  data and model vendor framework, and a request for information on a possible AI model law. Do not describe
+  any of these as adopted.
 
 ## Notes for Rahul
 
