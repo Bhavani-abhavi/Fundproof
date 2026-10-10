@@ -35,5 +35,5 @@ select = ["E", "F", "W", "I", "B", "UP", "BLE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "scripts"]
+pythonpath = ["scripts"]
 addopts = "-q"
