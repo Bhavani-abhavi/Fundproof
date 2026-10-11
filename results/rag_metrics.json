@@ -1,0 +1,444 @@
+{
+  "generated_at": "2026-10-10T23:15:36+00:00",
+  "generated_by": "scripts/eval_rag.py",
+  "status": "measured",
+  "corpus": {
+    "checksum_sha256": "6bd55a03776169011673f2751d527e4e761e9a44013171a33ec5340d72c7ebfc",
+    "source_files": [
+      {
+        "path": "corpus/guidelines/harborline_mutual_commercial.md",
+        "doc_id": "harborline_mutual_commercial",
+        "sha256": "4aa8106afebdbd08d130e729d1a82c029aeda2f33e185079b1b8c23b6d816c85"
+      },
+      {
+        "path": "corpus/guidelines/northwind_business_credit.md",
+        "doc_id": "northwind_business_credit",
+        "sha256": "e4c809b493e74cd84a8bb2fca70fcc03b8e6c0f26439c500a5c82e82bcd88097"
+      },
+      {
+        "path": "data/raw/regulatory/frb_sr_26_2.pdf",
+        "doc_id": "frb_sr_26_2",
+        "sha256": "956b3bc642dac3b7a1ce6b2ac0f4fc1421b13d7b4f06db6fcfa022a90e7b38a7"
+      },
+      {
+        "path": "data/raw/regulatory/nydfs_circular_letter_2024_07.html",
+        "doc_id": "nydfs_cl_2024_07",
+        "sha256": "7ff2ee68abad0f39c9373f3feefcde703e7d2b188cc067537930bb98749e3bb9"
+      }
+    ],
+    "skipped_regulatory_files": {
+      "frb_sr_26_2.htm": "web version of the SR 26-2 cover letter only; the same text is pages 1-2 of frb_sr_26_2.pdf, so indexing both would put duplicate chunks in every result list"
+    },
+    "chunks_by_doc": {
+      "harborline_mutual_commercial": 31,
+      "northwind_business_credit": 30,
+      "frb_sr_26_2": 21,
+      "nydfs_cl_2024_07": 26
+    },
+    "points_in_index": 108,
+    "synthetic_documents": [
+      "harborline_mutual_commercial",
+      "northwind_business_credit"
+    ]
+  },
+  "index": {
+    "qdrant": {
+      "mode": "local-embedded",
+      "qdrant_client_version": "1.19.1",
+      "server_version": null,
+      "url": null,
+      "path": "qdrant_storage",
+      "collection": "uwc_guidelines"
+    },
+    "chunking": {
+      "max_tokens": 400,
+      "overlap_tokens": 60,
+      "max_section_tokens": 500
+    }
+  },
+  "models": {
+    "dense": {
+      "id": "BAAI/bge-small-en-v1.5",
+      "dim": 384,
+      "query_prefix": "Represent this sentence for searching relevant passages: "
+    },
+    "sparse": {
+      "id": "Qdrant/bm25",
+      "qdrant_modifier": "idf"
+    },
+    "reranker": {
+      "id": "Xenova/ms-marco-MiniLM-L-6-v2"
+    },
+    "fastembed_version": "0.9.0"
+  },
+  "retrieval_params": {
+    "prefetch_limit": 20,
+    "rrf_k": 60,
+    "rerank_candidates": 20,
+    "dedup_margin": 5,
+    "eval_depth": 10
+  },
+  "question_set": {
+    "path": "eval/rag_questions.jsonl",
+    "sha256": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
+    "n_total": 113,
+    "n_answerable": 103,
+    "by_category": {
+      "single_section": 67,
+      "multi_section": 16,
+      "regulatory": 20,
+      "unanswerable": 10
+    },
+    "lexical_overlap": {
+      "n_questions": 103,
+      "mean_share_of_question_words_in_gold_text": 0.3833,
+      "mean_best_share_in_any_non_gold_chunk": 0.3594,
+      "share_of_questions_where_a_non_gold_chunk_overlaps_at_least_as_much": 0.5825,
+      "method": "content words (lowercase, stopwords removed, no stemming) shared with chunk title + text"
+    }
+  },
+  "bootstrap": {
+    "resamples": 1000,
+    "seed": 42,
+    "confidence": 0.95,
+    "unit": "question",
+    "method": "percentile"
+  },
+  "modes": {
+    "dense": {
+      "n_answerable": 103,
+      "metrics": {
+        "recall@1": {
+          "mean": 0.5631,
+          "ci95": [
+            0.4806,
+            0.6505
+          ]
+        },
+        "recall@3": {
+          "mean": 0.801,
+          "ci95": [
+            0.7233,
+            0.8738
+          ]
+        },
+        "recall@5": {
+          "mean": 0.8786,
+          "ci95": [
+            0.8155,
+            0.9369
+          ]
+        },
+        "mrr@10": {
+          "mean": 0.7416,
+          "ci95": [
+            0.6737,
+            0.8077
+          ]
+        },
+        "ndcg@10": {
+          "mean": 0.7774,
+          "ci95": [
+            0.7226,
+            0.833
+          ]
+        }
+      },
+      "by_category": {
+        "multi_section": {
+          "n": 16,
+          "recall@1": 0.375,
+          "recall@3": 0.6562,
+          "recall@5": 0.8438,
+          "mrr@10": 0.849,
+          "ndcg@10": 0.7857
+        },
+        "regulatory": {
+          "n": 20,
+          "recall@1": 0.7,
+          "recall@3": 0.9,
+          "recall@5": 0.9,
+          "mrr@10": 0.7917,
+          "ndcg@10": 0.8309
+        },
+        "single_section": {
+          "n": 67,
+          "recall@1": 0.5672,
+          "recall@3": 0.806,
+          "recall@5": 0.8806,
+          "mrr@10": 0.701,
+          "ndcg@10": 0.7595
+        }
+      },
+      "latency_ms": {
+        "n_queries": 113,
+        "p50": 50.45,
+        "p95": 64.24
+      },
+      "top1_score_median": {
+        "answerable": 0.6889,
+        "unanswerable": 0.6539
+      }
+    },
+    "bm25": {
+      "n_answerable": 103,
+      "metrics": {
+        "recall@1": {
+          "mean": 0.4466,
+          "ci95": [
+            0.3544,
+            0.5388
+          ]
+        },
+        "recall@3": {
+          "mean": 0.7282,
+          "ci95": [
+            0.6456,
+            0.8058
+          ]
+        },
+        "recall@5": {
+          "mean": 0.8107,
+          "ci95": [
+            0.7379,
+            0.8835
+          ]
+        },
+        "mrr@10": {
+          "mean": 0.6349,
+          "ci95": [
+            0.5591,
+            0.7065
+          ]
+        },
+        "ndcg@10": {
+          "mean": 0.7002,
+          "ci95": [
+            0.6368,
+            0.7582
+          ]
+        }
+      },
+      "by_category": {
+        "multi_section": {
+          "n": 16,
+          "recall@1": 0.1875,
+          "recall@3": 0.5625,
+          "recall@5": 0.6562,
+          "mrr@10": 0.5538,
+          "ndcg@10": 0.5758
+        },
+        "regulatory": {
+          "n": 20,
+          "recall@1": 0.5,
+          "recall@3": 0.75,
+          "recall@5": 0.85,
+          "mrr@10": 0.6504,
+          "ndcg@10": 0.7336
+        },
+        "single_section": {
+          "n": 67,
+          "recall@1": 0.4925,
+          "recall@3": 0.7612,
+          "recall@5": 0.8358,
+          "mrr@10": 0.6496,
+          "ndcg@10": 0.72
+        }
+      },
+      "latency_ms": {
+        "n_queries": 113,
+        "p50": 3.83,
+        "p95": 4.99
+      },
+      "top1_score_median": {
+        "answerable": 13.4482,
+        "unanswerable": 10.6219
+      }
+    },
+    "hybrid": {
+      "n_answerable": 103,
+      "metrics": {
+        "recall@1": {
+          "mean": 0.6214,
+          "ci95": [
+            0.534,
+            0.7039
+          ]
+        },
+        "recall@3": {
+          "mean": 0.8738,
+          "ci95": [
+            0.8058,
+            0.932
+          ]
+        },
+        "recall@5": {
+          "mean": 0.9029,
+          "ci95": [
+            0.8447,
+            0.9563
+          ]
+        },
+        "mrr@10": {
+          "mean": 0.7788,
+          "ci95": [
+            0.717,
+            0.838
+          ]
+        },
+        "ndcg@10": {
+          "mean": 0.809,
+          "ci95": [
+            0.7538,
+            0.8605
+          ]
+        }
+      },
+      "by_category": {
+        "multi_section": {
+          "n": 16,
+          "recall@1": 0.3125,
+          "recall@3": 0.75,
+          "recall@5": 0.75,
+          "mrr@10": 0.7465,
+          "ndcg@10": 0.7118
+        },
+        "regulatory": {
+          "n": 20,
+          "recall@1": 0.6,
+          "recall@3": 0.9,
+          "recall@5": 0.95,
+          "mrr@10": 0.7375,
+          "ndcg@10": 0.7912
+        },
+        "single_section": {
+          "n": 67,
+          "recall@1": 0.7015,
+          "recall@3": 0.8955,
+          "recall@5": 0.9254,
+          "mrr@10": 0.7989,
+          "ndcg@10": 0.8376
+        }
+      },
+      "latency_ms": {
+        "n_queries": 113,
+        "p50": 37.97,
+        "p95": 56.01
+      },
+      "top1_score_median": {
+        "answerable": 0.0331,
+        "unanswerable": 0.0331
+      }
+    },
+    "hybrid_rerank": {
+      "n_answerable": 103,
+      "metrics": {
+        "recall@1": {
+          "mean": 0.6845,
+          "ci95": [
+            0.5971,
+            0.767
+          ]
+        },
+        "recall@3": {
+          "mean": 0.8689,
+          "ci95": [
+            0.8058,
+            0.9223
+          ]
+        },
+        "recall@5": {
+          "mean": 0.9078,
+          "ci95": [
+            0.8544,
+            0.9563
+          ]
+        },
+        "mrr@10": {
+          "mean": 0.8285,
+          "ci95": [
+            0.7683,
+            0.8846
+          ]
+        },
+        "ndcg@10": {
+          "mean": 0.8441,
+          "ci95": [
+            0.7891,
+            0.8937
+          ]
+        }
+      },
+      "by_category": {
+        "multi_section": {
+          "n": 16,
+          "recall@1": 0.3438,
+          "recall@3": 0.7188,
+          "recall@5": 0.7188,
+          "mrr@10": 0.8187,
+          "ndcg@10": 0.7508
+        },
+        "regulatory": {
+          "n": 20,
+          "recall@1": 0.75,
+          "recall@3": 0.9,
+          "recall@5": 0.95,
+          "mrr@10": 0.8267,
+          "ndcg@10": 0.8574
+        },
+        "single_section": {
+          "n": 67,
+          "recall@1": 0.7463,
+          "recall@3": 0.8955,
+          "recall@5": 0.9403,
+          "mrr@10": 0.8313,
+          "ndcg@10": 0.8624
+        }
+      },
+      "latency_ms": {
+        "n_queries": 113,
+        "p50": 3215.49,
+        "p95": 4499.8
+      },
+      "top1_score_median": {
+        "answerable": -2.1668,
+        "unanswerable": -4.9985
+      }
+    }
+  },
+  "paired_bootstrap": {
+    "metric": "recall@5",
+    "mode_a": "hybrid_rerank",
+    "mode_b": "dense",
+    "n_questions": 103,
+    "mean_difference": 0.0291,
+    "ci95": [
+      -0.0291,
+      0.0874
+    ],
+    "share_resamples_at_or_below_zero": 0.196,
+    "questions_a_better": 7,
+    "questions_b_better": 5
+  },
+  "generation": {
+    "faithfulness": "not measured (no LLM key)",
+    "citation_accuracy": "not measured (no LLM key)",
+    "answer_abstention_on_unanswerable": "not measured (no LLM key)"
+  },
+  "environment": {
+    "python": "3.11.17",
+    "cpu_count": 4,
+    "onnx_threads": 2,
+    "load_average_start": [
+      9.45,
+      7.89,
+      5.73
+    ],
+    "load_average_end": [
+      6.47,
+      7.87,
+      6.62
+    ],
+    "latency_note": "wall-clock per query on a shared machine; other jobs were running"
+  }
+}

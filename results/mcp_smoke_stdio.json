@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-10-11T01:21:31+00:00",
+  "generated_by": "scripts/mcp_smoke.py",
+  "transport": "stdio",
+  "client": "MCP Python SDK Client (mcp 2.3.0)",
+  "python": "3.11.17",
+  "machine": {
+    "cpu_count": 4,
+    "load_average_1_5_15_min_at_start": [
+      1.86,
+      2.57,
+      2.94
+    ]
+  },
+  "index": {
+    "qdrant_mode": "local-embedded",
+    "collection": "uwc_guidelines",
+    "corpus_checksum_sha256": "6bd55a03776169011673f2751d527e4e761e9a44013171a33ec5340d72c7ebfc"
+  },
+  "llm_calls": 0,
+  "note": "One run on a shared machine; timings are not a benchmark. The risk API URL had no listener.",
+  "protocol_version": "2026-07-28",
+  "server_name": "uwcopilot-underwriting",
+  "search": {
+    "query": "What is the minimum debt service coverage ratio for a term loan?",
+    "k": 5,
+    "mode": "hybrid_rerank",
+    "first_call_seconds": 2.46,
+    "second_call_seconds": 1.289,
+    "hits": [
+      {
+        "rank": 1,
+        "section_id": "NBC-4.1",
+        "citation": "[NBC-4.1]",
+        "source_doc": "northwind_business_credit",
+        "score": 2.271638870239258
+      },
+      {
+        "rank": 2,
+        "section_id": "NBC-4.3",
+        "citation": "[NBC-4.3]",
+        "source_doc": "northwind_business_credit",
+        "score": -4.177059650421143
+      },
+      {
+        "rank": 3,
+        "section_id": "NBC-4.2",
+        "citation": "[NBC-4.2]",
+        "source_doc": "northwind_business_credit",
+        "score": -4.54702091217041
+      },
+      {
+        "rank": 4,
+        "section_id": "NBC-1.1",
+        "citation": "[NBC-1.1]",
+        "source_doc": "northwind_business_credit",
+        "score": -5.890876770019531
+      },
+      {
+        "rank": 5,
+        "section_id": "NBC-4.5",
+        "citation": "[NBC-4.5]",
+        "source_doc": "northwind_business_credit",
+        "score": -6.368536949157715
+      }
+    ]
+  },
+  "score_application": {
+    "risk_api_url": "http://127.0.0.1:46729",
+    "is_error": true,
+    "structured_content": {
+      "status": "error",
+      "score": null,
+      "error": {
+        "code": "risk_api_unreachable",
+        "message": "Could not connect to the risk service (ConnectError). Start it, or set UWC_RISK_API_URL to its base URL. No score was produced.",
+        "endpoint": "http://127.0.0.1:46729/score",
+        "http_status": null
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "list_tools: exactly the four expected tools",
+      "passed": true,
+      "detail": "get_guideline_section, score_application, screen_sanctions, search_underwriting_guidelines"
+    },
+    {
+      "name": "list_tools: every description says SYNTHETIC",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "list_resources: documents + sections",
+      "passed": true,
+      "detail": "62 resources"
+    },
+    {
+      "name": "list_prompts: underwriting_review",
+      "passed": true,
+      "detail": "underwriting_review"
+    },
+    {
+      "name": "search: no error",
+      "passed": true,
+      "detail": "{\n  \"query\": {\n    \"query\": \"What is the minimum debt service coverage ratio for a term loan?\",\n    \"top_k\": 5,\n    \"source_docs\": null\n  },\n  \"hits\": [\n    {\n      \"section_id\": \"NBC-4.1\",\n      \"title\": \"NBC-4.1 Debt service coverage ratio calculation\",\n      \"source_doc\": \"northwind_business_cred"
+    },
+    {
+      "name": "search: k hits",
+      "passed": true,
+      "detail": "5 hits"
+    },
+    {
+      "name": "search: ranks 1..k",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "search: every hit has its [section_id] citation",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "search: repeated call returns the same order",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "get_guideline_section(NBC-4.1)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "resource guidelines://NBC/NBC-4.1 contains the section text",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "get_prompt underwriting_review: never-approve rule present",
+      "passed": true,
+      "detail": "2416 chars"
+    },
+    {
+      "name": "score_application: is_error with status 'error'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "score_application: no score in an error result",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "score_application: code risk_api_unreachable",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "unknown tool refused",
+      "passed": true,
+      "detail": "Unknown tool: approve_application"
+    },
+    {
+      "name": "unknown argument refused",
+      "passed": true,
+      "detail": "Error executing tool get_guideline_section: 1 validation error for get_guideline_sectionArguments\napprove\n  Extra inputs are not permitted [type=extra_forbidden, input_value=True, input_type=bool]\n   "
+    }
+  ],
+  "all_passed": true,
+  "server_command": "python -m uwcopilot.mcp_server"
+}

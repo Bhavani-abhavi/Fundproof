@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-10-10T23:15:34+00:00",
+  "generated_by": "scripts/build_index.py",
+  "corpus_checksum_sha256": "6bd55a03776169011673f2751d527e4e761e9a44013171a33ec5340d72c7ebfc",
+  "source_files": [
+    {
+      "path": "corpus/guidelines/harborline_mutual_commercial.md",
+      "doc_id": "harborline_mutual_commercial",
+      "sha256": "4aa8106afebdbd08d130e729d1a82c029aeda2f33e185079b1b8c23b6d816c85"
+    },
+    {
+      "path": "corpus/guidelines/northwind_business_credit.md",
+      "doc_id": "northwind_business_credit",
+      "sha256": "e4c809b493e74cd84a8bb2fca70fcc03b8e6c0f26439c500a5c82e82bcd88097"
+    },
+    {
+      "path": "data/raw/regulatory/frb_sr_26_2.pdf",
+      "doc_id": "frb_sr_26_2",
+      "sha256": "956b3bc642dac3b7a1ce6b2ac0f4fc1421b13d7b4f06db6fcfa022a90e7b38a7"
+    },
+    {
+      "path": "data/raw/regulatory/nydfs_circular_letter_2024_07.html",
+      "doc_id": "nydfs_cl_2024_07",
+      "sha256": "7ff2ee68abad0f39c9373f3feefcde703e7d2b188cc067537930bb98749e3bb9"
+    }
+  ],
+  "missing_regulatory_files": [],
+  "skipped_regulatory_files": {
+    "frb_sr_26_2.htm": "web version of the SR 26-2 cover letter only; the same text is pages 1-2 of frb_sr_26_2.pdf, so indexing both would put duplicate chunks in every result list"
+  },
+  "chunks_by_doc": {
+    "harborline_mutual_commercial": 31,
+    "northwind_business_credit": 30,
+    "frb_sr_26_2": 21,
+    "nydfs_cl_2024_07": 26
+  },
+  "points_written": 108,
+  "split_sections": [
+    "HM-9.3"
+  ],
+  "embedded_text_tokens_by_doc": {
+    "frb_sr_26_2": {
+      "min": 91,
+      "median": 201.0,
+      "max": 414,
+      "chunks": 21
+    },
+    "harborline_mutual_commercial": {
+      "min": 119,
+      "median": 172.0,
+      "max": 497,
+      "chunks": 31
+    },
+    "northwind_business_credit": {
+      "min": 114,
+      "median": 201.5,
+      "max": 489,
+      "chunks": 30
+    },
+    "nydfs_cl_2024_07": {
+      "min": 156,
+      "median": 390.5,
+      "max": 441,
+      "chunks": 26
+    }
+  },
+  "chunking": {
+    "max_tokens": 400,
+    "overlap_tokens": 60,
+    "max_section_tokens": 500
+  },
+  "models": {
+    "dense": {
+      "id": "BAAI/bge-small-en-v1.5",
+      "dim": 384,
+      "query_prefix": "Represent this sentence for searching relevant passages: "
+    },
+    "sparse": {
+      "id": "Qdrant/bm25",
+      "qdrant_modifier": "idf"
+    },
+    "fastembed_version": "0.9.0"
+  },
+  "qdrant": {
+    "mode": "local-embedded",
+    "qdrant_client_version": "1.19.1",
+    "server_version": null,
+    "url": null,
+    "path": "qdrant_storage",
+    "collection": "uwc_guidelines"
+  },
+  "build_seconds": 36.4,
+  "python": "3.11.17"
+}

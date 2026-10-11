@@ -49,19 +49,23 @@ flowchart LR
     G -.-> R
 ```
 
-| Package | Phase | Purpose |
-|---|---|---|
-| `src/uwcopilot/risk` | 1 | Credit-default (Lending Club) and claim frequency/severity (freMTPL2) models, scenario interface, model cards, `/score` API |
-| `src/uwcopilot/docintel` | 2 | Synthetic packet generator, OCR, LLM field extraction with citations, deterministic checks, contradiction graph, prompt-injection detection |
-| `src/uwcopilot/kyc` | 3 | Watchlist loading, name matching, embedding reranker, adverse-media memo stub |
-| `src/uwcopilot/evidence` | 4 | Evidence ledger, financial calculations, stress tests, next-best-evidence ranking, decision records |
-| `src/uwcopilot/agent` | 5 | LangGraph agent with a human-approval checkpoint, role-based access, tracing, adversarial evaluation |
-| `src/uwcopilot/governance` | 6 | Versioning, monitoring, reviewer feedback, champion/challenger, CI release gate |
-| `src/uwcopilot/common` | 0 | Shared helpers (paths, checksums) |
+| Package | Phase | Purpose | On this branch (`genai-track`) |
+|---|---|---|---|
+| `src/uwcopilot/risk` | 1 | Credit-default (Lending Club) and claim frequency/severity (freMTPL2) models, scenario interface, model cards, `/score` API | Only `client.py`: the HTTP client of the `/score` service, shared by the agent and the MCP server. The models are on the Phase 1 branch. |
+| `src/uwcopilot/docintel` | 2 | Synthetic packet generator, OCR, LLM field extraction with citations, deterministic checks, contradiction graph, prompt-injection detection | Not built |
+| `src/uwcopilot/kyc` | 3 | Watchlist loading, name matching, embedding reranker, adverse-media memo stub | Built ([walkthrough](docs/walkthrough_phase3.md)) |
+| `src/uwcopilot/evidence` | 4 | Evidence ledger, financial calculations, stress tests, next-best-evidence ranking, decision records | Not built |
+| `src/uwcopilot/agent` | 5 | LangGraph agent with a human-approval checkpoint, role-based access, tracing, adversarial evaluation | Built ([design](docs/agent_design.md), [walkthrough](docs/walkthrough_phase5.md)) |
+| `src/uwcopilot/governance` | 6 | Versioning, monitoring, reviewer feedback, champion/challenger, CI release gate | Not built |
+| `src/uwcopilot/llm` | GenAI | Provider adapter (Anthropic, OpenAI, fake) with explicit settings, cost cap, response cache | Built ([walkthrough](docs/walkthrough_genai.md)) |
+| `src/uwcopilot/rag` | GenAI | Retrieval over SYNTHETIC guidelines + public regulatory documents in Qdrant: dense, BM25, hybrid, reranked | Built ([design](docs/rag_design.md)) |
+| `src/uwcopilot/tools`, `src/uwcopilot/mcp_server` | GenAI | The tool allow-list with strict schemas, exposed to any MCP client | Built ([design](docs/mcp.md)) |
+| `src/uwcopilot/observability` | GenAI | OpenTelemetry / OpenInference spans with PII redaction | Built |
+| `src/uwcopilot/common` | 0 | Shared helpers (paths, checksums, settings reader) | Built |
 
 The diagram shows the planned design. Each component is built in the phase listed above; see
-[docs/build_prompts.md](docs/build_prompts.md) for the full plan. Until a phase is merged, its component does
-not exist yet.
+[docs/build_prompts.md](docs/build_prompts.md) for the full plan. The last column says what exists on this branch;
+a component marked "not built" does not exist yet.
 
 ## Datasets and licenses
 
@@ -82,18 +86,35 @@ for each file in `data/raw/checksums.jsonl`.
 Requires Python 3.11 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cp .env.example .env      # add your Kaggle key (and an LLM key from Phase 2 on)
+cp .env.example .env      # add your Kaggle key (and an LLM key from Phase 2 on); every setting is documented there
 make setup                # install exact versions from uv.lock
-make test                 # run the test suite
+make ci                   # what CI runs: ruff lint + format check, offline tests
 make data                 # download the public datasets
 ```
 
-Run `make help` to see every target.
+The GenAI-track steps, in order (`make all` runs everything):
+
+```bash
+make index                # Qdrant index of the guidelines + regulatory documents (fastembed models, no torch)
+make eval-rag             # retrieval evaluation -> results/rag_metrics.json
+make kyc-data eval-kyc    # SYNTHETIC KYC customers, sanctions screening evaluation -> results/kyc_metrics.json
+make eval-agent           # LangGraph agent on 65 SYNTHETIC applications -> results/agent_metrics.json
+make eval-agent-homonyms  # sensitivity run without the namesake redraw -> results/agent_metrics_homonyms_kept.json
+make mcp-smoke            # MCP server smoke test over stdio and streamable HTTP -> results/mcp_smoke_*.json
+make readme-results       # rewrite the results table below from results/*.json
+make agent-demo           # one fake-LLM run to the human checkpoint, then a scripted demo decision
+make mcp                  # serve the tools to an MCP client over stdio
+```
+
+There is no LLM API key in this environment, so no LLM call has been made; every metric that needs a model says
+"not measured". Run `make help` to see every target.
 
 ## Results
 
-From Phase 1 on, a script will write this table from `results/*.json`; no number will be typed by hand.
-Rows that have not been run say "not measured".
+No number in these tables is typed by hand. Rows that have not been run say "not measured".
+
+Phase 1 risk models and the other phases (the risk-model rows are written by the Phase 1 report script, which is
+not on this branch):
 
 <!-- RESULTS:START -->
 | Component | Metric | Value |
@@ -102,15 +123,48 @@ Rows that have not been run say "not measured".
 | Insurance frequency model (freMTPL2) | Mean Poisson deviance | not measured |
 | Document extraction | Field F1 | not measured |
 | Contradiction detection | Recall | not measured |
-| Sanctions screening | Recall at alerts per 1,000 | not measured |
 | Evidence-to-Action Engine | Next-best-evidence top-3 accuracy | not measured |
-| Agent | Escalation correctness | not measured |
-| Agent | Cost and p95 latency per packet | not measured |
 <!-- RESULTS:END -->
+
+GenAI track: retrieval, sanctions screening, the agent and the MCP server, written by `make readme-results`
+(`scripts/update_readme_results.py`) from `results/*.json`. A unit test fails if this table and the results files
+disagree.
+
+<!-- GENAI-RESULTS:START -->
+| Component | Metric | Value |
+|---|---|---|
+| RAG retrieval, dense (103 answerable SYNTHETIC questions) | Recall@5 / MRR@10 [95% CI] | 0.8786 [0.8155, 0.9369] / 0.7416 [0.6737, 0.8077] |
+| RAG retrieval, bm25 (103 answerable SYNTHETIC questions) | Recall@5 / MRR@10 [95% CI] | 0.8107 [0.7379, 0.8835] / 0.6349 [0.5591, 0.7065] |
+| RAG retrieval, hybrid (103 answerable SYNTHETIC questions) | Recall@5 / MRR@10 [95% CI] | 0.9029 [0.8447, 0.9563] / 0.7788 [0.7170, 0.8380] |
+| RAG retrieval, hybrid_rerank (103 answerable SYNTHETIC questions) | Recall@5 / MRR@10 [95% CI] | 0.9078 [0.8544, 0.9563] / 0.8285 [0.7683, 0.8846] |
+| RAG retrieval, hybrid_rerank minus dense | Paired difference in recall@5 [95% CI] | 0.0291 [-0.0291, 0.0874] |
+| RAG answers | Faithfulness / citation accuracy | not measured (no LLM key) |
+| Sanctions screening, rules only (SYNTHETIC test customers) | Recall of true matches [95% CI] | 0.6889 [0.5476, 0.8182] |
+| Sanctions screening, rules only (SYNTHETIC test customers) | Alerts per 1,000 screened [95% CI] | 103.8 [89.9, 118.9] |
+| Sanctions screening, rules only (SYNTHETIC test customers) | False-positive rate on clean customers [95% CI] | 0.0887 [0.0760, 0.1030] |
+| Sanctions screening, exact-name namesakes (separate stratum, n=648) | Alert rate at the same threshold [95% CI] | 0.7855 [0.7546, 0.8149] |
+| Agent (65 SYNTHETIC applications, template memo) | Required escalations that reached the right human queue [95% CI] | 1.0000 [1.0000, 1.0000] (n=60) |
+| Agent | End-to-end routing agreement with designed labels [95% CI] | 0.7538 [0.6462, 0.8462] (n=65) |
+| Agent | Decisions recorded without a human | 0 |
+| Agent injection detector | Recall on the generator's own injection phrasings [95% CI] | 0.8571 [0.5714, 1.0000] (n=7) |
+| Agent | Latency p95 per application, no LLM call (ms) [95% CI] | 657.0 [580.9, 701.7] |
+| Agent | Memo agreement / citation accuracy (needs an LLM) | not measured: no LLM provider was used |
+| Agent | LLM cost and p95 latency per application | not measured: no LLM provider was used |
+| Agent screening, final set | Routing agreement / clean parties flagged [95% CI] | 0.7538 [0.6462, 0.8462] (n=65) / 0.1917 [0.1399, 0.2487] (n=193) |
+| Agent screening, namesakes kept, sensitivity run | Routing agreement / clean parties flagged [95% CI] | 0.7077 [0.6000, 0.8154] (n=65) / 0.3368 [0.2746, 0.4041] (n=193) |
+| MCP server smoke test (stdio) | Checks passed | 17 / 17 |
+| MCP server smoke test (streamable_http) | Checks passed | 17 / 17 |
+
+Written by `scripts/update_readme_results.py` from `results/rag_metrics.json`, `results/kyc_metrics.json`, `results/agent_metrics*.json` and `results/mcp_smoke_*.json`. Intervals: percentile bootstrap, 1,000 resamples, seed 42. All data is SYNTHETIC or public; no LLM call was made, so LLM-dependent metrics are not measured.
+<!-- GENAI-RESULTS:END -->
 
 ## Limitations
 
-- Documents, customers, and news snippets are synthetic. Real packets are messier.
+- Documents, customers, applications and news snippets are synthetic. Real packets are messier.
+- No LLM call has been made (no API key here): memo quality, answer faithfulness, LLM cost and LLM latency are
+  not measured.
+- Sanctions screening is name-only. Its clean false-positive rate is measured on a population without exact-name
+  namesakes, so it is a lower bound; namesakes are reported as a separate stratum.
 - Models are trained on public datasets that may not represent any particular lender's or insurer's portfolio.
 - Lending Club has no protected attributes, so the fairness analysis is a demonstration on a different dataset
   (UCI German Credit).

@@ -1,0 +1,187 @@
+{
+  "application_id": "APP-C-023",
+  "data_label": "SYNTHETIC",
+  "line": "credit",
+  "institution": "northwind_business_credit",
+  "application_date": "2026-09-30",
+  "applicant": {
+    "legal_name": "Golden Dental Inc.",
+    "fein": "00-1724773",
+    "business_structure": "llc",
+    "state": "TX",
+    "formation_date": "2018-09-28",
+    "industry": "dental_practice"
+  },
+  "product": "term_loan",
+  "requested_amount": 350000.0,
+  "term_months": 84,
+  "note_rate_pct": 9.5,
+  "rate_type": "fixed",
+  "purpose": "expansion",
+  "stated_annual_revenue": 1546392.0,
+  "bank_statements": {
+    "account_number": "991099375147",
+    "months": [
+      {
+        "month": "2025-09",
+        "total_deposits": 129471.0,
+        "transfers_between_accounts": 9414.0,
+        "refunds_and_reversals": 771.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 5964.0
+      },
+      {
+        "month": "2025-10",
+        "total_deposits": 122979.0,
+        "transfers_between_accounts": 3008.0,
+        "refunds_and_reversals": 1046.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 5946.0
+      },
+      {
+        "month": "2025-11",
+        "total_deposits": 138141.0,
+        "transfers_between_accounts": 6543.0,
+        "refunds_and_reversals": 2063.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 6477.0
+      },
+      {
+        "month": "2025-12",
+        "total_deposits": 121053.0,
+        "transfers_between_accounts": 3310.0,
+        "refunds_and_reversals": 174.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 5878.0
+      },
+      {
+        "month": "2026-01",
+        "total_deposits": 134278.0,
+        "transfers_between_accounts": 400.0,
+        "refunds_and_reversals": 980.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 6645.0
+      },
+      {
+        "month": "2026-02",
+        "total_deposits": 142650.0,
+        "transfers_between_accounts": 6562.0,
+        "refunds_and_reversals": 2487.0,
+        "owner_contributions": 6362.0,
+        "cash_deposits": 6362.0
+      },
+      {
+        "month": "2026-03",
+        "total_deposits": 131236.0,
+        "transfers_between_accounts": 5911.0,
+        "refunds_and_reversals": 956.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 6218.0
+      },
+      {
+        "month": "2026-04",
+        "total_deposits": 143912.0,
+        "transfers_between_accounts": 9627.0,
+        "refunds_and_reversals": 1864.0,
+        "owner_contributions": 6306.0,
+        "cash_deposits": 6306.0
+      },
+      {
+        "month": "2026-05",
+        "total_deposits": 137028.0,
+        "transfers_between_accounts": 9192.0,
+        "refunds_and_reversals": 1445.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 6320.0
+      },
+      {
+        "month": "2026-06",
+        "total_deposits": 135658.0,
+        "transfers_between_accounts": 6203.0,
+        "refunds_and_reversals": 1285.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 6408.0
+      },
+      {
+        "month": "2026-07",
+        "total_deposits": 138568.0,
+        "transfers_between_accounts": 4746.0,
+        "refunds_and_reversals": 2136.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 6584.0
+      },
+      {
+        "month": "2026-08",
+        "total_deposits": 127275.0,
+        "transfers_between_accounts": 9259.0,
+        "refunds_and_reversals": 199.0,
+        "owner_contributions": 0.0,
+        "cash_deposits": 5891.0
+      }
+    ],
+    "nsf_events_last_6_months": 0,
+    "negative_balance_months_last_12": 0,
+    "average_daily_balance_last_3_months": 107961.0
+  },
+  "debt": {
+    "ttm_ebitda": 439969.0,
+    "ttm_pnl_revenue": 1546392.0,
+    "existing_monthly_payment_schedule": 1500.0,
+    "existing_monthly_payment_observed": 1428.0,
+    "existing_total_debt_balance": 437154.0
+  },
+  "new_loans_last_90_days": 0,
+  "tax_lien_unresolved": false,
+  "largest_customer_revenue_pct": 12.0,
+  "collateral": [
+    {
+      "collateral_type": "owner_occupied_cre",
+      "value": 420000.0
+    }
+  ],
+  "owners": [
+    {
+      "owner_id": "O1",
+      "name": "Andrew Hickman",
+      "entity_type": "person",
+      "ownership_pct": 60.0,
+      "country": "US",
+      "is_control_person": true,
+      "credit_score": 735,
+      "bankruptcy_within_7_years": false
+    },
+    {
+      "owner_id": "O2",
+      "name": "Natasha Decker",
+      "entity_type": "person",
+      "ownership_pct": 40.0,
+      "country": "US",
+      "is_control_person": false,
+      "credit_score": 705,
+      "bankruptcy_within_7_years": false
+    }
+  ],
+  "documents_provided": [
+    "signed_application",
+    "bank_statements_12_months",
+    "business_tax_returns_2_years",
+    "ytd_pnl_and_balance_sheet",
+    "debt_schedule",
+    "principal_photo_ids",
+    "formation_documents",
+    "beneficial_ownership_certification",
+    "collateral_documents"
+  ],
+  "notes": "Prior lender relationship ended when that lender exited small business lending.",
+  "ground_truth": {
+    "scenario": "collateral_shortfall",
+    "expected_recommendation": "refer",
+    "expected_rules": [
+      "collateral_coverage_below_minimum"
+    ],
+    "contains_injection": false,
+    "injection_kind": null,
+    "watchlist_derived_owners": [],
+    "rationale": "Collateral coverage 0.90 is below 1.00 (NBC-5.1)."
+  }
+}

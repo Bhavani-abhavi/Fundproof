@@ -1,0 +1,1120 @@
+{
+  "generated_at_utc": "2026-10-11T01:17:34+00:00",
+  "synthetic_data": "SYNTHETIC",
+  "description": "Sanctions screening of SYNTHETIC customers against the OFAC SDN list and the full OpenSanctions default collection. Thresholds chosen on validation, reranker weight on train, metrics on test.",
+  "data": {
+    "customers_file_sha256": "d1a2e311d55ef3aa2c7271e31c211e84a7e5d53743319ac032db2fc3ffa42e44",
+    "counts_by_label_and_split": {
+      "clean": {
+        "train": 2000,
+        "validation": 1500,
+        "test": 1500
+      },
+      "true_match": {
+        "train": 60,
+        "validation": 45,
+        "test": 45
+      },
+      "hard_negative": {
+        "train": 60,
+        "validation": 45,
+        "test": 45
+      }
+    },
+    "generation": {
+      "seed": 42,
+      "clean": {
+        "generated": 6240,
+        "dropped_list_collisions": 746,
+        "dropped_duplicates": 494,
+        "collision_examples": [
+          "Joel Johnson",
+          "Grant Group",
+          "Lee-Cooke",
+          "Martin Ltd",
+          "Linda Smith",
+          "Higgins LLC",
+          "Robin Brown",
+          "Jessica Ross",
+          "Robert Adams",
+          "Jeremy Jones"
+        ],
+        "kept": 5000,
+        "distinct_exact_name_homonyms": 648
+      },
+      "true_match": {
+        "kept": 150,
+        "source_names_skipped_not_latin_or_unusable": 34
+      },
+      "hard_negative": {
+        "dropped_list_collisions": 0,
+        "skipped_unusable_source": 67,
+        "strategies": {
+          "different_surname": 23,
+          "different_given_name": 52,
+          "different_words": 75
+        },
+        "kept": 150
+      }
+    },
+    "list_snapshots": [
+      {
+        "source": "OFAC",
+        "file_name": "sdn.csv",
+        "sha256": "64be7a7991059f59a2ebb43bc5dcc7e2951e1e27cbed8cbe41b0231b3a161946",
+        "snapshot_date": "2026-10-10",
+        "attribution": null
+      },
+      {
+        "source": "OFAC",
+        "file_name": "alt.csv",
+        "sha256": "ff6075fc9635c5034475fa49c0c2e0e03300e1c9375771d75f99c4d4bf799c1b",
+        "snapshot_date": "2026-10-10",
+        "attribution": null
+      },
+      {
+        "source": "OpenSanctions",
+        "file_name": "targets.simple.csv",
+        "sha256": "99854904a7059e7309765d2bd2951041279c509f1b67eb0deb0af8894fdea16d",
+        "snapshot_date": "2026-10-10",
+        "attribution": "Data from OpenSanctions.org, licensed CC BY-NC 4.0 (https://www.opensanctions.org/licensing/). Non-commercial use only without a separate data license."
+      }
+    ],
+    "watchlist_scope": "full: every OFAC SDN entry and every OpenSanctions entry in targets.simple.csv",
+    "watchlist_load_report": {
+      "sources_used": [
+        "OFAC",
+        "OpenSanctions"
+      ],
+      "sources_skipped": [],
+      "OFAC": {
+        "sdn_rows_read": 19416,
+        "alt_rows_read": 20182,
+        "entries_kept": 19416,
+        "entries_dropped_empty_name": 0,
+        "aliases_kept": 20178
+      },
+      "OpenSanctions": {
+        "rows_read": 1240809,
+        "entries_kept": 1240809,
+        "entries_dropped_empty_name": 0,
+        "aliases_kept": 1384938,
+        "schema_counts": {
+          "Person": 1030942,
+          "Company": 97512,
+          "LegalEntity": 59003,
+          "Security": 20515,
+          "CryptoWallet": 13738,
+          "Organization": 9621,
+          "Vessel": 9076,
+          "Airplane": 342,
+          "Asset": 36,
+          "Address": 19,
+          "PublicBody": 4,
+          "Position": 1
+        },
+        "attribution": "Data from OpenSanctions.org, licensed CC BY-NC 4.0 (https://www.opensanctions.org/licensing/). Non-commercial use only without a separate data license."
+      },
+      "total_entries": 1260225,
+      "entity_type_counts": {
+        "person": 1038439,
+        "organization": 117155,
+        "other": 93312,
+        "vessel": 10635,
+        "aircraft": 684
+      }
+    },
+    "indexed_names": 2497215,
+    "vocabulary_size": 1076680,
+    "opensanctions_attribution": "Data from OpenSanctions.org, licensed CC BY-NC 4.0 (https://www.opensanctions.org/licensing/). Non-commercial use only without a separate data license."
+  },
+  "matcher_config": {
+    "blocking": {
+      "trigram_dice_threshold": 0.5,
+      "min_token_length_for_fuzzy_keys": 3,
+      "max_length_difference": 2,
+      "max_candidates": 3000
+    },
+    "scoring_weights": {
+      "jaro_winkler": 0.6,
+      "token_set": 0.4,
+      "initial_similarity": 0.9,
+      "type_agree_bonus": 0.02,
+      "type_disagree_penalty": 0.05,
+      "country_agree_bonus": 0.03,
+      "country_disagree_penalty": 0.02
+    },
+    "prerank_top_names": 300,
+    "rerank_top_k": 10,
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_runtime": "fastembed (ONNX Runtime), replaces a PyTorch sentence-transformers model"
+  },
+  "evaluation_protocol": {
+    "alert_budgets_per_1000": [
+      50,
+      100,
+      200
+    ],
+    "primary_budget_per_1000": 100,
+    "threshold_objective": "maximize recall of true matches subject to alerts per 1,000 customers <= budget; chosen on the validation split; alert when score >= threshold",
+    "reranker_weight_grid": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5
+    ],
+    "reranker_weight_selection": "best train recall at the primary budget (ties -> smaller weight)",
+    "bootstrap": {
+      "resamples": 1000,
+      "seed": 42,
+      "interval": "95% percentile"
+    },
+    "customer_score": "highest final score over the reranked candidates (0.0 when blocking finds nothing)",
+    "protocol_note": "matcher settings, alert budgets and selection rules were fixed before the test split was first scored; the pipeline is deterministic, so re-running reproduces the same metrics (timings vary)"
+  },
+  "reranker_weight_selection_on_train": [
+    {
+      "reranker_weight": 0.1,
+      "threshold": 0.930471202305385,
+      "recall": 0.6666666666666666,
+      "alerts_per_1000": 100.0,
+      "max_alerts_per_1000": 100,
+      "objective": "maximize recall of true matches subject to alerts per 1,000 customers <= budget"
+    },
+    {
+      "reranker_weight": 0.2,
+      "threshold": 0.9214632644997023,
+      "recall": 0.65,
+      "alerts_per_1000": 100.0,
+      "max_alerts_per_1000": 100,
+      "objective": "maximize recall of true matches subject to alerts per 1,000 customers <= budget"
+    },
+    {
+      "reranker_weight": 0.3,
+      "threshold": 0.9159897685050964,
+      "recall": 0.5833333333333334,
+      "alerts_per_1000": 100.0,
+      "max_alerts_per_1000": 100,
+      "objective": "maximize recall of true matches subject to alerts per 1,000 customers <= budget"
+    },
+    {
+      "reranker_weight": 0.4,
+      "threshold": 0.9100604637809421,
+      "recall": 0.5833333333333334,
+      "alerts_per_1000": 100.0,
+      "max_alerts_per_1000": 100,
+      "objective": "maximize recall of true matches subject to alerts per 1,000 customers <= budget"
+    },
+    {
+      "reranker_weight": 0.5,
+      "threshold": 0.9052892457060262,
+      "recall": 0.5666666666666667,
+      "alerts_per_1000": 100.0,
+      "max_alerts_per_1000": 100,
+      "objective": "maximize recall of true matches subject to alerts per 1,000 customers <= budget"
+    }
+  ],
+  "selected_reranker_weight": 0.1,
+  "operating_points": {
+    "50": {
+      "alert_budget_per_1000": 50,
+      "rules_only": {
+        "threshold_chosen_on_validation": 0.9610969387755102,
+        "validation_recall": 0.4222222222222222,
+        "validation_alerts_per_1000": 49.68553459119497,
+        "test": {
+          "recall": {
+            "value": 0.4888888888888889,
+            "ci95_low": 0.3404255319148936,
+            "ci95_high": 0.6285714285714286
+          },
+          "alerts_per_1000": {
+            "value": 56.60377358490566,
+            "ci95_low": 45.283018867924525,
+            "ci95_high": 67.94025157232703
+          },
+          "precision": {
+            "value": 0.24444444444444444,
+            "ci95_low": 0.15726689041295783,
+            "ci95_high": 0.3300047169811321
+          },
+          "hard_negative_false_positive_rate": {
+            "value": 0.0,
+            "ci95_low": 0.0,
+            "ci95_high": 0.0
+          },
+          "clean_false_positive_rate": {
+            "value": 0.04533333333333334,
+            "ci95_low": 0.03519197926277637,
+            "ci95_high": 0.056635148877820424
+          }
+        },
+        "test_alert_count": 90
+      },
+      "rules_plus_reranker": {
+        "threshold_chosen_on_validation": 0.9486921235006682,
+        "validation_recall": 0.4444444444444444,
+        "validation_alerts_per_1000": 49.68553459119497,
+        "test": {
+          "recall": {
+            "value": 0.5777777777777777,
+            "ci95_low": 0.43898628048780486,
+            "ci95_high": 0.7209302325581395
+          },
+          "alerts_per_1000": {
+            "value": 60.37735849056604,
+            "ci95_low": 49.669811320754725,
+            "ci95_high": 71.69811320754717
+          },
+          "precision": {
+            "value": 0.2708333333333333,
+            "ci95_low": 0.1836734693877551,
+            "ci95_high": 0.35637605725439164
+          },
+          "hard_negative_false_positive_rate": {
+            "value": 0.022222222222222223,
+            "ci95_low": 0.0,
+            "ci95_high": 0.07319331526648597
+          },
+          "clean_false_positive_rate": {
+            "value": 0.046,
+            "ci95_low": 0.03602401601067378,
+            "ci95_high": 0.0565563872255489
+          }
+        },
+        "test_alert_count": 96
+      },
+      "paired_recall_difference_reranker_minus_rules": {
+        "difference": 0.08888888888888885,
+        "ci95_low": 0.0,
+        "ci95_high": 0.19576086956521727,
+        "share_of_resamples_challenger_better": 0.943,
+        "share_of_resamples_equal": 0.037
+      }
+    },
+    "100": {
+      "alert_budget_per_1000": 100,
+      "rules_only": {
+        "threshold_chosen_on_validation": 0.9483113354037266,
+        "validation_recall": 0.5111111111111111,
+        "validation_alerts_per_1000": 100.0,
+        "test": {
+          "recall": {
+            "value": 0.6888888888888889,
+            "ci95_low": 0.5476190476190477,
+            "ci95_high": 0.8181818181818182
+          },
+          "alerts_per_1000": {
+            "value": 103.77358490566039,
+            "ci95_low": 89.93710691823898,
+            "ci95_high": 118.86792452830188
+          },
+          "precision": {
+            "value": 0.18787878787878787,
+            "ci95_low": 0.13071184995737425,
+            "ci95_high": 0.25003742514970057
+          },
+          "hard_negative_false_positive_rate": {
+            "value": 0.022222222222222223,
+            "ci95_low": 0.0,
+            "ci95_high": 0.07319331526648597
+          },
+          "clean_false_positive_rate": {
+            "value": 0.08866666666666667,
+            "ci95_low": 0.07604199192462988,
+            "ci95_high": 0.10304797932526771
+          }
+        },
+        "test_alert_count": 165
+      },
+      "rules_plus_reranker": {
+        "threshold_chosen_on_validation": 0.9313926033827723,
+        "validation_recall": 0.5111111111111111,
+        "validation_alerts_per_1000": 100.0,
+        "test": {
+          "recall": {
+            "value": 0.6888888888888889,
+            "ci95_low": 0.5428273809523809,
+            "ci95_high": 0.8205128205128205
+          },
+          "alerts_per_1000": {
+            "value": 98.11320754716982,
+            "ci95_low": 84.90566037735849,
+            "ci95_high": 112.57861635220127
+          },
+          "precision": {
+            "value": 0.1987179487179487,
+            "ci95_low": 0.1376705029838022,
+            "ci95_high": 0.2625
+          },
+          "hard_negative_false_positive_rate": {
+            "value": 0.022222222222222223,
+            "ci95_low": 0.0,
+            "ci95_high": 0.07319331526648597
+          },
+          "clean_false_positive_rate": {
+            "value": 0.08266666666666667,
+            "ci95_low": 0.07004553035356904,
+            "ci95_high": 0.09660601772927205
+          }
+        },
+        "test_alert_count": 156
+      },
+      "paired_recall_difference_reranker_minus_rules": {
+        "difference": 0.0,
+        "ci95_low": -0.06674418604651172,
+        "ci95_high": 0.06384694577899791,
+        "share_of_resamples_challenger_better": 0.363,
+        "share_of_resamples_equal": 0.319
+      }
+    },
+    "200": {
+      "alert_budget_per_1000": 200,
+      "rules_only": {
+        "threshold_chosen_on_validation": 0.9283588435374149,
+        "validation_recall": 0.6666666666666666,
+        "validation_alerts_per_1000": 198.7421383647799,
+        "test": {
+          "recall": {
+            "value": 0.8666666666666667,
+            "ci95_low": 0.7619047619047619,
+            "ci95_high": 0.9545454545454546
+          },
+          "alerts_per_1000": {
+            "value": 172.32704402515722,
+            "ci95_low": 154.7012578616352,
+            "ci95_high": 191.83962264150944
+          },
+          "precision": {
+            "value": 0.14233576642335766,
+            "ci95_low": 0.10227065361645654,
+            "ci95_high": 0.18620858688302908
+          },
+          "hard_negative_false_positive_rate": {
+            "value": 0.022222222222222223,
+            "ci95_low": 0.0,
+            "ci95_high": 0.07319331526648597
+          },
+          "clean_false_positive_rate": {
+            "value": 0.156,
+            "ci95_low": 0.13886859839310692,
+            "ci95_high": 0.17565050984550015
+          }
+        },
+        "test_alert_count": 274
+      },
+      "rules_plus_reranker": {
+        "threshold_chosen_on_validation": 0.907526762377132,
+        "validation_recall": 0.7111111111111111,
+        "validation_alerts_per_1000": 200.0,
+        "test": {
+          "recall": {
+            "value": 0.8444444444444444,
+            "ci95_low": 0.7333333333333333,
+            "ci95_high": 0.931926982591876
+          },
+          "alerts_per_1000": {
+            "value": 191.19496855345912,
+            "ci95_low": 172.31132075471697,
+            "ci95_high": 210.6918238993711
+          },
+          "precision": {
+            "value": 0.125,
+            "ci95_low": 0.088964166978835,
+            "ci95_high": 0.16294744734954686
+          },
+          "hard_negative_false_positive_rate": {
+            "value": 0.06666666666666667,
+            "ci95_low": 0.0,
+            "ci95_high": 0.15217391304347827
+          },
+          "clean_false_positive_rate": {
+            "value": 0.17533333333333334,
+            "ci95_low": 0.1570410711498584,
+            "ci95_high": 0.19546401945268477
+          }
+        },
+        "test_alert_count": 304
+      },
+      "paired_recall_difference_reranker_minus_rules": {
+        "difference": -0.022222222222222254,
+        "ci95_low": -0.07504807692307687,
+        "ci95_high": 0.0,
+        "share_of_resamples_challenger_better": 0.0,
+        "share_of_resamples_equal": 0.358
+      }
+    }
+  },
+  "selected_operating_point": {
+    "method": "rules_only",
+    "reranker_weight": 0.0,
+    "threshold": 0.9483113354037266,
+    "alert_budget_per_1000": 100,
+    "rule": "rules+reranker is selected only if its validation recall at the primary budget is strictly higher than rules-only; otherwise the simpler rules-only matcher is used",
+    "embedding_model": null
+  },
+  "blocking": {
+    "test": {
+      "true_matches": 45,
+      "source_in_blocking_before_cap": {
+        "value": 0.9777777777777777,
+        "ci95_low": 0.9333333333333333,
+        "ci95_high": 1.0
+      },
+      "source_in_blocking": {
+        "value": 0.9555555555555556,
+        "ci95_low": 0.8888888888888888,
+        "ci95_high": 1.0
+      },
+      "source_in_prerank": {
+        "value": 0.9555555555555556,
+        "ci95_low": 0.8888888888888888,
+        "ci95_high": 1.0
+      },
+      "source_in_top_k": {
+        "value": 0.9555555555555556,
+        "ci95_low": 0.8888888888888888,
+        "ci95_high": 1.0
+      }
+    },
+    "all_splits": {
+      "true_matches": 150,
+      "source_in_blocking_before_cap": {
+        "value": 0.9933333333333333,
+        "ci95_low": 0.98,
+        "ci95_high": 1.0
+      },
+      "source_in_blocking": {
+        "value": 0.9866666666666667,
+        "ci95_low": 0.9666666666666667,
+        "ci95_high": 1.0
+      },
+      "source_in_prerank": {
+        "value": 0.9866666666666667,
+        "ci95_low": 0.9666666666666667,
+        "ci95_high": 1.0
+      },
+      "source_in_top_k": {
+        "value": 0.9866666666666667,
+        "ci95_low": 0.9666666666666667,
+        "ci95_high": 1.0
+      }
+    },
+    "candidate_set_size_test": {
+      "customers": 1590,
+      "before_cap": {
+        "mean": 9717.017610062892,
+        "median": 5432.5,
+        "p95": 30514.349999999995,
+        "max": 99688
+      },
+      "after_cap": {
+        "mean": 2159.4666666666667,
+        "median": 3000.0,
+        "p95": 3000.0,
+        "max": 3000
+      },
+      "share_of_customers_capped": 0.6113207547169811,
+      "share_with_no_candidates": 0.0031446540880503146
+    },
+    "candidate_set_size_all_splits": {
+      "customers": 5300,
+      "before_cap": {
+        "mean": 10132.956226415094,
+        "median": 5857.0,
+        "p95": 33488.00000000003,
+        "max": 99688
+      },
+      "after_cap": {
+        "mean": 2149.8579245283017,
+        "median": 3000.0,
+        "p95": 3000.0,
+        "max": 3000
+      },
+      "share_of_customers_capped": 0.6160377358490566,
+      "share_with_no_candidates": 0.0026415094339622643
+    }
+  },
+  "test_recall_by_noise_type_at_selected_point": {
+    "transliteration": {
+      "true_matches": 14,
+      "alerted": 5
+    },
+    "typo": {
+      "true_matches": 20,
+      "alerted": 13
+    },
+    "initials": {
+      "true_matches": 5,
+      "alerted": 1
+    },
+    "token_reorder": {
+      "true_matches": 12,
+      "alerted": 10
+    },
+    "honorific": {
+      "true_matches": 13,
+      "alerted": 10
+    },
+    "suffix_change": {
+      "true_matches": 9,
+      "alerted": 5
+    }
+  },
+  "test_false_alert_sources_at_selected_point": {
+    "clean_customers_alerted": 133,
+    "by_source": {
+      "OpenSanctions": 133
+    },
+    "top_first_listed_dataset": {
+      "US Health and Human Services Inspector General Exclusions": 43,
+      "US California Medicaid Suspended and ineligible providers": 21,
+      "PEP position annotations by OpenSanctions": 14,
+      "Wikidata": 9,
+      "US SAM Procurement Exclusions": 7,
+      "MySociety's EveryPolitician Legislators": 6,
+      "US FINRA Barred Individuals": 6,
+      "US Periodically Listing Updates to Management (PLUM": 3
+    },
+    "note": "source and first dataset title of the highest rules-scored list entry for each alerted clean customer"
+  },
+  "exact_name_homonym_stratum": {
+    "description": "SYNTHETIC customers whose made-up name, after screening normalization, exactly equals a list name. The clean group excludes them; they are scored here as a separate stratum that was never used to choose a weight or threshold. Country is left blank for all of them.",
+    "customers": 648,
+    "clean_names_generated": 6240,
+    "clean_names_dropped_as_exact_list_names": 746,
+    "share_of_generated_clean_names_that_were_exact_list_names": 0.11955128205128206,
+    "alert_rate_at_selected_point": {
+      "value": 0.7854938271604939,
+      "ci95_low": 0.7546296296296297,
+      "ci95_high": 0.8148533950617283
+    },
+    "alerted_at_selected_point_by_entity_type": {
+      "organization": {
+        "customers": 168,
+        "alerted": 29
+      },
+      "person": {
+        "customers": 480,
+        "alerted": 480
+      }
+    },
+    "alert_rate_by_budget": {
+      "50": {
+        "rules_only": {
+          "threshold_chosen_on_validation": 0.9610969387755102,
+          "alerted": 487,
+          "alert_rate": {
+            "value": 0.7515432098765432,
+            "ci95_low": 0.7175925925925926,
+            "ci95_high": 0.7824074074074074
+          }
+        },
+        "rules_plus_reranker": {
+          "threshold_chosen_on_validation": 0.9486921235006682,
+          "alerted": 509,
+          "alert_rate": {
+            "value": 0.7854938271604939,
+            "ci95_low": 0.7546296296296297,
+            "ci95_high": 0.8148533950617283
+          }
+        }
+      },
+      "100": {
+        "rules_only": {
+          "threshold_chosen_on_validation": 0.9483113354037266,
+          "alerted": 509,
+          "alert_rate": {
+            "value": 0.7854938271604939,
+            "ci95_low": 0.7546296296296297,
+            "ci95_high": 0.8148533950617283
+          }
+        },
+        "rules_plus_reranker": {
+          "threshold_chosen_on_validation": 0.9313926033827723,
+          "alerted": 510,
+          "alert_rate": {
+            "value": 0.7870370370370371,
+            "ci95_low": 0.7561342592592593,
+            "ci95_high": 0.8179012345679012
+          }
+        }
+      },
+      "200": {
+        "rules_only": {
+          "threshold_chosen_on_validation": 0.9283588435374149,
+          "alerted": 519,
+          "alert_rate": {
+            "value": 0.8009259259259259,
+            "ci95_low": 0.7716049382716049,
+            "ci95_high": 0.8302854938271604
+          }
+        },
+        "rules_plus_reranker": {
+          "threshold_chosen_on_validation": 0.907526762377132,
+          "alerted": 648,
+          "alert_rate": {
+            "value": 1.0,
+            "ci95_low": 1.0,
+            "ci95_high": 1.0
+          }
+        }
+      }
+    },
+    "note": "the share of exact list names depends on how Faker draws names and on the lists' size; it describes this generator, not a real customer base. The clean false-positive rate and alerts per 1,000 reported on the test split are therefore a lower bound for a population that includes namesakes."
+  },
+  "runtime": {
+    "customers_screened": 5300,
+    "seconds_per_1000_customers_rules_stage": 19.673028048111416,
+    "seconds_per_1000_customers_rerank_stage": 11.94970116433601,
+    "seconds_per_1000_customers_total": 31.622729212447425,
+    "watchlist_load_seconds": 22.25353848299892,
+    "index_build_seconds": 42.684627141999954,
+    "peak_memory_mb": 2258.13671875,
+    "cpu_count": 4,
+    "embedding_threads": 2,
+    "note": "single process, wall-clock on a shared 4-CPU machine with another job running; rules stage = normalize + block + pre-rank + rules score; rerank stage = embedding the top candidates (cached per distinct text, so repeated list names are embedded once)"
+  },
+  "test_curves_recall_change_points": {
+    "rules_only": [
+      {
+        "threshold": 1.0,
+        "alerts_per_1000": 3.1446540880503147,
+        "recall": 0.1111111111111111
+      },
+      {
+        "threshold": 0.9913340336134453,
+        "alerts_per_1000": 4.40251572327044,
+        "recall": 0.13333333333333333
+      },
+      {
+        "threshold": 0.9905737704918032,
+        "alerts_per_1000": 7.547169811320755,
+        "recall": 0.15555555555555556
+      },
+      {
+        "threshold": 0.9847499077150239,
+        "alerts_per_1000": 8.176100628930817,
+        "recall": 0.17777777777777778
+      },
+      {
+        "threshold": 0.9844864775178364,
+        "alerts_per_1000": 8.80503144654088,
+        "recall": 0.2
+      },
+      {
+        "threshold": 0.9825268817204301,
+        "alerts_per_1000": 9.433962264150942,
+        "recall": 0.2222222222222222
+      },
+      {
+        "threshold": 0.9803113553113554,
+        "alerts_per_1000": 12.578616352201259,
+        "recall": 0.24444444444444444
+      },
+      {
+        "threshold": 0.9732142857142857,
+        "alerts_per_1000": 26.41509433962264,
+        "recall": 0.4
+      },
+      {
+        "threshold": 0.973167044595616,
+        "alerts_per_1000": 27.044025157232706,
+        "recall": 0.4222222222222222
+      },
+      {
+        "threshold": 0.9714285714285714,
+        "alerts_per_1000": 29.559748427672957,
+        "recall": 0.4444444444444444
+      },
+      {
+        "threshold": 0.966765873015873,
+        "alerts_per_1000": 40.880503144654085,
+        "recall": 0.4666666666666667
+      },
+      {
+        "threshold": 0.9663139571272101,
+        "alerts_per_1000": 42.13836477987421,
+        "recall": 0.4888888888888889
+      },
+      {
+        "threshold": 0.9597763347763348,
+        "alerts_per_1000": 62.893081761006286,
+        "recall": 0.5111111111111111
+      },
+      {
+        "threshold": 0.9562074829931974,
+        "alerts_per_1000": 72.95597484276729,
+        "recall": 0.5333333333333333
+      },
+      {
+        "threshold": 0.9553571428571428,
+        "alerts_per_1000": 76.72955974842768,
+        "recall": 0.5777777777777777
+      },
+      {
+        "threshold": 0.9551820728291318,
+        "alerts_per_1000": 77.35849056603773,
+        "recall": 0.6
+      },
+      {
+        "threshold": 0.9512739977413889,
+        "alerts_per_1000": 93.71069182389937,
+        "recall": 0.6222222222222222
+      },
+      {
+        "threshold": 0.9506493506493505,
+        "alerts_per_1000": 97.48427672955975,
+        "recall": 0.6444444444444445
+      },
+      {
+        "threshold": 0.9504578754578753,
+        "alerts_per_1000": 98.11320754716982,
+        "recall": 0.6666666666666666
+      },
+      {
+        "threshold": 0.9485071806500377,
+        "alerts_per_1000": 103.77358490566039,
+        "recall": 0.6888888888888889
+      },
+      {
+        "threshold": 0.9482427900737759,
+        "alerts_per_1000": 104.40251572327044,
+        "recall": 0.7111111111111111
+      },
+      {
+        "threshold": 0.9464285714285714,
+        "alerts_per_1000": 110.062893081761,
+        "recall": 0.7333333333333333
+      },
+      {
+        "threshold": 0.9410244360902256,
+        "alerts_per_1000": 118.86792452830188,
+        "recall": 0.7555555555555555
+      },
+      {
+        "threshold": 0.9385617760617759,
+        "alerts_per_1000": 127.67295597484276,
+        "recall": 0.7777777777777778
+      },
+      {
+        "threshold": 0.9370894909688013,
+        "alerts_per_1000": 133.33333333333334,
+        "recall": 0.8
+      },
+      {
+        "threshold": 0.9365601503759398,
+        "alerts_per_1000": 133.96226415094338,
+        "recall": 0.8222222222222222
+      },
+      {
+        "threshold": 0.9335317460317459,
+        "alerts_per_1000": 149.0566037735849,
+        "recall": 0.8666666666666667
+      },
+      {
+        "threshold": 0.9243025839368004,
+        "alerts_per_1000": 203.14465408805032,
+        "recall": 0.8888888888888888
+      },
+      {
+        "threshold": 0.9214285714285716,
+        "alerts_per_1000": 228.30188679245285,
+        "recall": 0.9111111111111111
+      },
+      {
+        "threshold": 0.90764652014652,
+        "alerts_per_1000": 306.28930817610063,
+        "recall": 0.9333333333333333
+      },
+      {
+        "threshold": 0.8814484126984126,
+        "alerts_per_1000": 445.9119496855346,
+        "recall": 0.9555555555555556
+      },
+      {
+        "threshold": 0.8629653250188963,
+        "alerts_per_1000": 566.6666666666666,
+        "recall": 0.9777777777777777
+      },
+      {
+        "threshold": 0.5298373878536923,
+        "alerts_per_1000": 996.2264150943396,
+        "recall": 1.0
+      }
+    ],
+    "rules_plus_reranker": [
+      {
+        "threshold": 1.0000000238418578,
+        "alerts_per_1000": 0.6289308176100629,
+        "recall": 0.022222222222222223
+      },
+      {
+        "threshold": 1.0,
+        "alerts_per_1000": 2.5157232704402515,
+        "recall": 0.08888888888888889
+      },
+      {
+        "threshold": 0.9979202568531037,
+        "alerts_per_1000": 3.1446540880503147,
+        "recall": 0.1111111111111111
+      },
+      {
+        "threshold": 0.98466992909167,
+        "alerts_per_1000": 6.289308176100629,
+        "recall": 0.13333333333333333
+      },
+      {
+        "threshold": 0.980495829400034,
+        "alerts_per_1000": 7.547169811320755,
+        "recall": 0.15555555555555556
+      },
+      {
+        "threshold": 0.975892880984715,
+        "alerts_per_1000": 8.176100628930817,
+        "recall": 0.17777777777777778
+      },
+      {
+        "threshold": 0.9758928571428571,
+        "alerts_per_1000": 10.062893081761006,
+        "recall": 0.24444444444444444
+      },
+      {
+        "threshold": 0.9743592415537153,
+        "alerts_per_1000": 10.691823899371068,
+        "recall": 0.26666666666666666
+      },
+      {
+        "threshold": 0.9733645689356459,
+        "alerts_per_1000": 11.320754716981131,
+        "recall": 0.28888888888888886
+      },
+      {
+        "threshold": 0.9732010160173689,
+        "alerts_per_1000": 11.949685534591195,
+        "recall": 0.3111111111111111
+      },
+      {
+        "threshold": 0.9727978203977857,
+        "alerts_per_1000": 12.578616352201259,
+        "recall": 0.3333333333333333
+      },
+      {
+        "threshold": 0.9703066170411031,
+        "alerts_per_1000": 14.465408805031446,
+        "recall": 0.35555555555555557
+      },
+      {
+        "threshold": 0.9607463112899236,
+        "alerts_per_1000": 23.89937106918239,
+        "recall": 0.37777777777777777
+      },
+      {
+        "threshold": 0.9598214285714285,
+        "alerts_per_1000": 25.78616352201258,
+        "recall": 0.4
+      },
+      {
+        "threshold": 0.9597136910085555,
+        "alerts_per_1000": 26.41509433962264,
+        "recall": 0.4222222222222222
+      },
+      {
+        "threshold": 0.9590120186975092,
+        "alerts_per_1000": 28.30188679245283,
+        "recall": 0.4444444444444444
+      },
+      {
+        "threshold": 0.9556395428521292,
+        "alerts_per_1000": 36.477987421383645,
+        "recall": 0.4666666666666667
+      },
+      {
+        "threshold": 0.953267196888452,
+        "alerts_per_1000": 44.0251572327044,
+        "recall": 0.4888888888888889
+      },
+      {
+        "threshold": 0.95268511498906,
+        "alerts_per_1000": 45.283018867924525,
+        "recall": 0.5111111111111111
+      },
+      {
+        "threshold": 0.9515996908941191,
+        "alerts_per_1000": 49.68553459119497,
+        "recall": 0.5333333333333333
+      },
+      {
+        "threshold": 0.9502772733143399,
+        "alerts_per_1000": 55.34591194968554,
+        "recall": 0.5555555555555556
+      },
+      {
+        "threshold": 0.9497893064252791,
+        "alerts_per_1000": 57.23270440251572,
+        "recall": 0.5777777777777777
+      },
+      {
+        "threshold": 0.9484618751104774,
+        "alerts_per_1000": 61.63522012578616,
+        "recall": 0.6
+      },
+      {
+        "threshold": 0.9461947941861185,
+        "alerts_per_1000": 66.66666666666667,
+        "recall": 0.6222222222222222
+      },
+      {
+        "threshold": 0.9359985877095962,
+        "alerts_per_1000": 87.42138364779873,
+        "recall": 0.6444444444444445
+      },
+      {
+        "threshold": 0.9330756088908838,
+        "alerts_per_1000": 94.33962264150944,
+        "recall": 0.6666666666666666
+      },
+      {
+        "threshold": 0.9321338094821592,
+        "alerts_per_1000": 96.22641509433963,
+        "recall": 0.6888888888888889
+      },
+      {
+        "threshold": 0.9284156748226711,
+        "alerts_per_1000": 101.88679245283019,
+        "recall": 0.7111111111111111
+      },
+      {
+        "threshold": 0.9274810028780858,
+        "alerts_per_1000": 102.51572327044026,
+        "recall": 0.7333333333333333
+      },
+      {
+        "threshold": 0.92299150239001,
+        "alerts_per_1000": 115.09433962264151,
+        "recall": 0.7555555555555555
+      },
+      {
+        "threshold": 0.9217956067924213,
+        "alerts_per_1000": 120.12578616352201,
+        "recall": 0.7777777777777778
+      },
+      {
+        "threshold": 0.9184592468397957,
+        "alerts_per_1000": 132.70440251572327,
+        "recall": 0.8
+      },
+      {
+        "threshold": 0.9156300631680883,
+        "alerts_per_1000": 144.0251572327044,
+        "recall": 0.8222222222222222
+      },
+      {
+        "threshold": 0.9126457912581306,
+        "alerts_per_1000": 160.37735849056602,
+        "recall": 0.8444444444444444
+      },
+      {
+        "threshold": 0.9011172207764218,
+        "alerts_per_1000": 231.44654088050314,
+        "recall": 0.8666666666666667
+      },
+      {
+        "threshold": 0.90098122051712,
+        "alerts_per_1000": 233.33333333333334,
+        "recall": 0.8888888888888888
+      },
+      {
+        "threshold": 0.8939698332583457,
+        "alerts_per_1000": 270.44025157232704,
+        "recall": 0.9111111111111111
+      },
+      {
+        "threshold": 0.873434589590345,
+        "alerts_per_1000": 371.6981132075471,
+        "recall": 0.9333333333333333
+      },
+      {
+        "threshold": 0.872037628181688,
+        "alerts_per_1000": 379.24528301886795,
+        "recall": 0.9555555555555556
+      },
+      {
+        "threshold": 0.8579141195128563,
+        "alerts_per_1000": 472.32704402515725,
+        "recall": 0.9777777777777777
+      },
+      {
+        "threshold": 0.5154654902701052,
+        "alerts_per_1000": 996.2264150943396,
+        "recall": 1.0
+      }
+    ]
+  },
+  "figure": "results/figures/kyc_recall_vs_alerts.png",
+  "example_alert": {
+    "customer_id": "SYN-KYC-05048",
+    "note": "SYNTHETIC customer derived from a public OFAC SDN organization entry",
+    "result": {
+      "request": {
+        "name": "Lizingovaya Kompaniya Kamwaz",
+        "entity_type": "organization",
+        "country": "FR"
+      },
+      "candidates": [
+        {
+          "list_entry_id": "OFAC-37757",
+          "list_name": "OFAC SDN (RUSSIA-EO14024)",
+          "source": "OFAC",
+          "matched_name": "LIZINGOVAYA KOMPANIYA KAMAZ PAO",
+          "score": 0.9598,
+          "explanation": [
+            "customer name normalized to 'lizingovaya kompaniya kamwaz'",
+            "matched alias 'LIZINGOVAYA KOMPANIYA KAMAZ PAO' of list entry 'LEASING COMPANY KAMAZ INCORPORATED'",
+            "matched tokens: 'lizingovaya' = 'lizingovaya' (exact); 'kompaniya' = 'kompaniya' (exact); 'kamwaz' ~ 'kamaz' (same Double Metaphone code KMS, Jaro-Winkler 0.96)",
+            "phonetic agreement: 3 of 3 customer tokens share a Double Metaphone code",
+            "entity type agrees: both organization (+0.02)",
+            "country not compared: unknown on the list entry or the customer",
+            "scores: token-aligned Jaro-Winkler 0.987, token-set ratio 0.982, rules score 0.960, final 0.960 (alert threshold 0.948)",
+            "list: OFAC SDN (RUSSIA-EO14024); programs: RUSSIA-EO14024",
+            "potential match only: a human compliance reviewer must decide; this system never clears or confirms a match"
+          ]
+        }
+      ],
+      "status": "potential_match",
+      "list_snapshots": [
+        {
+          "source": "OFAC",
+          "file_name": "sdn.csv",
+          "sha256": "64be7a7991059f59a2ebb43bc5dcc7e2951e1e27cbed8cbe41b0231b3a161946",
+          "snapshot_date": "2026-10-10",
+          "attribution": null
+        },
+        {
+          "source": "OFAC",
+          "file_name": "alt.csv",
+          "sha256": "ff6075fc9635c5034475fa49c0c2e0e03300e1c9375771d75f99c4d4bf799c1b",
+          "snapshot_date": "2026-10-10",
+          "attribution": null
+        },
+        {
+          "source": "OpenSanctions",
+          "file_name": "targets.simple.csv",
+          "sha256": "99854904a7059e7309765d2bd2951041279c509f1b67eb0deb0af8894fdea16d",
+          "snapshot_date": "2026-10-10",
+          "attribution": "Data from OpenSanctions.org, licensed CC BY-NC 4.0 (https://www.opensanctions.org/licensing/). Non-commercial use only without a separate data license."
+        }
+      ],
+      "requires_human_review": true
+    }
+  },
+  "adverse_media_memo": {
+    "status": "not measured (no LLM key)",
+    "note": "the memo prompt builder and citation checks are unit-tested with a fake LLM only"
+  },
+  "environment": {
+    "python": "3.11.17",
+    "platform": "Linux-6.18.44-fc-v114-x86_64-with-glibc2.39"
+  }
+}
