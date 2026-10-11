@@ -9,7 +9,7 @@ import download_data
 
 
 def test_every_dataset_has_a_downloader() -> None:
-    expected = {"lending_club", "fremtpl2", "german_credit", "ofac_sdn", "opensanctions"}
+    expected = {"lending_club", "fremtpl2", "german_credit", "ofac_sdn", "opensanctions", "regulatory_docs"}
     assert set(download_data.DOWNLOADERS) == expected
 
 
@@ -59,3 +59,33 @@ def test_download_url_skips_existing_file(tmp_path: Path) -> None:
     action = download_data.download_url("https://invalid.example/never-fetched", existing, force=False)
     assert action == "verified_existing"
     assert existing.read_text(encoding="utf-8") == "x\n"
+
+
+def test_document_marker_check_rejects_the_wrong_page(tmp_path: Path) -> None:
+    right = tmp_path / "letter.html"
+    right.write_text("<title>Supervisory Letter SR 26-2</title>", encoding="utf-8")
+    wrong = tmp_path / "home.html"
+    wrong.write_text("<title>Agency home page</title>", encoding="utf-8")
+    not_a_pdf = tmp_path / "letter.pdf"
+    not_a_pdf.write_text("<html>blocked</html>", encoding="utf-8")
+    assert download_data.document_has_marker(right, "SR 26-2")
+    assert not download_data.document_has_marker(wrong, "SR 26-2")
+    assert not download_data.document_has_marker(not_a_pdf, "SR 26-2")
+
+
+def test_regulatory_sources_are_https_primary_sources() -> None:
+    all_docs = {**download_data.REGULATORY_DOCS, **download_data.REGULATORY_DOCS_MANUAL}
+    for filename, (url, _detail) in all_docs.items():
+        assert url.startswith("https://")
+        assert filename == Path(filename).name
+    assert not set(download_data.REGULATORY_DOCS) & set(download_data.REGULATORY_DOCS_MANUAL)
+
+
+@pytest.mark.integration
+def test_downloaded_regulatory_docs_are_the_expected_documents() -> None:
+    target_dir = download_data.RAW_DATA_DIR / "regulatory"
+    missing = [name for name in download_data.REGULATORY_DOCS if not (target_dir / name).exists()]
+    if missing:
+        pytest.skip(f"regulatory documents not downloaded: {missing} (run `make data-regulatory`)")
+    for filename, (_url, marker) in download_data.REGULATORY_DOCS.items():
+        assert download_data.document_has_marker(target_dir / filename, marker)

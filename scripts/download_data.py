@@ -17,6 +17,8 @@ Datasets and licenses:
     ofac_sdn       US Treasury OFAC SDN list (sdn.csv + alt.csv aliases), US government public data
     opensanctions  OpenSanctions "default" dataset, simplified CSV, CC BY-NC 4.0
                    (attribution: "Data from OpenSanctions.org")
+    regulatory_docs  Public US regulatory documents used as RAG sources: Federal Reserve SR 26-2 (HTML and
+                   PDF) and NY DFS Insurance Circular Letter No. 7 (2024); US government public documents
 """
 
 import argparse
@@ -52,6 +54,31 @@ OFAC_URLS = {
     "alt.csv": "https://www.treasury.gov/ofac/downloads/alt.csv",
 }
 OPENSANCTIONS_URL = "https://data.opensanctions.org/datasets/latest/default/targets.simple.csv"
+
+# Public regulatory documents, checked on 2026-10-10. Each entry: file name -> (URL, marker text).
+# The marker must appear in the downloaded document (first page text for a PDF), so a redirect to a home page or
+# a bot-check page is caught instead of being saved as if it were the document.
+REGULATORY_DOCS: dict[str, tuple[str, str]] = {
+    "frb_sr_26_2.htm": ("https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm", "SR 26-2"),
+    "frb_sr_26_2.pdf": ("https://www.federalreserve.gov/supervisionreg/srletters/SR2602.pdf", "SR 26-2"),
+    "nydfs_circular_letter_2024_07.html": (
+        "https://www.dfs.ny.gov/industry-guidance/circular-letters/cl2024-07",
+        "Circular Letter No. 7",
+    ),
+}
+# Checked on 2026-10-10 and NOT downloadable by script. Save them from a browser into data/raw/regulatory/
+# under these names if you need them.
+REGULATORY_DOCS_MANUAL: dict[str, tuple[str, str]] = {
+    "occ_bulletin_2026_13.html": (
+        "https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html",
+        "the OCC site answers scripted requests with a 302 'Security Redirect' to its home page",
+    ),
+    "naic_ai_model_bulletin.pdf": (
+        "https://content.naic.org/sites/default/files/"
+        "cmte-h-big-data-artificial-intelligence-wg-ai-model-bulletin.pdf.pdf",
+        "the NAIC site answers scripted requests with HTTP 403 (bot challenge)",
+    ),
+}
 
 
 class DatasetSkipped(Exception):
@@ -191,12 +218,53 @@ def download_opensanctions(force: bool) -> None:
     report_file("opensanctions", path, OPENSANCTIONS_URL, action)
 
 
+def document_has_marker(path: Path, marker: str) -> bool:
+    """True if the marker text appears in the document: first-page text for a PDF, the raw text otherwise."""
+    if path.suffix.lower() == ".pdf":
+        from pypdf import PdfReader
+
+        with path.open("rb") as handle:
+            if handle.read(5) != b"%PDF-":
+                return False
+        reader = PdfReader(path)
+        first_page_text = reader.pages[0].extract_text() if reader.pages else ""
+        return marker in first_page_text
+    return marker in path.read_text(encoding="utf-8", errors="replace")
+
+
+def download_regulatory_docs(force: bool) -> None:
+    """Download public regulatory documents and check each one is the expected document.
+
+    A file without its marker text is deleted again and reported as a failure. Documents in
+    REGULATORY_DOCS_MANUAL are listed with the reason they cannot be fetched by script.
+    """
+    target_dir = RAW_DATA_DIR / "regulatory"
+    failures: list[str] = []
+    for filename, (url, marker) in REGULATORY_DOCS.items():
+        path = target_dir / filename
+        try:
+            action = download_url(url, path, force)
+        except requests.RequestException as error:
+            failures.append(f"{url}: {error}")
+            continue
+        if not document_has_marker(path, marker):
+            path.unlink()
+            failures.append(f"{url}: downloaded file does not contain {marker!r}, so it is not the expected document")
+            continue
+        report_file("regulatory_docs", path, url, action)
+    for filename, (url, reason) in REGULATORY_DOCS_MANUAL.items():
+        print(f"  not downloadable by script: {filename} <- {url} ({reason})")
+    if failures:
+        raise RuntimeError("; ".join(failures))
+
+
 DOWNLOADERS = {
     "lending_club": download_lending_club,
     "fremtpl2": download_fremtpl2,
     "german_credit": download_german_credit,
     "ofac_sdn": download_ofac,
     "opensanctions": download_opensanctions,
+    "regulatory_docs": download_regulatory_docs,
 }
 
 
