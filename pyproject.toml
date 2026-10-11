@@ -5,15 +5,27 @@ description = "Underwriting copilot for small-business loans and commercial insu
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "fastapi>=0.143.0",
+    "joblib>=1.6.0",
     "kaggle>=1.6",
+    "lightgbm>=4.7.0",
+    "matplotlib>=3.11.2",
+    "mlflow>=3.17.0",
+    "numpy>=2.4.6",
     "pandas>=2.2",
+    "pydantic>=2.14.0",
     "python-dotenv>=1.0",
     "requests>=2.32",
     "scikit-learn>=1.5",
+    "scipy>=1.17.1",
+    "shap>=0.51.0",
+    "statsmodels>=0.15.0",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=8.3",
     "ruff>=0.8",
 ]
