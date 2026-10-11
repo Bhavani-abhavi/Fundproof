@@ -1,0 +1,58 @@
+# LLM prices used by src/uwcopilot/llm/budget.py to enforce MAX_RUN_COST_USD and to report cost per call.
+#
+# Units: US dollars per million tokens (MTok), standard (non-batch) API rates, no prompt caching.
+# Rules (CLAUDE.md ground rules 1 and 4):
+#   - Every price is copied from the provider's official pricing page given in `source`, on `checked_on`.
+#   - Never guess. If a price cannot be verified, set it to null: the model's cost becomes "not measured"
+#     and paid calls to it are refused, because the cost cap could not be enforced.
+#   - Re-check before relying on these numbers; prices change.
+# `long_context` holds the higher prices that apply when the prompt has more than `above_input_tokens` tokens.
+# The fake provider used in tests is always free and needs no entry here.
+
+models:
+  claude-haiku-5-5:
+    provider: anthropic
+    input_usd_per_mtok: 0.10
+    output_usd_per_mtok: 0.50
+    long_context:
+      above_input_tokens: 100000
+      input_usd_per_mtok: 0.50
+      output_usd_per_mtok: 2.50
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+    checked_on: "2026-10-10"
+
+  claude-sonnet-5-5:
+    provider: anthropic
+    input_usd_per_mtok: 2.00
+    output_usd_per_mtok: 10.00
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+    checked_on: "2026-10-10"
+
+  claude-opus-5-5:
+    provider: anthropic
+    input_usd_per_mtok: 4.00
+    output_usd_per_mtok: 20.00
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+    checked_on: "2026-10-10"
+
+  gpt-6-luna:
+    provider: openai
+    input_usd_per_mtok: 0.10
+    output_usd_per_mtok: 0.50
+    long_context:
+      above_input_tokens: 272000
+      input_usd_per_mtok: 0.20
+      output_usd_per_mtok: 0.75
+    source: https://developers.openai.com/api/docs/pricing
+    checked_on: "2026-10-10"
+
+  gpt-6-sol:
+    provider: openai
+    input_usd_per_mtok: 2.00
+    output_usd_per_mtok: 10.00
+    long_context:
+      above_input_tokens: 272000
+      input_usd_per_mtok: 4.00
+      output_usd_per_mtok: 15.00
+    source: https://developers.openai.com/api/docs/pricing
+    checked_on: "2026-10-10"

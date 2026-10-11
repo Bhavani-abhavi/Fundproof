@@ -1,0 +1,82 @@
+"""One place to build a ready-to-use LLM client from settings.
+
+Real providers are wrapped as Cached(Budgeted(provider client)):
+- the cache answers repeated requests for free, before the budget is even consulted;
+- on a cache miss, the budget check runs before any money is spent.
+The fake provider is wrapped only in the budget layer (it is free) and is never cached, so tests always see
+exactly the scripted responses.
+"""
+
+from collections.abc import Sequence
+from typing import Any
+
+from uwcopilot.llm.anthropic_client import AnthropicClient
+from uwcopilot.llm.base import LLMClient
+from uwcopilot.llm.budget import BudgetedLLMClient, CostTracker, load_prices
+from uwcopilot.llm.cache import CachedLLMClient, LLMCache
+from uwcopilot.llm.fake_client import FakeLLM, FakeResponder
+from uwcopilot.llm.openai_client import OpenAIClient
+from uwcopilot.llm.settings import LLMSettings, load_llm_settings, validate_provider
+
+API_KEY_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+
+
+class MissingAPIKeyError(RuntimeError):
+    """Raised when a real provider is requested but its API key is not configured."""
+
+
+def cost_tracker_from_settings(settings: LLMSettings) -> CostTracker:
+    """A fresh CostTracker with the run's cap and the price list from settings."""
+    return CostTracker(settings.max_run_cost_usd, load_prices(settings.pricing_file))
+
+
+def get_llm_client(
+    provider: str | None = None,
+    *,
+    settings: LLMSettings | None = None,
+    model: str | None = None,
+    cost_tracker: CostTracker | None = None,
+    use_cache: bool = True,
+    fake_responses: Sequence[str] | FakeResponder | None = None,
+    http_client: Any | None = None,
+) -> LLMClient:
+    """Build an LLM client.
+
+    provider: "anthropic", "openai" or "fake" (default: settings.provider, i.e. UWC_LLM_PROVIDER).
+    settings: defaults to load_llm_settings() (repo .env plus project variables).
+    model: overrides the model from settings.
+    cost_tracker: share one tracker across clients so the cap covers the whole run.
+    use_cache: real providers only; set False to always call the API.
+    fake_responses: scripted strings or a responder function for the fake provider.
+    http_client: test hook passed to the SDK (an httpx2.Client with a mock transport).
+
+    Raises MissingAPIKeyError when a real provider has no API key; no request is attempted in that case.
+    """
+    settings = settings or load_llm_settings()
+    chosen = validate_provider(provider or settings.provider)
+    chosen_model = model or settings.model_for(chosen)
+    tracker = cost_tracker or cost_tracker_from_settings(settings)
+
+    if chosen == "fake":
+        fake = FakeLLM(fake_responses if fake_responses is not None else [], model=chosen_model)
+        return BudgetedLLMClient(fake, tracker)
+
+    api_key = settings.api_key_for(chosen)
+    if not api_key:
+        raise MissingAPIKeyError(
+            f"{API_KEY_NAMES[chosen]} is not set. Add it to the repo .env file (see .env.example). "
+            "No LLM call was made; metrics that need an LLM stay 'not measured'."
+        )
+    base_url = settings.base_url_for(chosen) or ""
+    provider_client: LLMClient
+    if chosen == "anthropic":
+        provider_client = AnthropicClient(
+            api_key, base_url, chosen_model, http_client=http_client, effort=settings.anthropic_effort
+        )
+    else:
+        provider_client = OpenAIClient(api_key, base_url, chosen_model, http_client=http_client)
+
+    budgeted = BudgetedLLMClient(provider_client, tracker)
+    if not use_cache:
+        return budgeted
+    return CachedLLMClient(budgeted, LLMCache(settings.cache_dir))
