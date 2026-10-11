@@ -17,6 +17,15 @@ dist/
 .coverage
 htmlcov/
 
+# Local caches: LLM responses, downloaded embedding/reranker models (fastembed / Hugging Face)
+.cache/
+
+# Local vector database and agent checkpoint files
+qdrant_storage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
 # Experiment tracking (local file store)
 mlruns/
 mlartifacts/

@@ -5,16 +5,37 @@ description = "Underwriting copilot for small-business loans and commercial insu
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "anthropic>=1.13.0",
+    "beautifulsoup4>=4.15.0",
+    "faker>=40.43.0",
+    "fastembed>=0.9.0",
+    "httpx>=0.28.1",
     "kaggle>=1.6",
+    "langgraph>=1.2.14",
+    "langgraph-checkpoint-sqlite>=3.1.1",
+    "matplotlib>=3.11.2",
+    "mcp>=2.3.0",
+    "metaphone>=0.6",
+    "openai>=3.28.0",
+    "openinference-semantic-conventions>=0.1.41",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.1",
+    "opentelemetry-sdk>=1.45.1",
     "pandas>=2.2",
+    "pydantic>=2.14.0",
+    "pypdf>=6.20.0",
     "python-dotenv>=1.0",
+    "pyyaml>=6.0.3",
+    "qdrant-client>=1.19.1",
+    "rapidfuzz>=3.14.6",
     "requests>=2.32",
     "scikit-learn>=1.5",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "pytest>=8.3",
+    "respx>=0.23.1",
     "ruff>=0.8",
 ]
 
@@ -35,5 +56,8 @@ select = ["E", "F", "W", "I", "B", "UP", "BLE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["scripts"]
-addopts = "-q"
+pythonpath = ["scripts", "tests"]
+addopts = '-q -m "not integration"'
+markers = [
+    "integration: needs downloaded data in data/raw or real embedding models; excluded by default (make test-integration)",
+]

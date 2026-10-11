@@ -22,3 +22,10 @@ DATA_DIR: Path = REPO_ROOT / "data"
 RAW_DATA_DIR: Path = DATA_DIR / "raw"
 RESULTS_DIR: Path = REPO_ROOT / "results"
 DOCS_DIR: Path = REPO_ROOT / "docs"
+CONFIG_DIR: Path = REPO_ROOT / "config"
+CORPUS_DIR: Path = REPO_ROOT / "corpus"
+# Local caches (LLM responses, downloaded embedding models). Gitignored.
+CACHE_DIR: Path = REPO_ROOT / ".cache"
+# fastembed / Hugging Face model files are downloaded here on first use.
+MODEL_CACHE_DIR: Path = CACHE_DIR / "models"
+ENV_FILE: Path = REPO_ROOT / ".env"
