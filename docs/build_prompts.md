@@ -30,6 +30,13 @@ next piece of evidence worth requesting, and writes an auditable decision record
 | API + memo | Web demo: upload a synthetic packet, inspect evidence and contradictions, run scenarios, approve or send back for more information. |
 | Resume metrics | Adds business-value metrics on the synthetic test set against a defined baseline (processing time, review workload, discrepancy recall, false-alert burden, cost per case). |
 
+**v2.1 addendum: [docs/innovations.md](innovations.md).** The signature innovation is *provenance-locked
+generation*: the LLM reads and writes, and deterministic code and governed models compute and decide. In decision
+memos the model cannot type a number or a pass/fail judgment; a renderer fills every figure from an evidence
+ledger. Supporting items: a local-model generation eval with an LLM migration gate, prompt-injection attack
+success measured per defense layer, GenAI controls-as-code with a stale-evidence release gate, and sanctions
+list-family queues. Tier 2: decision-value evidence requests and delegated-authority tool interoperability (MCP + A2A).
+
 ---
 
 ## Ground rules (paste first in every session; CLAUDE.md holds the same text)

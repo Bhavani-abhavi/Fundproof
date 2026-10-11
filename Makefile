@@ -4,7 +4,7 @@
 .PHONY: help setup lint format test test-integration data data-regulatory index eval-rag all clean
 
 help:  ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 setup:  ## Create the virtualenv from the lockfile (fails if uv.lock is out of date)
 	uv sync --locked
@@ -74,7 +74,7 @@ ci:  ## What CI runs: lint and the offline test suite
 	$(MAKE) test
 
 # The full pipeline, in dependency order. `data` downloads several GB and needs a Kaggle key for Lending Club.
-all: setup lint test data index eval-rag kyc-data eval-kyc applications eval-agent eval-agent-homonyms mcp-smoke readme-results  ## Run every step end to end, in order
+all: setup lint test data phase1 index eval-rag kyc-data eval-kyc applications eval-agent eval-agent-homonyms mcp-smoke readme-results  ## Run every step end to end, in order
 
 clean:  ## Remove caches (keeps downloaded data)
 	rm -rf .pytest_cache .ruff_cache
@@ -89,3 +89,32 @@ mcp:  ## Run the MCP server over stdio for an MCP client; MCP_ARGS="--transport 
 mcp-smoke:  ## MCP server as a subprocess + SDK client (needs `make index`, `make eval-kyc`); writes results/mcp_smoke_*.json
 	uv run python scripts/mcp_smoke.py
 	uv run python scripts/mcp_smoke.py --transport streamable-http
+
+# Phase 1
+
+.PHONY: fairness
+fairness:  ## Fairness demo on UCI German Credit (AIR, equal opportunity, proxy check) -> results/risk_metrics.json
+	uv run python scripts/fairness_german.py
+
+.PHONY: train-insurance
+train-insurance:  ## freMTPL2 frequency + severity models (GLM vs LightGBM) -> results/risk_metrics.json, models/insurance/
+	uv run python scripts/train_insurance.py
+
+.PHONY: train-credit
+train-credit:  ## Lending Club credit PD (scorecard vs LightGBM, out-of-time) -> results/risk_metrics.json, models/credit/
+	uv run python scripts/train_credit.py
+
+.PHONY: reports
+reports:  ## Render model cards, validation report, walkthrough and README results from results/risk_metrics.json
+	uv run python scripts/render_reports.py
+
+.PHONY: phase1
+phase1:  ## Phase 1 end to end, in order: train-insurance, fairness, train-credit, reports
+	$(MAKE) train-insurance
+	$(MAKE) fairness
+	$(MAKE) train-credit
+	$(MAKE) reports
+
+.PHONY: serve
+serve:  ## Start the scoring API (POST /score, GET /health) on http://127.0.0.1:8000 (docs at /docs)
+	uv run uvicorn uwcopilot.risk.service:app --host 127.0.0.1 --port 8000

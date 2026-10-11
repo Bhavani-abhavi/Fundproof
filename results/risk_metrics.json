@@ -1,0 +1,3648 @@
+{
+  "fairness_demo": {
+    "results": {
+      "note": "Demonstration on UCI German Credit; Lending Club has no protected attributes.",
+      "dataset": {
+        "name": "UCI Statlog (German Credit Data)",
+        "file": "german.data",
+        "source": "https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data",
+        "license": "CC BY 4.0",
+        "n_rows": 1000,
+        "bad_rate": 0.3,
+        "personal_status_sex_counts": {
+          "A91": 50,
+          "A92": 310,
+          "A93": 548,
+          "A94": 92
+        }
+      },
+      "data_quality_warning": "german.doc labels attribute 9 (personal status and sex) wrongly. The corrected code table published with the South German Credit data (Groemping 2019, Report 4/2019, Beuth University of Applied Sciences Berlin; UCI 2020, doi:10.24432/C5QG88) has the same row counts per code and gives: A91 male divorced/separated, A92 female non-single or male single, A93 male married/widowed, A94 female single. The 'sex' comparison follows german.doc (the convention in most fairness work) and so groups some single women as male and some single men as female; treat it as a demonstration of the method, not a measurement of sex disparity. 'sex_corrected_codes' uses only the unambiguous codes.",
+      "caveats": [
+        "Small test set: 300 rows, and the smallest test group in any comparison has 25 people, so confidence intervals are wide and a point estimate below 0.8 is weak evidence on its own.",
+        "Fairness through unawareness: sex, age and foreign-worker status are not model features, but other features can act as proxies (see proxy_check). Excluding a protected attribute does not remove proxy effects.",
+        "Attribute 9 mixes sex with marital status, and german.doc mislabels it (see data_quality_warning).",
+        "The data has 1000 loans from one German bank, 1973 to 1975 (UCI South German Credit page); it says nothing about any current lending population.",
+        "Groups can differ in their observed good rates (see observed_good_rate per group), so a gap in approval rates may partly reflect that; AIR alone cannot separate risk differences from unfair treatment."
+      ],
+      "group_definitions": {
+        "sex": {
+          "source": "attribute 9, german.doc labels",
+          "mapping": {
+            "A91": "male",
+            "A92": "female",
+            "A93": "male",
+            "A94": "male",
+            "A95": "female"
+          }
+        },
+        "sex_corrected": {
+          "source": "attribute 9, corrected code table (Groemping 2019; UCI South German Credit 2020)",
+          "corrected_meaning": {
+            "A91": "male: divorced/separated",
+            "A92": "female: non-single or male: single",
+            "A93": "male: married/widowed",
+            "A94": "female: single"
+          },
+          "mapping": {
+            "A91": "male",
+            "A92": "undetermined",
+            "A93": "male",
+            "A94": "female",
+            "A95": "undetermined"
+          }
+        },
+        "age_group_25": {
+          "source": "attribute 13 (age in years)",
+          "groups": [
+            "<25",
+            ">=25"
+          ]
+        },
+        "age_group_30": {
+          "source": "attribute 13 (age in years)",
+          "groups": [
+            "<=30",
+            ">30"
+          ]
+        },
+        "comparisons": [
+          {
+            "key": "sex",
+            "column": "sex",
+            "privileged": "male",
+            "unprivileged": "female",
+            "role": "primary",
+            "description": "Sex as german.doc labels attribute 9 (A91/A93/A94 male, A92/A95 female). The corrected code table contradicts these labels; see data_quality_warning."
+          },
+          {
+            "key": "age_lt25",
+            "column": "age_group_25",
+            "privileged": ">=25",
+            "unprivileged": "<25",
+            "role": "primary",
+            "description": "Age from attribute 13: under 25 vs 25 and over."
+          },
+          {
+            "key": "age_le30",
+            "column": "age_group_30",
+            "privileged": ">30",
+            "unprivileged": "<=30",
+            "role": "sensitivity",
+            "description": "Age from attribute 13: 30 and under vs over 30 (sensitivity check on the age cut-off)."
+          },
+          {
+            "key": "sex_corrected_codes",
+            "column": "sex_corrected",
+            "privileged": "male",
+            "unprivileged": "female",
+            "role": "sensitivity",
+            "description": "Sex from the corrected code table (A91/A93 male, A94 female); A92 rows mix both sexes and are left out. Very few women remain, so this is the least precise comparison."
+          }
+        ]
+      },
+      "excluded_from_features": {
+        "personal_status_sex": "protected: encodes sex (and marital status)",
+        "age_years": "protected: age",
+        "foreign_worker": "relates to national origin; german.doc coding is also reported reversed (Groemping 2019)"
+      },
+      "model_features": [
+        "duration_months",
+        "credit_amount",
+        "installment_rate_pct",
+        "residence_since",
+        "existing_credits",
+        "people_liable",
+        "checking_account_status",
+        "credit_history",
+        "purpose",
+        "savings",
+        "employment_since",
+        "other_debtors",
+        "property",
+        "other_installment_plans",
+        "housing",
+        "job",
+        "telephone"
+      ],
+      "split": {
+        "method": "random split stratified on the bad-credit label (German Credit has no date field)",
+        "test_size": 0.3,
+        "seed": 42,
+        "n_train": 700,
+        "n_test": 300,
+        "train_good_rate": 0.7,
+        "test_good_rate": 0.7
+      },
+      "decision_rule": {
+        "rule": "approve if predicted P(bad) < threshold",
+        "threshold_choice": "set on the training set so that the share approved equals the training good rate; computed on out-of-fold P(bad) (stratified 5-fold, seed 42) so in-sample over-confidence does not move the cut-off; threshold = midpoint between the k-th and (k+1)-th smallest P(bad), k = round(rate * n)",
+        "favorable_decision": "approve (selected = 1)",
+        "truly_good": "target == 1 in german.data (good credit risk)"
+      },
+      "bootstrap": {
+        "n_resamples": 1000,
+        "seed": 42,
+        "alpha": 0.05,
+        "method": "percentile; rows resampled jointly; resamples where a metric is undefined are skipped and counted in n_valid_resamples"
+      },
+      "config": {
+        "test_size": 0.3,
+        "seed": 42,
+        "n_resamples": 1000,
+        "alpha": 0.05,
+        "n_folds": 5,
+        "logistic_c": 1.0,
+        "logistic_max_iter": 1000,
+        "lgbm_learning_rate": 0.05,
+        "lgbm_num_leaves": 8,
+        "lgbm_min_child_samples": 20,
+        "lgbm_colsample_bytree": 0.8,
+        "lgbm_reg_lambda": 1.0,
+        "lgbm_max_rounds": 1000,
+        "lgbm_early_stopping_rounds": 50
+      },
+      "models": {
+        "logistic_regression": {
+          "settings": {
+            "description": "logistic regression, L2 penalty; numerics standardized, categoricals one-hot",
+            "C": 1.0,
+            "max_iter": 1000
+          },
+          "test_auc": {
+            "estimate": 0.7933862433862434,
+            "ci_low": 0.7359660493650284,
+            "ci_high": 0.8472290082775158,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "train_out_of_fold_auc": 0.7590573372206025,
+          "threshold_p_bad": 0.4104677510871336,
+          "target_approval_rate_from_train": 0.7,
+          "train_out_of_fold_approval_rate": 0.7,
+          "test_approval_rate": {
+            "estimate": 0.6933333333333334,
+            "ci_low": 0.6399166666666667,
+            "ci_high": 0.74,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "fairness": {
+            "sex": {
+              "column": "sex",
+              "role": "primary",
+              "description": "Sex as german.doc labels attribute 9 (A91/A93/A94 male, A92/A95 female). The corrected code table contradicts these labels; see data_quality_warning.",
+              "privileged_group": "male",
+              "unprivileged_group": "female",
+              "n_test_rows_left_out": 0,
+              "groups": {
+                "male": {
+                  "n": 199,
+                  "n_truly_good": 144,
+                  "observed_good_rate": 0.7236180904522613,
+                  "approval_rate": {
+                    "estimate": 0.7035175879396985,
+                    "ci_low": 0.6407671337701468,
+                    "ci_high": 0.7635619016637233,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8194444444444444,
+                    "ci_low": 0.7571378968253968,
+                    "ci_high": 0.8775921106697712,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "female": {
+                  "n": 101,
+                  "n_truly_good": 66,
+                  "observed_good_rate": 0.6534653465346535,
+                  "approval_rate": {
+                    "estimate": 0.6732673267326733,
+                    "ci_low": 0.5777699530516431,
+                    "ci_high": 0.7575757575757576,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8333333333333334,
+                    "ci_low": 0.7413793103448276,
+                    "ci_high": 0.9166666666666666,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 0.957001414427157,
+                "ci_low": 0.8026151427752498,
+                "ci_high": 1.1074841347402322,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (female) / approval rate (male)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": false
+              },
+              "equal_opportunity_difference": {
+                "estimate": 0.01388888888888895,
+                "ci_low": -0.09664363769223103,
+                "ci_high": 0.11490786362506628,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (female) - TPR (male); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            },
+            "age_lt25": {
+              "column": "age_group_25",
+              "role": "primary",
+              "description": "Age from attribute 13: under 25 vs 25 and over.",
+              "privileged_group": ">=25",
+              "unprivileged_group": "<25",
+              "n_test_rows_left_out": 0,
+              "groups": {
+                ">=25": {
+                  "n": 241,
+                  "n_truly_good": 179,
+                  "observed_good_rate": 0.7427385892116183,
+                  "approval_rate": {
+                    "estimate": 0.7136929460580913,
+                    "ci_low": 0.6582975941422594,
+                    "ci_high": 0.7654918169363498,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8324022346368715,
+                    "ci_low": 0.7771437484740797,
+                    "ci_high": 0.8852501707650273,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "<25": {
+                  "n": 59,
+                  "n_truly_good": 31,
+                  "observed_good_rate": 0.5254237288135594,
+                  "approval_rate": {
+                    "estimate": 0.6101694915254238,
+                    "ci_low": 0.4827586206896552,
+                    "ci_high": 0.7358738828202581,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.7741935483870968,
+                    "ci_low": 0.6153846153846154,
+                    "ci_high": 0.9200263157894737,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 0.8549467875443437,
+                "ci_low": 0.668503871818789,
+                "ci_high": 1.0506200668585755,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (<25) / approval rate (>=25)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": true
+              },
+              "equal_opportunity_difference": {
+                "estimate": -0.05820868624977471,
+                "ci_low": -0.23219439259181449,
+                "ci_high": 0.10117121433453506,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (<25) - TPR (>=25); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            },
+            "age_le30": {
+              "column": "age_group_30",
+              "role": "sensitivity",
+              "description": "Age from attribute 13: 30 and under vs over 30 (sensitivity check on the age cut-off).",
+              "privileged_group": ">30",
+              "unprivileged_group": "<=30",
+              "n_test_rows_left_out": 0,
+              "groups": {
+                ">30": {
+                  "n": 169,
+                  "n_truly_good": 129,
+                  "observed_good_rate": 0.7633136094674556,
+                  "approval_rate": {
+                    "estimate": 0.7514792899408284,
+                    "ci_low": 0.6830494748208501,
+                    "ci_high": 0.8129119704624951,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8682170542635659,
+                    "ci_low": 0.8064516129032258,
+                    "ci_high": 0.9224806201550387,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "<=30": {
+                  "n": 131,
+                  "n_truly_good": 81,
+                  "observed_good_rate": 0.6183206106870229,
+                  "approval_rate": {
+                    "estimate": 0.6183206106870229,
+                    "ci_low": 0.5356672932330827,
+                    "ci_high": 0.6974838772718389,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.7530864197530864,
+                    "ci_low": 0.6551392572944297,
+                    "ci_high": 0.84147946084724,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 0.82280459217407,
+                "ci_low": 0.6964612203564217,
+                "ci_high": 0.9560938307880726,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (<=30) / approval rate (>30)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": true
+              },
+              "equal_opportunity_difference": {
+                "estimate": -0.11513063451047945,
+                "ci_low": -0.22493591707156246,
+                "ci_high": -0.009421215197658518,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (<=30) - TPR (>30); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": true
+              }
+            },
+            "sex_corrected_codes": {
+              "column": "sex_corrected",
+              "role": "sensitivity",
+              "description": "Sex from the corrected code table (A91/A93 male, A94 female); A92 rows mix both sexes and are left out. Very few women remain, so this is the least precise comparison.",
+              "privileged_group": "male",
+              "unprivileged_group": "female",
+              "n_test_rows_left_out": 101,
+              "groups": {
+                "male": {
+                  "n": 174,
+                  "n_truly_good": 125,
+                  "observed_good_rate": 0.7183908045977011,
+                  "approval_rate": {
+                    "estimate": 0.7011494252873564,
+                    "ci_low": 0.632103366428344,
+                    "ci_high": 0.7664670658682635,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.824,
+                    "ci_low": 0.7575701871657754,
+                    "ci_high": 0.8833574380165289,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "female": {
+                  "n": 25,
+                  "n_truly_good": 19,
+                  "observed_good_rate": 0.76,
+                  "approval_rate": {
+                    "estimate": 0.72,
+                    "ci_low": 0.5416666666666666,
+                    "ci_high": 0.9032258064516129,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.7894736842105263,
+                    "ci_low": 0.6,
+                    "ci_high": 0.9500595238095237,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 1.0268852459016393,
+                "ci_low": 0.7595981224765599,
+                "ci_high": 1.3148449994302682,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (female) / approval rate (male)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": true
+              },
+              "equal_opportunity_difference": {
+                "estimate": -0.03452631578947363,
+                "ci_low": -0.23392144562246456,
+                "ci_high": 0.15243087557603674,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (female) - TPR (male); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            }
+          }
+        },
+        "lightgbm": {
+          "settings": {
+            "description": "LightGBM binary classifier; categoricals one-hot; trees chosen by CV early stopping",
+            "objective": "binary",
+            "learning_rate": 0.05,
+            "num_leaves": 8,
+            "min_child_samples": 20,
+            "colsample_bytree": 0.8,
+            "reg_lambda": 1.0,
+            "random_state": 42,
+            "deterministic": true,
+            "n_jobs": 1,
+            "n_estimators_chosen_by_cv": 86,
+            "cv_max_rounds": 1000,
+            "cv_early_stopping_rounds": 50,
+            "class_weighting": "none"
+          },
+          "test_auc": {
+            "estimate": 0.7764021164021164,
+            "ci_low": 0.720235842417901,
+            "ci_high": 0.8326399637304643,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "train_out_of_fold_auc": 0.7789212827988338,
+          "threshold_p_bad": 0.4031515672112147,
+          "target_approval_rate_from_train": 0.7,
+          "train_out_of_fold_approval_rate": 0.7,
+          "test_approval_rate": {
+            "estimate": 0.6933333333333334,
+            "ci_low": 0.64,
+            "ci_high": 0.7433333333333333,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "fairness": {
+            "sex": {
+              "column": "sex",
+              "role": "primary",
+              "description": "Sex as german.doc labels attribute 9 (A91/A93/A94 male, A92/A95 female). The corrected code table contradicts these labels; see data_quality_warning.",
+              "privileged_group": "male",
+              "unprivileged_group": "female",
+              "n_test_rows_left_out": 0,
+              "groups": {
+                "male": {
+                  "n": 199,
+                  "n_truly_good": 144,
+                  "observed_good_rate": 0.7236180904522613,
+                  "approval_rate": {
+                    "estimate": 0.7085427135678392,
+                    "ci_low": 0.645,
+                    "ci_high": 0.7704162518666003,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8125,
+                    "ci_low": 0.7465753424657534,
+                    "ci_high": 0.8689879546528105,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "female": {
+                  "n": 101,
+                  "n_truly_good": 66,
+                  "observed_good_rate": 0.6534653465346535,
+                  "approval_rate": {
+                    "estimate": 0.6633663366336634,
+                    "ci_low": 0.5714285714285714,
+                    "ci_high": 0.7525800908990135,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.7878787878787878,
+                    "ci_low": 0.6842105263157895,
+                    "ci_high": 0.8823529411764706,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 0.9362404325538938,
+                "ci_low": 0.7891483206784609,
+                "ci_high": 1.097296012603216,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (female) / approval rate (male)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": true
+              },
+              "equal_opportunity_difference": {
+                "estimate": -0.024621212121212155,
+                "ci_low": -0.14618890977443602,
+                "ci_high": 0.09399487643158534,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (female) - TPR (male); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            },
+            "age_lt25": {
+              "column": "age_group_25",
+              "role": "primary",
+              "description": "Age from attribute 13: under 25 vs 25 and over.",
+              "privileged_group": ">=25",
+              "unprivileged_group": "<25",
+              "n_test_rows_left_out": 0,
+              "groups": {
+                ">=25": {
+                  "n": 241,
+                  "n_truly_good": 179,
+                  "observed_good_rate": 0.7427385892116183,
+                  "approval_rate": {
+                    "estimate": 0.7053941908713693,
+                    "ci_low": 0.6450306347930896,
+                    "ci_high": 0.7595392509246236,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8156424581005587,
+                    "ci_low": 0.7613455029013539,
+                    "ci_high": 0.8736263736263736,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "<25": {
+                  "n": 59,
+                  "n_truly_good": 31,
+                  "observed_good_rate": 0.5254237288135594,
+                  "approval_rate": {
+                    "estimate": 0.6440677966101694,
+                    "ci_low": 0.5199807692307693,
+                    "ci_high": 0.7704918032786885,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.7419354838709677,
+                    "ci_low": 0.5881845841784991,
+                    "ci_high": 0.8928571428571429,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 0.9130608175473578,
+                "ci_low": 0.7512912339108619,
+                "ci_high": 1.1043758653516855,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (<25) / approval rate (>=25)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": true
+              },
+              "equal_opportunity_difference": {
+                "estimate": -0.07370697422959094,
+                "ci_low": -0.24022417901159865,
+                "ci_high": 0.08892196746966896,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (<25) - TPR (>=25); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            },
+            "age_le30": {
+              "column": "age_group_30",
+              "role": "sensitivity",
+              "description": "Age from attribute 13: 30 and under vs over 30 (sensitivity check on the age cut-off).",
+              "privileged_group": ">30",
+              "unprivileged_group": "<=30",
+              "n_test_rows_left_out": 0,
+              "groups": {
+                ">30": {
+                  "n": 169,
+                  "n_truly_good": 129,
+                  "observed_good_rate": 0.7633136094674556,
+                  "approval_rate": {
+                    "estimate": 0.7218934911242604,
+                    "ci_low": 0.6511487811711965,
+                    "ci_high": 0.7853426002480364,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.813953488372093,
+                    "ci_low": 0.7479901289512724,
+                    "ci_high": 0.8778672500465463,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "<=30": {
+                  "n": 131,
+                  "n_truly_good": 81,
+                  "observed_good_rate": 0.6183206106870229,
+                  "approval_rate": {
+                    "estimate": 0.6564885496183206,
+                    "ci_low": 0.5723045822102426,
+                    "ci_high": 0.7333823529411764,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.7901234567901234,
+                    "ci_low": 0.7026351351351352,
+                    "ci_high": 0.875,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 0.9093980728319359,
+                "ci_low": 0.7790237244461493,
+                "ci_high": 1.0524741841985812,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (<=30) / approval rate (>30)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": true
+              },
+              "equal_opportunity_difference": {
+                "estimate": -0.023830031581969613,
+                "ci_low": -0.1317891220227366,
+                "ci_high": 0.08389369004374636,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (<=30) - TPR (>30); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            },
+            "sex_corrected_codes": {
+              "column": "sex_corrected",
+              "role": "sensitivity",
+              "description": "Sex from the corrected code table (A91/A93 male, A94 female); A92 rows mix both sexes and are left out. Very few women remain, so this is the least precise comparison.",
+              "privileged_group": "male",
+              "unprivileged_group": "female",
+              "n_test_rows_left_out": 101,
+              "groups": {
+                "male": {
+                  "n": 174,
+                  "n_truly_good": 125,
+                  "observed_good_rate": 0.7183908045977011,
+                  "approval_rate": {
+                    "estimate": 0.6954022988505747,
+                    "ci_low": 0.6280420054200542,
+                    "ci_high": 0.7630240424315569,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8,
+                    "ci_low": 0.7272549715909091,
+                    "ci_high": 0.865546218487395,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                },
+                "female": {
+                  "n": 25,
+                  "n_truly_good": 19,
+                  "observed_good_rate": 0.76,
+                  "approval_rate": {
+                    "estimate": 0.8,
+                    "ci_low": 0.6315302144249513,
+                    "ci_high": 0.944517543859649,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  },
+                  "true_positive_rate": {
+                    "estimate": 0.8947368421052632,
+                    "ci_low": 0.75,
+                    "ci_high": 1.0,
+                    "n_resamples": 1000,
+                    "n_valid_resamples": 1000,
+                    "seed": 42,
+                    "alpha": 0.05,
+                    "method": "percentile"
+                  }
+                }
+              },
+              "adverse_impact_ratio": {
+                "estimate": 1.150413223140496,
+                "ci_low": 0.8992182544291469,
+                "ci_high": 1.3987243879708136,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "approval rate (female) / approval rate (male)",
+                "four_fifths_threshold": 0.8,
+                "point_estimate_below_threshold": false,
+                "ci_entirely_below_threshold": false,
+                "ci_contains_threshold": false
+              },
+              "equal_opportunity_difference": {
+                "estimate": 0.09473684210526312,
+                "ci_low": -0.07052801724137928,
+                "ci_high": 0.23847345132743367,
+                "n_resamples": 1000,
+                "n_valid_resamples": 1000,
+                "seed": 42,
+                "alpha": 0.05,
+                "method": "percentile",
+                "definition": "TPR (female) - TPR (male); TPR = share of truly good applicants approved. Negative means truly good applicants in the unprivileged group are approved less often.",
+                "ci_excludes_zero": false
+              }
+            }
+          }
+        }
+      },
+      "auc_difference_lightgbm_minus_logistic": {
+        "estimate": -0.01698412698412699,
+        "estimate_a": 0.7764021164021164,
+        "estimate_b": 0.7933862433862434,
+        "ci_low": -0.05039230636927543,
+        "ci_high": 0.014590944767847438,
+        "share_a_greater": 0.157,
+        "n_resamples": 1000,
+        "n_valid_resamples": 1000,
+        "seed": 42,
+        "alpha": 0.05,
+        "method": "percentile"
+      },
+      "proxy_check": {
+        "sex": {
+          "target": "sex == 'female'",
+          "model": "logistic regression on the credit model's features (protected attributes excluded)",
+          "n_train": 700,
+          "n_test": 300,
+          "test_auc": {
+            "estimate": 0.704263893726056,
+            "ci_low": 0.6407122758994774,
+            "ci_high": 0.7663073315441958,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "top_features_by_abs_coefficient": [
+            {
+              "feature": "categorical__employment_since_A72",
+              "coefficient": 0.6886031451012506
+            },
+            {
+              "feature": "categorical__purpose_A45",
+              "coefficient": -0.6643925398801028
+            },
+            {
+              "feature": "categorical__savings_A64",
+              "coefficient": 0.6631661596196948
+            },
+            {
+              "feature": "categorical__job_A171",
+              "coefficient": 0.6466455714211589
+            },
+            {
+              "feature": "categorical__purpose_A46",
+              "coefficient": 0.6353889472007871
+            }
+          ],
+          "coefficient_scale": "log-odds per standard deviation (numerics) or per category (one-hot)"
+        },
+        "age_lt25": {
+          "target": "age_group_25 == '<25'",
+          "model": "logistic regression on the credit model's features (protected attributes excluded)",
+          "n_train": 700,
+          "n_test": 300,
+          "test_auc": {
+            "estimate": 0.810464870947324,
+            "ci_low": 0.7496614718394476,
+            "ci_high": 0.8628393355026103,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "top_features_by_abs_coefficient": [
+            {
+              "feature": "categorical__housing_A151",
+              "coefficient": 1.1291839243125843
+            },
+            {
+              "feature": "categorical__employment_since_A75",
+              "coefficient": -0.7545508343514298
+            },
+            {
+              "feature": "categorical__job_A171",
+              "coefficient": -0.6572922894230816
+            },
+            {
+              "feature": "categorical__job_A173",
+              "coefficient": 0.6457813208415051
+            },
+            {
+              "feature": "categorical__purpose_A40",
+              "coefficient": -0.6315176101149785
+            }
+          ],
+          "coefficient_scale": "log-odds per standard deviation (numerics) or per category (one-hot)"
+        },
+        "age_le30": {
+          "target": "age_group_30 == '<=30'",
+          "model": "logistic regression on the credit model's features (protected attributes excluded)",
+          "n_train": 700,
+          "n_test": 300,
+          "test_auc": {
+            "estimate": 0.8341388499932246,
+            "ci_low": 0.7888399687743951,
+            "ci_high": 0.8800772755317038,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "top_features_by_abs_coefficient": [
+            {
+              "feature": "categorical__housing_A151",
+              "coefficient": 1.025930918222405
+            },
+            {
+              "feature": "categorical__housing_A153",
+              "coefficient": -0.9981351223095298
+            },
+            {
+              "feature": "categorical__employment_since_A75",
+              "coefficient": -0.9952655499147611
+            },
+            {
+              "feature": "categorical__employment_since_A72",
+              "coefficient": 0.627583877831896
+            },
+            {
+              "feature": "categorical__job_A171",
+              "coefficient": 0.5905889548762915
+            }
+          ],
+          "coefficient_scale": "log-odds per standard deviation (numerics) or per category (one-hot)"
+        },
+        "sex_corrected_codes": {
+          "target": "sex_corrected == 'female'",
+          "model": "logistic regression on the credit model's features (protected attributes excluded)",
+          "n_train": 491,
+          "n_test": 199,
+          "test_auc": {
+            "estimate": 0.7740229885057471,
+            "ci_low": 0.6635634270101484,
+            "ci_high": 0.8688633656944079,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "top_features_by_abs_coefficient": [
+            {
+              "feature": "numeric__people_liable",
+              "coefficient": -1.5445080426217321
+            },
+            {
+              "feature": "numeric__credit_amount",
+              "coefficient": -1.0573332206822155
+            },
+            {
+              "feature": "categorical__property_A124",
+              "coefficient": -1.0151980614553444
+            },
+            {
+              "feature": "categorical__housing_A151",
+              "coefficient": 0.9216056438172721
+            },
+            {
+              "feature": "categorical__purpose_A46",
+              "coefficient": -0.7337098652795204
+            }
+          ],
+          "coefficient_scale": "log-odds per standard deviation (numerics) or per category (one-hot)"
+        }
+      },
+      "regulatory_context": {
+        "four_fifths_rule": "Uniform Guidelines on Employee Selection Procedures, 29 CFR 1607.4(D) (1978). An employment-selection rule of thumb, used here only as a screening statistic.",
+        "us_fair_lending": "Equal Credit Opportunity Act, 15 U.S.C. 1691 (1974), and Regulation B, 12 CFR 1002.2(z), list sex, marital status and age among prohibited bases.",
+        "applicability": "The German Credit data is from a German bank and is not subject to US law. Which tests apply depends on the institution and its risk profile. This is a demonstration, not a compliance program or a legal finding."
+      },
+      "summary_table": {
+        "models": [
+          {
+            "model": "logistic_regression",
+            "test_auc": 0.7933862433862434,
+            "test_auc_ci_low": 0.7359660493650284,
+            "test_auc_ci_high": 0.8472290082775158,
+            "threshold_p_bad": 0.4104677510871336,
+            "train_oof_approval_rate": 0.7,
+            "test_approval_rate": 0.6933333333333334
+          },
+          {
+            "model": "lightgbm",
+            "test_auc": 0.7764021164021164,
+            "test_auc_ci_low": 0.720235842417901,
+            "test_auc_ci_high": 0.8326399637304643,
+            "threshold_p_bad": 0.4031515672112147,
+            "train_oof_approval_rate": 0.7,
+            "test_approval_rate": 0.6933333333333334
+          },
+          {
+            "model": "lightgbm_minus_logistic_regression",
+            "test_auc": -0.01698412698412699,
+            "test_auc_ci_low": -0.05039230636927543,
+            "test_auc_ci_high": 0.014590944767847438
+          }
+        ],
+        "fairness": [
+          {
+            "model": "logistic_regression",
+            "comparison": "sex",
+            "role": "primary",
+            "privileged": "male",
+            "unprivileged": "female",
+            "n_privileged": 199,
+            "n_unprivileged": 101,
+            "approval_rate_privileged": 0.7035175879396985,
+            "approval_rate_unprivileged": 0.6732673267326733,
+            "adverse_impact_ratio": 0.957001414427157,
+            "air_ci_low": 0.8026151427752498,
+            "air_ci_high": 1.1074841347402322,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": false,
+            "equal_opportunity_difference": 0.01388888888888895,
+            "eod_ci_low": -0.09664363769223103,
+            "eod_ci_high": 0.11490786362506628
+          },
+          {
+            "model": "logistic_regression",
+            "comparison": "age_lt25",
+            "role": "primary",
+            "privileged": ">=25",
+            "unprivileged": "<25",
+            "n_privileged": 241,
+            "n_unprivileged": 59,
+            "approval_rate_privileged": 0.7136929460580913,
+            "approval_rate_unprivileged": 0.6101694915254238,
+            "adverse_impact_ratio": 0.8549467875443437,
+            "air_ci_low": 0.668503871818789,
+            "air_ci_high": 1.0506200668585755,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": true,
+            "equal_opportunity_difference": -0.05820868624977471,
+            "eod_ci_low": -0.23219439259181449,
+            "eod_ci_high": 0.10117121433453506
+          },
+          {
+            "model": "logistic_regression",
+            "comparison": "age_le30",
+            "role": "sensitivity",
+            "privileged": ">30",
+            "unprivileged": "<=30",
+            "n_privileged": 169,
+            "n_unprivileged": 131,
+            "approval_rate_privileged": 0.7514792899408284,
+            "approval_rate_unprivileged": 0.6183206106870229,
+            "adverse_impact_ratio": 0.82280459217407,
+            "air_ci_low": 0.6964612203564217,
+            "air_ci_high": 0.9560938307880726,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": true,
+            "equal_opportunity_difference": -0.11513063451047945,
+            "eod_ci_low": -0.22493591707156246,
+            "eod_ci_high": -0.009421215197658518
+          },
+          {
+            "model": "logistic_regression",
+            "comparison": "sex_corrected_codes",
+            "role": "sensitivity",
+            "privileged": "male",
+            "unprivileged": "female",
+            "n_privileged": 174,
+            "n_unprivileged": 25,
+            "approval_rate_privileged": 0.7011494252873564,
+            "approval_rate_unprivileged": 0.72,
+            "adverse_impact_ratio": 1.0268852459016393,
+            "air_ci_low": 0.7595981224765599,
+            "air_ci_high": 1.3148449994302682,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": true,
+            "equal_opportunity_difference": -0.03452631578947363,
+            "eod_ci_low": -0.23392144562246456,
+            "eod_ci_high": 0.15243087557603674
+          },
+          {
+            "model": "lightgbm",
+            "comparison": "sex",
+            "role": "primary",
+            "privileged": "male",
+            "unprivileged": "female",
+            "n_privileged": 199,
+            "n_unprivileged": 101,
+            "approval_rate_privileged": 0.7085427135678392,
+            "approval_rate_unprivileged": 0.6633663366336634,
+            "adverse_impact_ratio": 0.9362404325538938,
+            "air_ci_low": 0.7891483206784609,
+            "air_ci_high": 1.097296012603216,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": true,
+            "equal_opportunity_difference": -0.024621212121212155,
+            "eod_ci_low": -0.14618890977443602,
+            "eod_ci_high": 0.09399487643158534
+          },
+          {
+            "model": "lightgbm",
+            "comparison": "age_lt25",
+            "role": "primary",
+            "privileged": ">=25",
+            "unprivileged": "<25",
+            "n_privileged": 241,
+            "n_unprivileged": 59,
+            "approval_rate_privileged": 0.7053941908713693,
+            "approval_rate_unprivileged": 0.6440677966101694,
+            "adverse_impact_ratio": 0.9130608175473578,
+            "air_ci_low": 0.7512912339108619,
+            "air_ci_high": 1.1043758653516855,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": true,
+            "equal_opportunity_difference": -0.07370697422959094,
+            "eod_ci_low": -0.24022417901159865,
+            "eod_ci_high": 0.08892196746966896
+          },
+          {
+            "model": "lightgbm",
+            "comparison": "age_le30",
+            "role": "sensitivity",
+            "privileged": ">30",
+            "unprivileged": "<=30",
+            "n_privileged": 169,
+            "n_unprivileged": 131,
+            "approval_rate_privileged": 0.7218934911242604,
+            "approval_rate_unprivileged": 0.6564885496183206,
+            "adverse_impact_ratio": 0.9093980728319359,
+            "air_ci_low": 0.7790237244461493,
+            "air_ci_high": 1.0524741841985812,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": true,
+            "equal_opportunity_difference": -0.023830031581969613,
+            "eod_ci_low": -0.1317891220227366,
+            "eod_ci_high": 0.08389369004374636
+          },
+          {
+            "model": "lightgbm",
+            "comparison": "sex_corrected_codes",
+            "role": "sensitivity",
+            "privileged": "male",
+            "unprivileged": "female",
+            "n_privileged": 174,
+            "n_unprivileged": 25,
+            "approval_rate_privileged": 0.6954022988505747,
+            "approval_rate_unprivileged": 0.8,
+            "adverse_impact_ratio": 1.150413223140496,
+            "air_ci_low": 0.8992182544291469,
+            "air_ci_high": 1.3987243879708136,
+            "air_below_0_8": false,
+            "air_ci_contains_0_8": false,
+            "equal_opportunity_difference": 0.09473684210526312,
+            "eod_ci_low": -0.07052801724137928,
+            "eod_ci_high": 0.23847345132743367
+          }
+        ],
+        "proxy_check": [
+          {
+            "comparison": "sex",
+            "proxy_auc": 0.704263893726056,
+            "proxy_auc_ci_low": 0.6407122758994774,
+            "proxy_auc_ci_high": 0.7663073315441958,
+            "n_test": 300
+          },
+          {
+            "comparison": "age_lt25",
+            "proxy_auc": 0.810464870947324,
+            "proxy_auc_ci_low": 0.7496614718394476,
+            "proxy_auc_ci_high": 0.8628393355026103,
+            "n_test": 300
+          },
+          {
+            "comparison": "age_le30",
+            "proxy_auc": 0.8341388499932246,
+            "proxy_auc_ci_low": 0.7888399687743951,
+            "proxy_auc_ci_high": 0.8800772755317038,
+            "n_test": 300
+          },
+          {
+            "comparison": "sex_corrected_codes",
+            "proxy_auc": 0.7740229885057471,
+            "proxy_auc_ci_low": 0.6635634270101484,
+            "proxy_auc_ci_high": 0.8688633656944079,
+            "n_test": 199
+          }
+        ]
+      },
+      "mlflow": {
+        "experiment": "fairness_demo_german_credit",
+        "run_id": "a5ac5449bf06436b99606c572b17ae7d",
+        "store": "mlruns.db (local SQLite)"
+      }
+    },
+    "metadata": {
+      "git_commit": "bbedb8d30fa8f4d761a926d70c61cf25d7771743",
+      "git_worktree_dirty": true,
+      "generated_at_utc": "2026-10-11T00:30:33+00:00",
+      "python_version": "3.11.17",
+      "package_versions": {
+        "numpy": "2.4.6",
+        "pandas": "3.0.6",
+        "scipy": "1.17.1",
+        "scikit-learn": "1.9.1",
+        "lightgbm": "4.7.0",
+        "statsmodels": "0.15.0",
+        "shap": "0.51.0",
+        "mlflow": "3.17.0"
+      },
+      "datasets": {
+        "german_credit": {
+          "files": [
+            {
+              "file": "german.data",
+              "sha256": "b21f3d81db8071257d5ff1deaeba1fd4303b62712e6fcc9715c7a86202cb5871",
+              "size_bytes": 79793,
+              "source": "https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data",
+              "hashed_at_utc": "2026-10-10T22:03:08+00:00"
+            },
+            {
+              "file": "german.data-numeric",
+              "sha256": "2752b044394958ab6dd193a0b56ca0f0b3a2d8bc7cb8c008e35a5e84bbec02f8",
+              "size_bytes": 102000,
+              "source": "https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data-numeric",
+              "hashed_at_utc": "2026-10-10T22:03:08+00:00"
+            },
+            {
+              "file": "german.doc",
+              "sha256": "69b92cb551111bc37098698288849c96f0fd87ce81a2e54451ff39aa1e53fe49",
+              "size_bytes": 4679,
+              "source": "https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.doc",
+              "hashed_at_utc": "2026-10-10T22:03:08+00:00"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "insurance_frequency": {
+    "results": {
+      "status": "measured",
+      "dataset": "freMTPL2freq (OpenML 41214), public French motor third-party liability data",
+      "target": "ClaimNb per policy (capped at 4; claims without a recorded amount not counted), with log(Exposure) offset; rates are claims per policy-year",
+      "data_quality": {
+        "frequency_file": {
+          "n_rows_in_file": 678013,
+          "idpol_dtype_in_file": "float64",
+          "text_values_with_quotes_or_spaces_stripped": {
+            "Area": 0,
+            "VehBrand": 0,
+            "VehGas": 678013,
+            "Region": 0
+          },
+          "vehgas_values_after_cleaning": [
+            "Diesel",
+            "Regular"
+          ],
+          "n_rows_dropped_non_positive_exposure": 0,
+          "claim_count_cap": 4,
+          "n_policies_claimnb_above_cap": 9,
+          "max_claimnb_recorded": 16,
+          "n_claims_removed_by_cap": 46,
+          "policies_above_claim_cap": [
+            {
+              "IDpol": 19471,
+              "ClaimNb": 11,
+              "Exposure": 1.0
+            },
+            {
+              "IDpol": 93954,
+              "ClaimNb": 5,
+              "Exposure": 1.0
+            },
+            {
+              "IDpol": 2216294,
+              "ClaimNb": 6,
+              "Exposure": 0.33
+            },
+            {
+              "IDpol": 2239279,
+              "ClaimNb": 8,
+              "Exposure": 0.41
+            },
+            {
+              "IDpol": 2241683,
+              "ClaimNb": 16,
+              "Exposure": 0.33
+            },
+            {
+              "IDpol": 2248174,
+              "ClaimNb": 9,
+              "Exposure": 0.08
+            },
+            {
+              "IDpol": 2277762,
+              "ClaimNb": 5,
+              "Exposure": 0.08
+            },
+            {
+              "IDpol": 3253234,
+              "ClaimNb": 11,
+              "Exposure": 0.08
+            },
+            {
+              "IDpol": 3254353,
+              "ClaimNb": 11,
+              "Exposure": 0.07
+            }
+          ],
+          "exposure_cap_years": 1.0,
+          "n_policies_exposure_above_cap": 1224,
+          "max_exposure_recorded": 2.01,
+          "n_policies": 678013,
+          "n_policies_with_claims": 34060,
+          "n_claims_after_cap": 36056,
+          "total_exposure_years": 358360.1054629838
+        },
+        "severity_file": {
+          "n_rows_in_file": 26639,
+          "n_rows_dropped_non_positive_amount": 0
+        },
+        "linkage": {
+          "n_severity_rows_with_unknown_idpol": 195,
+          "n_unknown_idpol_values_in_severity_file": 6,
+          "claim_amount_dropped_with_unknown_idpol": 788714.1800000002,
+          "n_severity_rows_linked": 26444,
+          "n_policies_with_claim_amounts": 24944,
+          "n_policies_with_claims_but_no_amounts": 9116,
+          "n_claims_on_policies_without_amounts": 9650,
+          "share_of_claim_policies_without_amounts": 0.2676453317674692,
+          "share_of_claims_without_amounts": 0.2676392278677613,
+          "n_policies_with_amounts_but_zero_claims": 0,
+          "n_policies_where_severity_rows_differ_from_claimnb": 1,
+          "policies_where_severity_rows_differ_from_claimnb": [
+            {
+              "IDpol": 4158255,
+              "ClaimNbRecorded": 2,
+              "n_severity_rows": 1
+            }
+          ],
+          "n_policies_where_severity_rows_differ_from_modelling_claimnb": 9,
+          "n_amount_rows_above_modelling_claimnb": 39,
+          "n_modelling_claims_without_an_amount_row": 1,
+          "policies_where_severity_rows_differ_from_modelling_claimnb": [
+            {
+              "IDpol": 93954,
+              "ClaimNbRecorded": 5,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 5
+            },
+            {
+              "IDpol": 2216294,
+              "ClaimNbRecorded": 6,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 6
+            },
+            {
+              "IDpol": 2239279,
+              "ClaimNbRecorded": 8,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 8
+            },
+            {
+              "IDpol": 2241683,
+              "ClaimNbRecorded": 16,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 16
+            },
+            {
+              "IDpol": 2248174,
+              "ClaimNbRecorded": 9,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 9
+            },
+            {
+              "IDpol": 2277762,
+              "ClaimNbRecorded": 5,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 5
+            },
+            {
+              "IDpol": 3253234,
+              "ClaimNbRecorded": 11,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 11
+            },
+            {
+              "IDpol": 3254353,
+              "ClaimNbRecorded": 11,
+              "ClaimNbModelling": 4,
+              "n_severity_rows": 11
+            },
+            {
+              "IDpol": 4158255,
+              "ClaimNbRecorded": 2,
+              "ClaimNbModelling": 2,
+              "n_severity_rows": 1
+            }
+          ],
+          "lowest_idpol_with_zero_claims": 24952,
+          "n_policies_below_that_idpol": 9387,
+          "n_policies_below_that_idpol_without_amounts": 9094,
+          "share_of_policies_below_that_idpol_with_amounts": 0.031213380206668796,
+          "n_claims_below_that_idpol": 9935,
+          "share_of_all_claims_below_that_idpol": 0.2755435988462392,
+          "share_of_policies_with_claims_from_that_idpol_on": 0.03690104782045568,
+          "claim_policies_by_idpol_band": [
+            {
+              "idpol_band": "1-10,000",
+              "n_policies": 4548,
+              "n_policies_with_claims": 4548,
+              "n_claim_policies_with_amounts": 94,
+              "n_claim_policies_without_amounts": 4454
+            },
+            {
+              "idpol_band": "10,001-30,000",
+              "n_policies": 7645,
+              "n_policies_with_claims": 4966,
+              "n_claim_policies_with_amounts": 325,
+              "n_claim_policies_without_amounts": 4641
+            },
+            {
+              "idpol_band": "30,001-100,000",
+              "n_policies": 37139,
+              "n_policies_with_claims": 2152,
+              "n_claim_policies_with_amounts": 2151,
+              "n_claim_policies_without_amounts": 1
+            },
+            {
+              "idpol_band": "100,001-1,000,000",
+              "n_policies": 37698,
+              "n_policies_with_claims": 1822,
+              "n_claim_policies_with_amounts": 1819,
+              "n_claim_policies_without_amounts": 3
+            },
+            {
+              "idpol_band": "above 1,000,000",
+              "n_policies": 590983,
+              "n_policies_with_claims": 20572,
+              "n_claim_policies_with_amounts": 20555,
+              "n_claim_policies_without_amounts": 17
+            }
+          ]
+        },
+        "modelling_target": {
+          "rule": "claims with no recorded amount are not counted (ClaimNb set to 0); ClaimNbCapped keeps the count",
+          "n_policies_set_to_zero_claims": 9116,
+          "n_claims_not_counted": 9650,
+          "n_claims_for_modelling": 26406,
+          "n_policies_with_claims_for_modelling": 24944,
+          "claims_per_policy_year_for_modelling": 0.07368565752006556,
+          "claims_per_policy_year_as_recorded_after_cap": 0.1006138781922095
+        },
+        "share_of_policies_sharing_rating_features_with_another_policy": 0.3803924113549445
+      },
+      "split": {
+        "method": "random, stratified on ClaimNb > 0 (sklearn train_test_split, twice)",
+        "seed": 42,
+        "fractions": {
+          "train": 0.6,
+          "validation": 0.2,
+          "test": 0.2
+        },
+        "sizes": {
+          "train": {
+            "n_policies": 406807,
+            "total_exposure_years": 215026.2862549592,
+            "n_claims": 15808,
+            "n_claims_recorded_after_cap": 21578,
+            "n_policies_with_claims": 14966,
+            "share_policies_with_claims": 0.03678894414304572,
+            "n_policies_with_claim_amounts": 14966
+          },
+          "validation": {
+            "n_policies": 135603,
+            "total_exposure_years": 71872.3496511715,
+            "n_claims": 5303,
+            "n_claims_recorded_after_cap": 7217,
+            "n_policies_with_claims": 4989,
+            "share_policies_with_claims": 0.036791221433154137,
+            "n_policies_with_claim_amounts": 4989
+          },
+          "test": {
+            "n_policies": 135603,
+            "total_exposure_years": 71461.46955685306,
+            "n_claims": 5295,
+            "n_claims_recorded_after_cap": 7261,
+            "n_policies_with_claims": 4989,
+            "share_policies_with_claims": 0.036791221433154137,
+            "n_policies_with_claim_amounts": 4989
+          }
+        },
+        "out_of_time": {
+          "status": "not measured",
+          "reason": "freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year."
+        }
+      },
+      "models": {
+        "glm": {
+          "type": "Poisson GLM, log link, offset log(Exposure) (statsmodels IRLS)",
+          "n_parameters": 56,
+          "converged": true,
+          "design": {
+            "numeric_terms": [
+              "BonusMalusCapped",
+              "LogDensity"
+            ],
+            "reference_levels": {
+              "DrivAgeBand": "51-70",
+              "VehAgeBand": "6-10",
+              "VehPowerBand": "6",
+              "Area": "C",
+              "VehBrand": "B12",
+              "VehGas": "Regular",
+              "Region": "R24"
+            },
+            "dummy_levels": {
+              "DrivAgeBand": [
+                "18-20",
+                "21-25",
+                "26-30",
+                "31-40",
+                "41-50",
+                "71+"
+              ],
+              "VehAgeBand": [
+                "0",
+                "1-2",
+                "11-15",
+                "16+",
+                "3-5"
+              ],
+              "VehPowerBand": [
+                "4",
+                "5",
+                "7",
+                "8",
+                "9+"
+              ],
+              "Area": [
+                "A",
+                "B",
+                "D",
+                "E",
+                "F"
+              ],
+              "VehBrand": [
+                "B1",
+                "B10",
+                "B11",
+                "B13",
+                "B14",
+                "B2",
+                "B3",
+                "B4",
+                "B5",
+                "B6"
+              ],
+              "VehGas": [
+                "Diesel"
+              ],
+              "Region": [
+                "R11",
+                "R21",
+                "R22",
+                "R23",
+                "R25",
+                "R26",
+                "R31",
+                "R41",
+                "R42",
+                "R43",
+                "R52",
+                "R53",
+                "R54",
+                "R72",
+                "R73",
+                "R74",
+                "R82",
+                "R83",
+                "R91",
+                "R93",
+                "R94"
+              ]
+            },
+            "folded_into_reference": {
+              "DrivAgeBand": [],
+              "VehAgeBand": [],
+              "VehPowerBand": [],
+              "Area": [],
+              "VehBrand": [],
+              "VehGas": [],
+              "Region": []
+            },
+            "min_level_count": 50,
+            "bands": {
+              "DrivAge": [
+                "18-20",
+                "21-25",
+                "26-30",
+                "31-40",
+                "41-50",
+                "51-70",
+                "71+"
+              ],
+              "VehAge": [
+                "0",
+                "1-2",
+                "3-5",
+                "6-10",
+                "11-15",
+                "16+"
+              ],
+              "VehPower": [
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9+"
+              ],
+              "BonusMalus": "linear, capped at 150",
+              "Density": "natural log"
+            }
+          }
+        },
+        "lgbm": {
+          "type": "LightGBM objective=poisson, init_score = log(Exposure) + log(train claim frequency)",
+          "base_log_frequency": -2.6102441412997774,
+          "best_iteration": 325,
+          "rounds_trained": 425,
+          "max_rounds": 5000,
+          "early_stopping_rounds": 100,
+          "early_stopping_metric": "poisson",
+          "best_validation_metric": 0.15430392760785258,
+          "params": {
+            "objective": "poisson",
+            "learning_rate": 0.05,
+            "num_leaves": 31,
+            "min_data_in_leaf": 500,
+            "feature_fraction": 0.9,
+            "bagging_fraction": 0.8,
+            "bagging_freq": 1,
+            "lambda_l2": 1.0,
+            "seed": 42,
+            "deterministic": true,
+            "force_row_wise": true,
+            "num_threads": 4,
+            "verbose": -1
+          }
+        }
+      },
+      "validation_metrics": {
+        "glm": {
+          "mean_poisson_deviance": 0.4574456248500358
+        },
+        "lgbm": {
+          "mean_poisson_deviance": 0.4470980373859562
+        }
+      },
+      "preferred_model": {
+        "name": "lgbm",
+        "rule": "lower mean Poisson deviance on the validation split"
+      },
+      "test_metrics": {
+        "glm": {
+          "mean_poisson_deviance": {
+            "estimate": 0.4584182355012342,
+            "ci_low": 0.4487585235656265,
+            "ci_high": 0.4672052195134692,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.27669181951158683,
+            "ci_low": 0.26185201728119883,
+            "ci_high": 0.29277922835853737,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "total_observed_claims": 5295.0,
+          "total_predicted_claims": 5263.446220317119,
+          "observed_to_predicted_claims": {
+            "estimate": 1.005994889728536,
+            "ci_low": 0.9791519893349709,
+            "ci_high": 1.0349132093412918,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "calibration_by_decile": [
+            {
+              "decile": 1,
+              "n_policies": 12363,
+              "total_weight": 7146.152131147541,
+              "predicted_total": 252.85689720908738,
+              "observed_total": 256.0,
+              "mean_predicted_rate": 0.035383643192673425,
+              "mean_observed_rate": 0.03582347468985258,
+              "mean_observed_rate_ci_low": 0.03104847153563939,
+              "mean_observed_rate_ci_high": 0.040799580282232156,
+              "observed_to_predicted": 1.0124303620965245
+            },
+            {
+              "decile": 2,
+              "n_policies": 12381,
+              "total_weight": 7146.752240437158,
+              "predicted_total": 311.7931702991445,
+              "observed_total": 290.0,
+              "mean_predicted_rate": 0.043627253304652475,
+              "mean_observed_rate": 0.04057787233187491,
+              "mean_observed_rate_ci_low": 0.03606387710192695,
+              "mean_observed_rate_ci_high": 0.04545321242930963,
+              "observed_to_predicted": 0.9301037598795527
+            },
+            {
+              "decile": 3,
+              "n_policies": 12642,
+              "total_weight": 7145.981934276519,
+              "predicted_total": 349.41781233602825,
+              "observed_total": 322.0,
+              "mean_predicted_rate": 0.048897102672483095,
+              "mean_observed_rate": 0.04506028744006338,
+              "mean_observed_rate_ci_low": 0.039900328174683974,
+              "mean_observed_rate_ci_high": 0.05043717950178332,
+              "observed_to_predicted": 0.921532871628018
+            },
+            {
+              "decile": 4,
+              "n_policies": 12522,
+              "total_weight": 7146.236588816528,
+              "predicted_total": 381.7706758257134,
+              "observed_total": 346.0,
+              "mean_predicted_rate": 0.05342261917596792,
+              "mean_observed_rate": 0.04841709278719812,
+              "mean_observed_rate_ci_low": 0.043120364244516096,
+              "mean_observed_rate_ci_high": 0.053574964397812015,
+              "observed_to_predicted": 0.9063032388531499
+            },
+            {
+              "decile": 5,
+              "n_policies": 12827,
+              "total_weight": 7145.664773560896,
+              "predicted_total": 416.3068222062391,
+              "observed_total": 437.0,
+              "mean_predicted_rate": 0.05826005492821084,
+              "mean_observed_rate": 0.06115596153025662,
+              "mean_observed_rate_ci_low": 0.05543279992691072,
+              "mean_observed_rate_ci_high": 0.06726086802759788,
+              "observed_to_predicted": 1.0497065546130049
+            },
+            {
+              "decile": 6,
+              "n_policies": 12806,
+              "total_weight": 7146.14139606258,
+              "predicted_total": 453.92485251359255,
+              "observed_total": 486.0,
+              "mean_predicted_rate": 0.06352027301946454,
+              "mean_observed_rate": 0.06800872989551801,
+              "mean_observed_rate_ci_low": 0.062035409267139935,
+              "mean_observed_rate_ci_high": 0.07440562422729241,
+              "observed_to_predicted": 1.0706618007557693
+            },
+            {
+              "decile": 7,
+              "n_policies": 13347,
+              "total_weight": 7146.393002470245,
+              "predicted_total": 501.61910938100675,
+              "observed_total": 535.0,
+              "mean_predicted_rate": 0.07019192888043178,
+              "mean_observed_rate": 0.07486294132089716,
+              "mean_observed_rate_ci_low": 0.06836357173113433,
+              "mean_observed_rate_ci_high": 0.08120962387424797,
+              "observed_to_predicted": 1.0665462897938338
+            },
+            {
+              "decile": 8,
+              "n_policies": 13957,
+              "total_weight": 7145.8988532075755,
+              "predicted_total": 570.6928489575312,
+              "observed_total": 594.0,
+              "mean_predicted_rate": 0.07986299004237439,
+              "mean_observed_rate": 0.08312460226516802,
+              "mean_observed_rate_ci_low": 0.0764641363396268,
+              "mean_observed_rate_ci_high": 0.09028191117017653,
+              "observed_to_predicted": 1.0408400965336142
+            },
+            {
+              "decile": 9,
+              "n_policies": 15193,
+              "total_weight": 7146.784287746089,
+              "predicted_total": 703.7956001482108,
+              "observed_total": 788.0,
+              "mean_predicted_rate": 0.09847724120552263,
+              "mean_observed_rate": 0.1102593793618633,
+              "mean_observed_rate_ci_low": 0.10275075218521493,
+              "mean_observed_rate_ci_high": 0.11843263990876603,
+              "observed_to_predicted": 1.119643259824382
+            },
+            {
+              "decile": 10,
+              "n_policies": 17565,
+              "total_weight": 7145.4643491279285,
+              "predicted_total": 1321.2684314405649,
+              "observed_total": 1241.0,
+              "mean_predicted_rate": 0.18491008657846283,
+              "mean_observed_rate": 0.1736766064967434,
+              "mean_observed_rate_ci_low": 0.164405406000004,
+              "mean_observed_rate_ci_high": 0.1833269198559124,
+              "observed_to_predicted": 0.9392489599157008
+            }
+          ]
+        },
+        "lgbm": {
+          "mean_poisson_deviance": {
+            "estimate": 0.4493220350378819,
+            "ci_low": 0.43945831192562845,
+            "ci_high": 0.4582742546386005,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.3207773362958397,
+            "ci_low": 0.30651610439403393,
+            "ci_high": 0.3364810935246235,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "total_observed_claims": 5295.0,
+          "total_predicted_claims": 5267.6271472347635,
+          "observed_to_predicted_claims": {
+            "estimate": 1.0051964294359,
+            "ci_low": 0.9784985135832476,
+            "ci_high": 1.0330257436277983,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "calibration_by_decile": [
+            {
+              "decile": 1,
+              "n_policies": 10249,
+              "total_weight": 7147.024069166854,
+              "predicted_total": 205.30430245149978,
+              "observed_total": 208.0,
+              "mean_predicted_rate": 0.028725844556366883,
+              "mean_observed_rate": 0.02910302217916653,
+              "mean_observed_rate_ci_low": 0.025173816839950666,
+              "mean_observed_rate_ci_high": 0.032727503609589335,
+              "observed_to_predicted": 1.01313025356172
+            },
+            {
+              "decile": 2,
+              "n_policies": 11202,
+              "total_weight": 7145.41897297702,
+              "predicted_total": 269.5135099336054,
+              "observed_total": 276.0,
+              "mean_predicted_rate": 0.03771836346516111,
+              "mean_observed_rate": 0.03862614649243013,
+              "mean_observed_rate_ci_low": 0.03426254707754682,
+              "mean_observed_rate_ci_high": 0.04356687350235828,
+              "observed_to_predicted": 1.0240674022908631
+            },
+            {
+              "decile": 3,
+              "n_policies": 11929,
+              "total_weight": 7146.841951493376,
+              "predicted_total": 309.8905898132722,
+              "observed_total": 321.0,
+              "mean_predicted_rate": 0.04336049291652779,
+              "mean_observed_rate": 0.04491494315652596,
+              "mean_observed_rate_ci_low": 0.04029729665400995,
+              "mean_observed_rate_ci_high": 0.05030243178206711,
+              "observed_to_predicted": 1.0358494596219328
+            },
+            {
+              "decile": 4,
+              "n_policies": 13003,
+              "total_weight": 7145.557567931732,
+              "predicted_total": 348.9659531432786,
+              "observed_total": 337.0,
+              "mean_predicted_rate": 0.04883677023461252,
+              "mean_observed_rate": 0.047162169893138796,
+              "mean_observed_rate_ci_low": 0.04209282678891685,
+              "mean_observed_rate_ci_high": 0.052612687509634125,
+              "observed_to_predicted": 0.9657102561568073
+            },
+            {
+              "decile": 5,
+              "n_policies": 13376,
+              "total_weight": 7146.125029568082,
+              "predicted_total": 389.28909808213535,
+              "observed_total": 406.0,
+              "mean_predicted_rate": 0.05447555094143998,
+              "mean_observed_rate": 0.05681400735645105,
+              "mean_observed_rate_ci_low": 0.05149555214323779,
+              "mean_observed_rate_ci_high": 0.0622155126142092,
+              "observed_to_predicted": 1.042926714362648
+            },
+            {
+              "decile": 6,
+              "n_policies": 14064,
+              "total_weight": 7146.477986376226,
+              "predicted_total": 434.49994675643114,
+              "observed_total": 435.0,
+              "mean_predicted_rate": 0.060799172345419004,
+              "mean_observed_rate": 0.06086914432945396,
+              "mean_observed_rate_ci_low": 0.05529602973250401,
+              "mean_observed_rate_ci_high": 0.06693044298558805,
+              "observed_to_predicted": 1.0011508706670778
+            },
+            {
+              "decile": 7,
+              "n_policies": 14641,
+              "total_weight": 7146.062549592035,
+              "predicted_total": 491.24712585760835,
+              "observed_total": 500.0,
+              "mean_predicted_rate": 0.06874374838569716,
+              "mean_observed_rate": 0.06996860110447042,
+              "mean_observed_rate_ci_low": 0.06350250080920353,
+              "mean_observed_rate_ci_high": 0.07639170249100326,
+              "observed_to_predicted": 1.0178176597514155
+            },
+            {
+              "decile": 8,
+              "n_policies": 15404,
+              "total_weight": 7146.178437008758,
+              "predicted_total": 577.9129171307982,
+              "observed_total": 606.0,
+              "mean_predicted_rate": 0.0808702052747371,
+              "mean_observed_rate": 0.08480056933110378,
+              "mean_observed_rate_ci_low": 0.07814918729596051,
+              "mean_observed_rate_ci_high": 0.09221592274654368,
+              "observed_to_predicted": 1.0486008913049523
+            },
+            {
+              "decile": 9,
+              "n_policies": 15681,
+              "total_weight": 7146.166225016843,
+              "predicted_total": 740.3666696175668,
+              "observed_total": 735.0,
+              "mean_predicted_rate": 0.1036033372727517,
+              "mean_observed_rate": 0.1028523514366289,
+              "mean_observed_rate_ci_low": 0.09495314042697564,
+              "mean_observed_rate_ci_high": 0.11057950614161666,
+              "observed_to_predicted": 0.9927513354695736
+            },
+            {
+              "decile": 10,
+              "n_policies": 16054,
+              "total_weight": 7145.616767722135,
+              "predicted_total": 1500.637034448568,
+              "observed_total": 1471.0,
+              "mean_predicted_rate": 0.2100080487421575,
+              "mean_observed_rate": 0.2058604663273766,
+              "mean_observed_rate_ci_low": 0.19526153691743614,
+              "mean_observed_rate_ci_high": 0.21627935515534755,
+              "observed_to_predicted": 0.9802503644997281
+            }
+          ]
+        },
+        "lgbm_minus_glm": {
+          "mean_poisson_deviance": {
+            "estimate": -0.0090962004633523,
+            "estimate_a": 0.4493220350378819,
+            "estimate_b": 0.4584182355012342,
+            "ci_low": -0.010724376664974307,
+            "ci_high": -0.007546857285769355,
+            "share_a_greater": 0.0,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.044085516784252876,
+            "estimate_a": 0.3207773362958397,
+            "estimate_b": 0.27669181951158683,
+            "ci_low": 0.035030745694982705,
+            "ci_high": 0.05337431211366727,
+            "share_a_greater": 1.0,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        }
+      },
+      "claimant_only_block_sensitivity": {
+        "n_test_policies_kept": 133688,
+        "n_test_policies_removed": 1915,
+        "glm": {
+          "mean_poisson_deviance": {
+            "estimate": 0.459098973719688,
+            "ci_low": 0.44881612598502135,
+            "ci_high": 0.46943657508045905,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.27747062312921444,
+            "ci_low": 0.2611344175829615,
+            "ci_high": 0.2935750628370921,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "total_observed_claims": 5235.0,
+          "total_predicted_claims": 5199.947344806613,
+          "observed_to_predicted_claims": {
+            "estimate": 1.0067409634884852,
+            "ci_low": 0.9778684007835667,
+            "ci_high": 1.0358324049261352,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        },
+        "lgbm": {
+          "mean_poisson_deviance": {
+            "estimate": 0.4499904025492899,
+            "ci_low": 0.4400902063593149,
+            "ci_high": 0.46005229854400526,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.32157273213068427,
+            "ci_low": 0.30605055405369425,
+            "ci_high": 0.3373796416045289,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "total_observed_claims": 5235.0,
+          "total_predicted_claims": 5206.701334380309,
+          "observed_to_predicted_claims": {
+            "estimate": 1.0054350468372042,
+            "ci_low": 0.9769899259524425,
+            "ci_high": 1.034012869704475,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        },
+        "lgbm_minus_glm": {
+          "mean_poisson_deviance": {
+            "estimate": -0.009108571170398094,
+            "estimate_a": 0.4499904025492899,
+            "estimate_b": 0.459098973719688,
+            "ci_low": -0.01068607685155387,
+            "ci_high": -0.0075066633345794555,
+            "share_a_greater": 0.0,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.044102109001469825,
+            "estimate_a": 0.32157273213068427,
+            "estimate_b": 0.27747062312921444,
+            "ci_low": 0.03443386618050921,
+            "ci_high": 0.053323342542768236,
+            "share_a_greater": 1.0,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        }
+      },
+      "recorded_claim_count_sensitivity": {
+        "treatment": "claims without a recorded amount kept as claims (target = ClaimNbCapped)",
+        "estimates": "point estimates on the test split, no bootstrap (sensitivity check, not a headline metric)",
+        "n_test_policies_outside_block": 133688,
+        "glm": {
+          "test_mean_poisson_deviance_on_recorded_counts": 0.5976611940687793,
+          "test_lorenz_gini_on_recorded_counts": 0.27562160408191894,
+          "observed_to_predicted_claims_all_test": 1.0088648430479257,
+          "observed_to_predicted_claims_outside_block": 0.7431473250368734,
+          "primary_model_observed_to_predicted_claims_outside_block": 1.0067409634884852
+        },
+        "lgbm": {
+          "test_mean_poisson_deviance_on_recorded_counts": 0.5763587429826862,
+          "test_lorenz_gini_on_recorded_counts": 0.3309155784359822,
+          "observed_to_predicted_claims_all_test": 1.0132341246299361,
+          "observed_to_predicted_claims_outside_block": 0.7560936971267395,
+          "primary_model_observed_to_predicted_claims_outside_block": 1.0054350468372042
+        }
+      },
+      "grouped_split_sensitivity": {
+        "method": "sklearn GroupShuffleSplit on the nine rating features (identical vectors stay in one split), seed 42, 60/20/20 of groups, not stratified; both frequency models refitted with the headline settings",
+        "estimates": "point estimates per model; paired bootstrap 95% CI for LightGBM minus GLM",
+        "sizes": {
+          "train": {
+            "n_policies": 406504,
+            "total_exposure_years": 214913.30640392244,
+            "n_claims": 15881,
+            "n_claims_recorded_after_cap": 21652,
+            "n_policies_with_claims": 15040,
+            "share_policies_with_claims": 0.036998405919744945,
+            "n_policies_with_claim_amounts": 15040
+          },
+          "validation": {
+            "n_policies": 135437,
+            "total_exposure_years": 71826.22982483718,
+            "n_claims": 5285,
+            "n_claims_recorded_after_cap": 7230,
+            "n_policies_with_claims": 4993,
+            "share_policies_with_claims": 0.03686584906635557,
+            "n_policies_with_claim_amounts": 4993
+          },
+          "test": {
+            "n_policies": 136072,
+            "total_exposure_years": 71620.56923422412,
+            "n_claims": 5240,
+            "n_claims_recorded_after_cap": 7174,
+            "n_policies_with_claims": 4911,
+            "share_policies_with_claims": 0.03609118701863719,
+            "n_policies_with_claim_amounts": 4911
+          }
+        },
+        "share_of_test_policies_whose_rating_features_appear_in_train": {
+          "random_split": 0.2653186138949728,
+          "grouped_split": 0.0
+        },
+        "lgbm_best_iteration": 257,
+        "glm": {
+          "mean_poisson_deviance": 0.45742279412355197,
+          "lorenz_gini": 0.28662710782433976,
+          "observed_to_predicted_claims": 0.9917608849534756
+        },
+        "lgbm": {
+          "mean_poisson_deviance": 0.4466423968356811,
+          "lorenz_gini": 0.33374154650731724,
+          "observed_to_predicted_claims": 0.9889351534079738
+        },
+        "lgbm_minus_glm": {
+          "mean_poisson_deviance": {
+            "estimate": -0.010780397287870891,
+            "estimate_a": 0.4466423968356811,
+            "estimate_b": 0.45742279412355197,
+            "ci_low": -0.012313807528040325,
+            "ci_high": -0.009258921827926146,
+            "share_a_greater": 0.0,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.04711443868297749,
+            "estimate_a": 0.33374154650731724,
+            "estimate_b": 0.28662710782433976,
+            "ci_low": 0.03750197439319656,
+            "ci_high": 0.05654113437686789,
+            "share_a_greater": 1.0,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        }
+      },
+      "explainability": {
+        "method": "shap.TreeExplainer on the LightGBM frequency booster; values in log claims-per-year units",
+        "sample_size": 2000,
+        "seed": 42,
+        "shap_base_value": -0.107020164438838,
+        "base_log_frequency_added_outside_trees": -2.6102441412997774,
+        "max_additivity_error": 1.6431300764452317e-14,
+        "global_importance": [
+          {
+            "feature": "BonusMalus",
+            "mean_abs_shap": 0.33615422921256094
+          },
+          {
+            "feature": "DrivAge",
+            "mean_abs_shap": 0.12297902740067995
+          },
+          {
+            "feature": "Density",
+            "mean_abs_shap": 0.1091890529307987
+          },
+          {
+            "feature": "VehAge",
+            "mean_abs_shap": 0.09437622761115014
+          },
+          {
+            "feature": "Region",
+            "mean_abs_shap": 0.08612071692492622
+          },
+          {
+            "feature": "VehBrand",
+            "mean_abs_shap": 0.07760681548100573
+          },
+          {
+            "feature": "VehGas",
+            "mean_abs_shap": 0.07375582366383221
+          },
+          {
+            "feature": "VehPower",
+            "mean_abs_shap": 0.035618852422327936
+          },
+          {
+            "feature": "Area",
+            "mean_abs_shap": 0.006818181596483229
+          }
+        ],
+        "examples": [
+          {
+            "label": "policy nearest the 50th percentile of predicted frequency in the sample",
+            "IDpol": 1126658,
+            "predicted_frequency_per_year": 0.0609294950847849,
+            "features": {
+              "VehPower": 7,
+              "VehAge": 7,
+              "DrivAge": 54,
+              "BonusMalus": 50,
+              "Density": 276,
+              "Area": "C",
+              "VehGas": "Regular",
+              "VehBrand": "B1",
+              "Region": "R82"
+            },
+            "reasons_increase_risk": [
+              {
+                "feature": "Region",
+                "value": "R82",
+                "contribution": 0.15140873895641763,
+                "reason": "Region has more frequent claims than average"
+              },
+              {
+                "feature": "DrivAge",
+                "value": 54,
+                "contribution": 0.09173813722133276,
+                "reason": "Driver age is in a range with more frequent claims"
+              },
+              {
+                "feature": "VehAge",
+                "value": 7,
+                "contribution": 0.07164059792445779,
+                "reason": "Vehicle age is in a range with more frequent claims"
+              },
+              {
+                "feature": "VehBrand",
+                "value": "B1",
+                "contribution": 0.044029346590766245,
+                "reason": "Vehicle brand group has more frequent claims than average"
+              }
+            ],
+            "reasons_decrease_risk": [
+              {
+                "feature": "BonusMalus",
+                "value": 50,
+                "contribution": -0.322292445149823,
+                "reason": "Bonus-malus level points to a favourable claims history"
+              },
+              {
+                "feature": "VehGas",
+                "value": "Regular",
+                "contribution": -0.0680385261606126,
+                "reason": "Fuel type is associated with less frequent claims"
+              },
+              {
+                "feature": "Density",
+                "value": 276,
+                "contribution": -0.0341221870900614,
+                "reason": "Lives in a less densely populated area, where claims are less frequent"
+              },
+              {
+                "feature": "VehPower",
+                "value": 7,
+                "contribution": -0.010176075163199072,
+                "reason": "Vehicle power is in a range with less frequent claims"
+              }
+            ]
+          },
+          {
+            "label": "policy nearest the 90th percentile of predicted frequency in the sample",
+            "IDpol": 1069251,
+            "predicted_frequency_per_year": 0.131008890212732,
+            "features": {
+              "VehPower": 5,
+              "VehAge": 8,
+              "DrivAge": 79,
+              "BonusMalus": 55,
+              "Density": 3744,
+              "Area": "E",
+              "VehGas": "Diesel",
+              "VehBrand": "B3",
+              "Region": "R93"
+            },
+            "reasons_increase_risk": [
+              {
+                "feature": "BonusMalus",
+                "value": 55,
+                "contribution": 0.18212490687588628,
+                "reason": "Bonus-malus level points to a less favourable claims history"
+              },
+              {
+                "feature": "DrivAge",
+                "value": 79,
+                "contribution": 0.1578203609649667,
+                "reason": "Driver age is in a range with more frequent claims"
+              },
+              {
+                "feature": "Density",
+                "value": 3744,
+                "contribution": 0.15660651539897494,
+                "reason": "Lives in a more densely populated area, where claims are more frequent"
+              },
+              {
+                "feature": "VehAge",
+                "value": 8,
+                "contribution": 0.0837661586454998,
+                "reason": "Vehicle age is in a range with more frequent claims"
+              }
+            ],
+            "reasons_decrease_risk": [
+              {
+                "feature": "VehPower",
+                "value": 5,
+                "contribution": -0.04988582736837547,
+                "reason": "Vehicle power is in a range with less frequent claims"
+              }
+            ]
+          },
+          {
+            "label": "policy nearest the 99th percentile of predicted frequency in the sample",
+            "IDpol": 3140196,
+            "predicted_frequency_per_year": 0.3391024678123343,
+            "features": {
+              "VehPower": 4,
+              "VehAge": 16,
+              "DrivAge": 22,
+              "BonusMalus": 100,
+              "Density": 1704,
+              "Area": "D",
+              "VehGas": "Regular",
+              "VehBrand": "B1",
+              "Region": "R82"
+            },
+            "reasons_increase_risk": [
+              {
+                "feature": "BonusMalus",
+                "value": 100,
+                "contribution": 1.225945111973619,
+                "reason": "Bonus-malus level points to a less favourable claims history"
+              },
+              {
+                "feature": "Region",
+                "value": "R82",
+                "contribution": 0.2364032812275115,
+                "reason": "Region has more frequent claims than average"
+              },
+              {
+                "feature": "DrivAge",
+                "value": 22,
+                "contribution": 0.16878555533520587,
+                "reason": "Driver age is in a range with more frequent claims"
+              },
+              {
+                "feature": "Density",
+                "value": 1704,
+                "contribution": 0.14407613304764505,
+                "reason": "Lives in a more densely populated area, where claims are more frequent"
+              }
+            ],
+            "reasons_decrease_risk": [
+              {
+                "feature": "VehAge",
+                "value": 16,
+                "contribution": -0.12459418139083865,
+                "reason": "Vehicle age is in a range with less frequent claims"
+              },
+              {
+                "feature": "VehGas",
+                "value": "Regular",
+                "contribution": -0.05802189254310196,
+                "reason": "Fuel type is associated with less frequent claims"
+              },
+              {
+                "feature": "VehPower",
+                "value": 4,
+                "contribution": -0.05790859832770268,
+                "reason": "Vehicle power is in a range with less frequent claims"
+              }
+            ]
+          }
+        ]
+      },
+      "risk_bands": {
+        "model": "lgbm",
+        "method": "quantiles of the model's predictions on its training split",
+        "score": "predicted claim frequency (claims per policy-year)",
+        "population": "every policy in the training split",
+        "n_scores": 406807,
+        "quantiles": [
+          0.5,
+          0.8,
+          0.95
+        ],
+        "cutoffs": [
+          0.06110487702238196,
+          0.09583168987581,
+          0.1885608589197209
+        ],
+        "labels": [
+          "low",
+          "medium",
+          "high",
+          "very high"
+        ],
+        "rule": "a score equal to a cut-off goes to the higher band"
+      },
+      "scenario_sanity_checks": {
+        "method": "shift one feature by step on every test policy that stays inside the training range (others are skipped, never clipped); a violation is a prediction that moves against the expected direction",
+        "population": "test split",
+        "checks": [
+          {
+            "feature": "BonusMalus",
+            "step": 10.0,
+            "expected": "increase",
+            "why": "A higher bonus-malus level records a worse claims history, so predicted claim frequency should not fall when it rises.",
+            "glm": {
+              "feature": "BonusMalus",
+              "step": 10.0,
+              "expected_direction": "increase",
+              "n_rows_checked": 135603,
+              "n_rows_skipped_outside_training_range": 0,
+              "n_rows_skipped_missing_value": 0,
+              "share_violations": 0.0,
+              "share_unchanged": 0.00029497872465948394,
+              "share_expected_direction": 0.9997050212753406,
+              "mean_relative_change": 0.3168106244728897
+            },
+            "lgbm": {
+              "feature": "BonusMalus",
+              "step": 10.0,
+              "expected_direction": "increase",
+              "n_rows_checked": 135603,
+              "n_rows_skipped_outside_training_range": 0,
+              "n_rows_skipped_missing_value": 0,
+              "share_violations": 0.05367875341990959,
+              "share_unchanged": 0.001202038302987397,
+              "share_expected_direction": 0.945119208277103,
+              "mean_relative_change": 0.7355032453110213
+            }
+          }
+        ]
+      },
+      "stability": {
+        "status": "not measured",
+        "reason": "PSI needs a time field. freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year."
+      },
+      "out_of_time_test": {
+        "status": "not measured",
+        "reason": "freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year."
+      },
+      "bootstrap": {
+        "n_resamples": 1000,
+        "seed": 42,
+        "alpha": 0.05,
+        "method": "percentile"
+      },
+      "limitations": [
+        "freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year.",
+        "Population stability (PSI) across time is not measured, for the same reason.",
+        "The data has no customer or vehicle identifier beyond IDpol, so the same insured risk can sit in train and test: 26.5% of test policies share every rating feature with a training policy. grouped_split_sensitivity refits both frequency models on a split grouped on the nine rating features (0.0% shared): LightGBM minus GLM mean Poisson deviance is -0.0108 [-0.0123, -0.0093] there against -0.0091 [-0.0107, -0.0075] on the random split, so the conclusion of the model comparison does not depend on identical risks sitting in both train and test.",
+        "The frequency target counts only claims with a recorded amount (see docs/insurance_data_notes.md), so frequency numbers are not directly comparable with published freMTPL2 results that use the raw ClaimNb.",
+        "LightGBM hyperparameters were fixed in advance and not tuned; only the number of trees is chosen, by early stopping on the validation split.",
+        "The validation split that early-stops LightGBM is also the one that chooses between GLM and LightGBM, which slightly favours LightGBM in that choice. The paired comparison on the untouched test split is the unbiased check of the choice; a cleaner design would early-stop on a separate fold of the training data.",
+        "Claim amounts are capped at the 99.5th percentile of training claims, so expected loss is on a capped basis with no large-loss loading.",
+        "Results are measured on public historical data from one French motor portfolio. They say nothing about performance on any other portfolio or in production."
+      ],
+      "mlflow": {
+        "experiment": "insurance_fremtpl2",
+        "tracking_uri": "sqlite:///mlruns.db (repo root)",
+        "run_ids": {
+          "frequency": "e132804b334846969d7e58f065decfca",
+          "severity": "cfae0123fdcd4cb6b33f874aaf708510"
+        },
+        "registered_models": {
+          "frequency_lgbm": {
+            "registered_model": "insurance_frequency_lgbm",
+            "version": "4"
+          },
+          "severity_lgbm": {
+            "registered_model": "insurance_severity_lgbm",
+            "version": "4"
+          },
+          "label": "freq-lgbm v4 / sev-lgbm v4 @ bbedb8d30fa8"
+        }
+      },
+      "artifacts": {
+        "figures": {
+          "frequency_lorenz": "results/figures/insurance_frequency_lorenz.png",
+          "frequency_calibration": "results/figures/insurance_frequency_calibration.png",
+          "severity_lorenz": "results/figures/insurance_severity_lorenz.png",
+          "severity_calibration": "results/figures/insurance_severity_calibration.png"
+        },
+        "models": {
+          "frequency_glm": "models/insurance/frequency_glm.joblib",
+          "severity_glm": "models/insurance/severity_glm.joblib",
+          "frequency_lgbm": "models/insurance/frequency_lgbm.txt",
+          "severity_lgbm": "models/insurance/severity_lgbm.txt",
+          "metadata": "models/insurance/metadata.json"
+        },
+        "data_notes": "docs/insurance_data_notes.md"
+      },
+      "model_version": {
+        "frequency_lgbm": {
+          "registered_model": "insurance_frequency_lgbm",
+          "version": "4"
+        },
+        "severity_lgbm": {
+          "registered_model": "insurance_severity_lgbm",
+          "version": "4"
+        },
+        "label": "freq-lgbm v4 / sev-lgbm v4 @ bbedb8d30fa8"
+      },
+      "runtime_seconds": {
+        "total": 587.0,
+        "stages": {
+          "load, clean and split": 3.81,
+          "frequency GLM": 25.74,
+          "frequency LightGBM": 20.55,
+          "frequency metrics (bootstrap)": 232.41,
+          "sensitivity: frequency models refit on recorded claim counts": 80.72,
+          "sensitivity: frequency models refit on a split grouped on rating features": 101.74,
+          "SHAP reason codes": 2.42,
+          "severity models": 18.54,
+          "severity metrics (bootstrap)": 4.11,
+          "risk bands and scenario checks": 15.61,
+          "expected loss": 77.94,
+          "plots": 0.92,
+          "MLflow and model files": 2.49
+        }
+      }
+    },
+    "metadata": {
+      "git_commit": "bbedb8d30fa8f4d761a926d70c61cf25d7771743",
+      "git_worktree_dirty": true,
+      "generated_at_utc": "2026-10-11T00:41:27+00:00",
+      "python_version": "3.11.17",
+      "package_versions": {
+        "numpy": "2.4.6",
+        "pandas": "3.0.6",
+        "scipy": "1.17.1",
+        "scikit-learn": "1.9.1",
+        "lightgbm": "4.7.0",
+        "statsmodels": "0.15.0",
+        "shap": "0.51.0",
+        "mlflow": "3.17.0"
+      },
+      "datasets": {
+        "fremtpl2": {
+          "files": [
+            {
+              "file": "freMTPL2freq.arff.gz",
+              "sha256": "e8f3c575e76287ff213957c82a4aa5164857605fb6e2a5818fcab54b15a955a5",
+              "size_bytes": 6999116,
+              "source": "https://www.openml.org/d/41214",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            },
+            {
+              "file": "freMTPL2freq.csv",
+              "sha256": "b894039a42a5f6c74a0dec457138c2dd633378122a827ebc37e62c396560f1aa",
+              "size_bytes": 33905437,
+              "source": "https://www.openml.org/d/41214",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            },
+            {
+              "file": "freMTPL2sev.arff.gz",
+              "sha256": "56d1ce287e2b29e76d4c5bcbd2d869a9b1d1f1bab3b3d3a8e16316a2115a2085",
+              "size_bytes": 228612,
+              "source": "https://www.openml.org/d/41215",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            },
+            {
+              "file": "freMTPL2sev.csv",
+              "sha256": "2237a084c5d3543b64171133245c7141b778f274245a262a761d1a6a9f800ffc",
+              "size_bytes": 397397,
+              "source": "https://www.openml.org/d/41215",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "insurance_severity": {
+    "results": {
+      "status": "measured",
+      "dataset": "freMTPL2sev (OpenML 41215) joined to freMTPL2freq on IDpol",
+      "target": "average capped claim amount per policy with claim amounts; weight = number of claim amounts",
+      "large_loss_cap": {
+        "quantile": 0.995,
+        "cap_value": 34328.388800000124,
+        "computed_on": "individual claim amounts of the training split",
+        "train": {
+          "n_claims": 15833,
+          "n_claims_capped": 80,
+          "share_of_claims_capped": 0.005052737952377945,
+          "total_amount_uncapped": 37669892.29,
+          "amount_removed_by_cap": 11047966.715999993,
+          "share_of_amount_removed_by_cap": 0.2932837352161166
+        },
+        "validation": {
+          "n_claims": 5313,
+          "n_claims_capped": 27,
+          "share_of_claims_capped": 0.005081874647092038,
+          "total_amount_uncapped": 11953826.89,
+          "amount_removed_by_cap": 2882027.182399996,
+          "share_of_amount_removed_by_cap": 0.2410966135715887
+        },
+        "test": {
+          "n_claims": 5298,
+          "n_claims_capped": 26,
+          "share_of_claims_capped": 0.004907512268780672,
+          "total_amount_uncapped": 10285497.32,
+          "amount_removed_by_cap": 1247506.4411999967,
+          "share_of_amount_removed_by_cap": 0.12128790688363104
+        }
+      },
+      "split": {
+        "method": "random, stratified on ClaimNb > 0 (sklearn train_test_split, twice)",
+        "seed": 42,
+        "fractions": {
+          "train": 0.6,
+          "validation": 0.2,
+          "test": 0.2
+        },
+        "sizes": {
+          "train": {
+            "n_policies": 406807,
+            "total_exposure_years": 215026.2862549592,
+            "n_claims": 15808,
+            "n_claims_recorded_after_cap": 21578,
+            "n_policies_with_claims": 14966,
+            "share_policies_with_claims": 0.03678894414304572,
+            "n_policies_with_claim_amounts": 14966
+          },
+          "validation": {
+            "n_policies": 135603,
+            "total_exposure_years": 71872.3496511715,
+            "n_claims": 5303,
+            "n_claims_recorded_after_cap": 7217,
+            "n_policies_with_claims": 4989,
+            "share_policies_with_claims": 0.036791221433154137,
+            "n_policies_with_claim_amounts": 4989
+          },
+          "test": {
+            "n_policies": 135603,
+            "total_exposure_years": 71461.46955685306,
+            "n_claims": 5295,
+            "n_claims_recorded_after_cap": 7261,
+            "n_policies_with_claims": 4989,
+            "share_policies_with_claims": 0.036791221433154137,
+            "n_policies_with_claim_amounts": 4989
+          }
+        },
+        "out_of_time": {
+          "status": "not measured",
+          "reason": "freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year."
+        },
+        "severity_rows": {
+          "train": 14966,
+          "validation": 4989,
+          "test": 4989
+        }
+      },
+      "models": {
+        "glm": {
+          "type": "Gamma GLM, log link, var_weights = number of claims (statsmodels IRLS)",
+          "n_parameters": 53,
+          "converged": true,
+          "design": {
+            "numeric_terms": [
+              "BonusMalusCapped",
+              "LogDensity"
+            ],
+            "reference_levels": {
+              "DrivAgeBand": "51-70",
+              "VehAgeBand": "6-10",
+              "VehPowerBand": "6",
+              "Area": "C",
+              "VehBrand": "B1",
+              "VehGas": "Diesel",
+              "Region": "R24"
+            },
+            "dummy_levels": {
+              "DrivAgeBand": [
+                "18-20",
+                "21-25",
+                "26-30",
+                "31-40",
+                "41-50",
+                "71+"
+              ],
+              "VehAgeBand": [
+                "0",
+                "1-2",
+                "11-15",
+                "16+",
+                "3-5"
+              ],
+              "VehPowerBand": [
+                "4",
+                "5",
+                "7",
+                "8",
+                "9+"
+              ],
+              "Area": [
+                "A",
+                "B",
+                "D",
+                "E",
+                "F"
+              ],
+              "VehBrand": [
+                "B10",
+                "B11",
+                "B12",
+                "B13",
+                "B14",
+                "B2",
+                "B3",
+                "B4",
+                "B5",
+                "B6"
+              ],
+              "VehGas": [
+                "Regular"
+              ],
+              "Region": [
+                "R11",
+                "R22",
+                "R23",
+                "R25",
+                "R26",
+                "R31",
+                "R41",
+                "R52",
+                "R53",
+                "R54",
+                "R72",
+                "R73",
+                "R74",
+                "R82",
+                "R83",
+                "R91",
+                "R93",
+                "R94"
+              ]
+            },
+            "folded_into_reference": {
+              "DrivAgeBand": [],
+              "VehAgeBand": [],
+              "VehPowerBand": [],
+              "Area": [],
+              "VehBrand": [],
+              "VehGas": [],
+              "Region": [
+                "R21",
+                "R42",
+                "R43"
+              ]
+            },
+            "min_level_count": 50,
+            "bands": {
+              "DrivAge": [
+                "18-20",
+                "21-25",
+                "26-30",
+                "31-40",
+                "41-50",
+                "51-70",
+                "71+"
+              ],
+              "VehAge": [
+                "0",
+                "1-2",
+                "3-5",
+                "6-10",
+                "11-15",
+                "16+"
+              ],
+              "VehPower": [
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9+"
+              ],
+              "BonusMalus": "linear, capped at 150",
+              "Density": "natural log"
+            }
+          }
+        },
+        "lgbm": {
+          "type": "LightGBM objective=gamma, weight = number of claims, init_score = log(train mean severity)",
+          "base_log_severity": 7.427394055426033,
+          "best_iteration": 37,
+          "rounds_trained": 137,
+          "max_rounds": 5000,
+          "early_stopping_rounds": 100,
+          "early_stopping_metric": "gamma",
+          "best_validation_metric": 8.439747019042436,
+          "params": {
+            "objective": "gamma",
+            "learning_rate": 0.03,
+            "num_leaves": 15,
+            "min_data_in_leaf": 200,
+            "feature_fraction": 0.9,
+            "bagging_fraction": 0.8,
+            "bagging_freq": 1,
+            "lambda_l2": 1.0,
+            "seed": 42,
+            "deterministic": true,
+            "force_row_wise": true,
+            "num_threads": 4,
+            "verbose": -1
+          }
+        }
+      },
+      "validation_metrics": {
+        "glm": {
+          "mean_gamma_deviance": 1.107694755076856
+        },
+        "lgbm": {
+          "mean_gamma_deviance": 1.1130213715854325
+        }
+      },
+      "preferred_model": {
+        "name": "glm",
+        "rule": "lower mean Gamma deviance on the validation split"
+      },
+      "test_metrics": {
+        "glm": {
+          "mean_gamma_deviance": {
+            "estimate": 1.1678268250923562,
+            "ci_low": 1.0854759554686864,
+            "ci_high": 1.2565070336184256,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.03582097612910895,
+            "ci_low": 0.003328967578070741,
+            "ci_high": 0.06992655019087565,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "total_observed_amount_capped": 9037990.878800003,
+          "total_predicted_amount": 8872156.954354811,
+          "observed_to_predicted_amount": {
+            "estimate": 1.0186915003080275,
+            "ci_low": 0.9710214335749554,
+            "ci_high": 1.0712965755512984,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "calibration_by_decile": [
+            {
+              "decile": 1,
+              "n_policies": 499,
+              "total_weight": 530.0,
+              "predicted_total": 693561.109390551,
+              "observed_total": 905320.1152000006,
+              "mean_predicted_rate": 1308.6058667746245,
+              "mean_observed_rate": 1708.1511607547181,
+              "mean_observed_rate_ci_low": 1406.273119728382,
+              "mean_observed_rate_ci_high": 2037.2858237928374,
+              "observed_to_predicted": 1.3053213378638364
+            },
+            {
+              "decile": 2,
+              "n_policies": 501,
+              "total_weight": 530.0,
+              "predicted_total": 760109.7274820766,
+              "observed_total": 849554.0452000005,
+              "mean_predicted_rate": 1434.1692971359937,
+              "mean_observed_rate": 1602.9321607547179,
+              "mean_observed_rate_ci_low": 1346.3460804761532,
+              "mean_observed_rate_ci_high": 1930.7254958220358,
+              "observed_to_predicted": 1.1176729023245304
+            },
+            {
+              "decile": 3,
+              "n_policies": 511,
+              "total_weight": 530.0,
+              "predicted_total": 798128.519727126,
+              "observed_total": 834100.0576000003,
+              "mean_predicted_rate": 1505.9028674096717,
+              "mean_observed_rate": 1573.7736935849061,
+              "mean_observed_rate_ci_low": 1342.6349683351814,
+              "mean_observed_rate_ci_high": 1835.384226381087,
+              "observed_to_predicted": 1.0450698565253285
+            },
+            {
+              "decile": 4,
+              "n_policies": 503,
+              "total_weight": 530.0,
+              "predicted_total": 828506.7909578725,
+              "observed_total": 909635.9264000003,
+              "mean_predicted_rate": 1563.2203602978727,
+              "mean_observed_rate": 1716.2942007547176,
+              "mean_observed_rate_ci_low": 1447.584636403843,
+              "mean_observed_rate_ci_high": 2029.2209378904622,
+              "observed_to_predicted": 1.0979221128028787
+            },
+            {
+              "decile": 5,
+              "n_policies": 502,
+              "total_weight": 529.0,
+              "predicted_total": 855274.156613888,
+              "observed_total": 808839.9688000001,
+              "mean_predicted_rate": 1616.7753433154783,
+              "mean_observed_rate": 1528.998050661626,
+              "mean_observed_rate_ci_low": 1338.5176533415429,
+              "mean_observed_rate_ci_high": 1744.9787542514937,
+              "observed_to_predicted": 0.9457084170557366
+            },
+            {
+              "decile": 6,
+              "n_policies": 495,
+              "total_weight": 530.0,
+              "predicted_total": 885680.5147335363,
+              "observed_total": 819816.9276000003,
+              "mean_predicted_rate": 1671.095310817993,
+              "mean_observed_rate": 1546.8243916981137,
+              "mean_observed_rate_ci_low": 1317.290405544685,
+              "mean_observed_rate_ci_high": 1800.388386381861,
+              "observed_to_predicted": 0.9256350500684194
+            },
+            {
+              "decile": 7,
+              "n_policies": 500,
+              "total_weight": 530.0,
+              "predicted_total": 919431.9586407209,
+              "observed_total": 860475.4388,
+              "mean_predicted_rate": 1734.7772804541905,
+              "mean_observed_rate": 1623.5385637735849,
+              "mean_observed_rate_ci_low": 1373.9785579622642,
+              "mean_observed_rate_ci_high": 1901.8460140065497,
+              "observed_to_predicted": 0.9358772345395937
+            },
+            {
+              "decile": 8,
+              "n_policies": 504,
+              "total_weight": 530.0,
+              "predicted_total": 959846.8397811657,
+              "observed_total": 981002.9576000002,
+              "mean_predicted_rate": 1811.0317731720108,
+              "mean_observed_rate": 1850.9489766037739,
+              "mean_observed_rate_ci_low": 1578.3211908179253,
+              "mean_observed_rate_ci_high": 2156.639227553565,
+              "observed_to_predicted": 1.0220411392130622
+            },
+            {
+              "decile": 9,
+              "n_policies": 495,
+              "total_weight": 530.0,
+              "predicted_total": 1016769.2659979019,
+              "observed_total": 954268.8464000004,
+              "mean_predicted_rate": 1918.432577354532,
+              "mean_observed_rate": 1800.5072573584912,
+              "mean_observed_rate_ci_low": 1534.5218605766286,
+              "mean_observed_rate_ci_high": 2093.5321925462586,
+              "observed_to_predicted": 0.9385303807972983
+            },
+            {
+              "decile": 10,
+              "n_policies": 479,
+              "total_weight": 529.0,
+              "predicted_total": 1154848.0710299707,
+              "observed_total": 1114976.5952000006,
+              "mean_predicted_rate": 2183.077638998054,
+              "mean_observed_rate": 2107.706229111532,
+              "mean_observed_rate_ci_low": 1767.5482151397637,
+              "mean_observed_rate_ci_high": 2513.647591066353,
+              "observed_to_predicted": 0.9654747002396514
+            }
+          ]
+        },
+        "lgbm": {
+          "mean_gamma_deviance": {
+            "estimate": 1.165450881436018,
+            "ci_low": 1.0822263164900507,
+            "ci_high": 1.2573504623384717,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": 0.025168567584334833,
+            "ci_low": -0.0067029455042523275,
+            "ci_high": 0.057846811356884534,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "total_observed_amount_capped": 9037990.878800003,
+          "total_predicted_amount": 8686293.089390498,
+          "observed_to_predicted_amount": {
+            "estimate": 1.0404888236892527,
+            "ci_low": 0.9912329494123193,
+            "ci_high": 1.0931156259766937,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "calibration_by_decile": [
+            {
+              "decile": 1,
+              "n_policies": 511,
+              "total_weight": 530.0,
+              "predicted_total": 748235.1488134614,
+              "observed_total": 924516.380400001,
+              "mean_predicted_rate": 1411.7644317235122,
+              "mean_observed_rate": 1744.3705290566056,
+              "mean_observed_rate_ci_low": 1385.3288511495023,
+              "mean_observed_rate_ci_high": 2137.9674761267274,
+              "observed_to_predicted": 1.2355960313627117
+            },
+            {
+              "decile": 2,
+              "n_policies": 503,
+              "total_weight": 530.0,
+              "predicted_total": 790737.497206534,
+              "observed_total": 907835.9964000003,
+              "mean_predicted_rate": 1491.9575418991208,
+              "mean_observed_rate": 1712.8981064150948,
+              "mean_observed_rate_ci_low": 1452.0124746773076,
+              "mean_observed_rate_ci_high": 2018.6769307509303,
+              "observed_to_predicted": 1.1480877024387286
+            },
+            {
+              "decile": 3,
+              "n_policies": 498,
+              "total_weight": 530.0,
+              "predicted_total": 816638.7339271093,
+              "observed_total": 739459.5700000001,
+              "mean_predicted_rate": 1540.8277998624703,
+              "mean_observed_rate": 1395.2067358490567,
+              "mean_observed_rate_ci_low": 1243.3600269623144,
+              "mean_observed_rate_ci_high": 1586.44142486526,
+              "observed_to_predicted": 0.9054916688117833
+            },
+            {
+              "decile": 4,
+              "n_policies": 502,
+              "total_weight": 530.0,
+              "predicted_total": 836526.5748974327,
+              "observed_total": 801729.11,
+              "mean_predicted_rate": 1578.3520281083636,
+              "mean_observed_rate": 1512.696433962264,
+              "mean_observed_rate_ci_low": 1319.1709521223347,
+              "mean_observed_rate_ci_high": 1758.8977616836878,
+              "observed_to_predicted": 0.9584024393944696
+            },
+            {
+              "decile": 5,
+              "n_policies": 502,
+              "total_weight": 529.0,
+              "predicted_total": 853426.3333377775,
+              "observed_total": 1001793.5340000005,
+              "mean_predicted_rate": 1613.282293644192,
+              "mean_observed_rate": 1893.7495916824205,
+              "mean_observed_rate_ci_low": 1567.9611489248966,
+              "mean_observed_rate_ci_high": 2280.078286023657,
+              "observed_to_predicted": 1.173848866465081
+            },
+            {
+              "decile": 6,
+              "n_policies": 501,
+              "total_weight": 530.0,
+              "predicted_total": 874667.8774615586,
+              "observed_total": 819988.8888000001,
+              "mean_predicted_rate": 1650.316749927469,
+              "mean_observed_rate": 1547.148846792453,
+              "mean_observed_rate_ci_low": 1340.2665020209058,
+              "mean_observed_rate_ci_high": 1775.8128221291422,
+              "observed_to_predicted": 0.9374859988910915
+            },
+            {
+              "decile": 7,
+              "n_policies": 497,
+              "total_weight": 530.0,
+              "predicted_total": 895486.8803084677,
+              "observed_total": 941302.3476000002,
+              "mean_predicted_rate": 1689.5978873744673,
+              "mean_observed_rate": 1776.0421652830194,
+              "mean_observed_rate_ci_low": 1521.2886421553715,
+              "mean_observed_rate_ci_high": 2078.5893952930296,
+              "observed_to_predicted": 1.051162633757125
+            },
+            {
+              "decile": 8,
+              "n_policies": 493,
+              "total_weight": 530.0,
+              "predicted_total": 918603.0219576575,
+              "observed_total": 869846.5988000002,
+              "mean_predicted_rate": 1733.2132489767123,
+              "mean_observed_rate": 1641.2199977358493,
+              "mean_observed_rate_ci_low": 1442.458888882424,
+              "mean_observed_rate_ci_high": 1875.3907612654025,
+              "observed_to_predicted": 0.9469232933136326
+            },
+            {
+              "decile": 9,
+              "n_policies": 487,
+              "total_weight": 530.0,
+              "predicted_total": 946156.8539559303,
+              "observed_total": 1058676.5464000003,
+              "mean_predicted_rate": 1785.2016112376043,
+              "mean_observed_rate": 1997.5029177358497,
+              "mean_observed_rate_ci_low": 1679.000101308322,
+              "mean_observed_rate_ci_high": 2369.50672796576,
+              "observed_to_predicted": 1.1189228741234811
+            },
+            {
+              "decile": 10,
+              "n_policies": 495,
+              "total_weight": 529.0,
+              "predicted_total": 1005814.1675245698,
+              "observed_total": 972841.9064000002,
+              "mean_predicted_rate": 1901.3500331277312,
+              "mean_observed_rate": 1839.0206170132328,
+              "mean_observed_rate_ci_low": 1563.739318961619,
+              "mean_observed_rate_ci_high": 2177.0522019664854,
+              "observed_to_predicted": 0.9672183369561016
+            }
+          ]
+        },
+        "lgbm_minus_glm": {
+          "mean_gamma_deviance": {
+            "estimate": -0.0023759436563381975,
+            "estimate_a": 1.165450881436018,
+            "estimate_b": 1.1678268250923562,
+            "ci_low": -0.013520065284478088,
+            "ci_high": 0.008893878865220032,
+            "share_a_greater": 0.323,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "lorenz_gini": {
+            "estimate": -0.010652408544774117,
+            "estimate_a": 0.025168567584334833,
+            "estimate_b": 0.03582097612910895,
+            "ci_low": -0.029081560322656488,
+            "ci_high": 0.0079525866259248,
+            "share_a_greater": 0.103,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        }
+      },
+      "expected_loss": {
+        "definition": "predicted loss per policy = predicted frequency (claims/year) x exposure (years) x predicted severity (capped amount per claim); totals over all test policies",
+        "basis": "capped claim amounts; claims without a recorded amount are not counted on either side (see data_quality.modelling_target). On the few policies whose number of amounts differs from the capped claim count, observed loss includes every recorded amount (see data_quality.linkage.n_policies_where_severity_rows_differ_from_modelling_claimnb)",
+        "n_test_policies": 135603,
+        "n_test_policies_whose_claims_have_no_amounts": 1863,
+        "total_observed_loss_uncapped": 10285497.32,
+        "glm": {
+          "frequency_model": "glm",
+          "severity_model": "glm",
+          "total_predicted_loss": 8871882.79366323,
+          "total_observed_loss_capped": 9037990.878800005,
+          "observed_to_predicted": {
+            "estimate": 1.0187229801159476,
+            "ci_low": 0.9570428573389506,
+            "ci_high": 1.0812314046631293,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "pure_premium_lorenz_gini": {
+            "estimate": 0.28273812346410976,
+            "ci_low": 0.24679566130103947,
+            "ci_high": 0.31562332452141667,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        },
+        "lgbm": {
+          "frequency_model": "lgbm",
+          "severity_model": "lgbm",
+          "total_predicted_loss": 8659225.527077112,
+          "total_observed_loss_capped": 9037990.878800005,
+          "observed_to_predicted": {
+            "estimate": 1.0437412503622299,
+            "ci_low": 0.980815777270273,
+            "ci_high": 1.1093373947792333,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "pure_premium_lorenz_gini": {
+            "estimate": 0.33155288768043123,
+            "ci_low": 0.2997853074721462,
+            "ci_high": 0.3634770141675517,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          }
+        },
+        "served_pair": {
+          "frequency_model": "lgbm",
+          "severity_model": "glm",
+          "total_predicted_loss": 8873453.710764997,
+          "total_observed_loss_capped": 9037990.878800005,
+          "observed_to_predicted": {
+            "estimate": 1.0185426298934086,
+            "ci_low": 0.9569088125271421,
+            "ci_high": 1.0821686986342827,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "pure_premium_lorenz_gini": {
+            "estimate": 0.33028160106444127,
+            "ci_low": 0.2989404958102117,
+            "ci_high": 0.3628051181253555,
+            "n_resamples": 1000,
+            "n_valid_resamples": 1000,
+            "seed": 42,
+            "alpha": 0.05,
+            "method": "percentile"
+          },
+          "description": "the frequency and severity models the scoring API serves (each preferred on the validation split)"
+        }
+      },
+      "explainability": {
+        "status": "not measured",
+        "reason": "SHAP reason codes in this results file cover the frequency model only; the scoring API gives per-request reason codes for the severity model"
+      },
+      "risk_bands": {
+        "model": "glm",
+        "method": "quantiles of the model's predictions on its training split",
+        "score": "predicted average claim amount (capped basis)",
+        "population": "every policy in the training split",
+        "n_scores": 406807,
+        "quantiles": [
+          0.5,
+          0.8,
+          0.95
+        ],
+        "cutoffs": [
+          1626.6242526078831,
+          1837.6460112052137,
+          2081.7875198210513
+        ],
+        "labels": [
+          "low",
+          "medium",
+          "high",
+          "very high"
+        ],
+        "rule": "a score equal to a cut-off goes to the higher band"
+      },
+      "scenario_sanity_checks": {
+        "status": "not measured",
+        "reason": "no rating feature has a documented monotonic expectation for the average claim amount, so no severity check was defined"
+      },
+      "stability": {
+        "status": "not measured",
+        "reason": "PSI needs a time field. freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year."
+      },
+      "out_of_time_test": {
+        "status": "not measured",
+        "reason": "freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year."
+      },
+      "bootstrap": {
+        "n_resamples": 1000,
+        "seed": 42,
+        "alpha": 0.05,
+        "method": "percentile"
+      },
+      "limitations": [
+        "freMTPL2 has no date or policy-year field, so an out-of-time test is impossible. Train, validation and test are random draws from the same period; the test metrics do not show how the models would hold up on a later year.",
+        "Population stability (PSI) across time is not measured, for the same reason.",
+        "The data has no customer or vehicle identifier beyond IDpol, so the same insured risk can sit in train and test: 26.5% of test policies share every rating feature with a training policy. grouped_split_sensitivity refits both frequency models on a split grouped on the nine rating features (0.0% shared): LightGBM minus GLM mean Poisson deviance is -0.0108 [-0.0123, -0.0093] there against -0.0091 [-0.0107, -0.0075] on the random split, so the conclusion of the model comparison does not depend on identical risks sitting in both train and test.",
+        "The frequency target counts only claims with a recorded amount (see docs/insurance_data_notes.md), so frequency numbers are not directly comparable with published freMTPL2 results that use the raw ClaimNb.",
+        "LightGBM hyperparameters were fixed in advance and not tuned; only the number of trees is chosen, by early stopping on the validation split.",
+        "The validation split that early-stops LightGBM is also the one that chooses between GLM and LightGBM, which slightly favours LightGBM in that choice. The paired comparison on the untouched test split is the unbiased check of the choice; a cleaner design would early-stop on a separate fold of the training data.",
+        "Claim amounts are capped at the 99.5th percentile of training claims, so expected loss is on a capped basis with no large-loss loading.",
+        "Results are measured on public historical data from one French motor portfolio. They say nothing about performance on any other portfolio or in production."
+      ],
+      "mlflow": {
+        "experiment": "insurance_fremtpl2",
+        "tracking_uri": "sqlite:///mlruns.db (repo root)",
+        "run_ids": {
+          "frequency": "e132804b334846969d7e58f065decfca",
+          "severity": "cfae0123fdcd4cb6b33f874aaf708510"
+        },
+        "registered_models": {
+          "frequency_lgbm": {
+            "registered_model": "insurance_frequency_lgbm",
+            "version": "4"
+          },
+          "severity_lgbm": {
+            "registered_model": "insurance_severity_lgbm",
+            "version": "4"
+          },
+          "label": "freq-lgbm v4 / sev-lgbm v4 @ bbedb8d30fa8"
+        }
+      },
+      "artifacts": {
+        "figures": {
+          "frequency_lorenz": "results/figures/insurance_frequency_lorenz.png",
+          "frequency_calibration": "results/figures/insurance_frequency_calibration.png",
+          "severity_lorenz": "results/figures/insurance_severity_lorenz.png",
+          "severity_calibration": "results/figures/insurance_severity_calibration.png"
+        },
+        "models": {
+          "frequency_glm": "models/insurance/frequency_glm.joblib",
+          "severity_glm": "models/insurance/severity_glm.joblib",
+          "frequency_lgbm": "models/insurance/frequency_lgbm.txt",
+          "severity_lgbm": "models/insurance/severity_lgbm.txt",
+          "metadata": "models/insurance/metadata.json"
+        },
+        "data_notes": "docs/insurance_data_notes.md"
+      },
+      "model_version": {
+        "frequency_lgbm": {
+          "registered_model": "insurance_frequency_lgbm",
+          "version": "4"
+        },
+        "severity_lgbm": {
+          "registered_model": "insurance_severity_lgbm",
+          "version": "4"
+        },
+        "label": "freq-lgbm v4 / sev-lgbm v4 @ bbedb8d30fa8"
+      },
+      "runtime_seconds": {
+        "total": 587.0,
+        "stages": {
+          "load, clean and split": 3.81,
+          "frequency GLM": 25.74,
+          "frequency LightGBM": 20.55,
+          "frequency metrics (bootstrap)": 232.41,
+          "sensitivity: frequency models refit on recorded claim counts": 80.72,
+          "sensitivity: frequency models refit on a split grouped on rating features": 101.74,
+          "SHAP reason codes": 2.42,
+          "severity models": 18.54,
+          "severity metrics (bootstrap)": 4.11,
+          "risk bands and scenario checks": 15.61,
+          "expected loss": 77.94,
+          "plots": 0.92,
+          "MLflow and model files": 2.49
+        }
+      }
+    },
+    "metadata": {
+      "git_commit": "bbedb8d30fa8f4d761a926d70c61cf25d7771743",
+      "git_worktree_dirty": true,
+      "generated_at_utc": "2026-10-11T00:41:27+00:00",
+      "python_version": "3.11.17",
+      "package_versions": {
+        "numpy": "2.4.6",
+        "pandas": "3.0.6",
+        "scipy": "1.17.1",
+        "scikit-learn": "1.9.1",
+        "lightgbm": "4.7.0",
+        "statsmodels": "0.15.0",
+        "shap": "0.51.0",
+        "mlflow": "3.17.0"
+      },
+      "datasets": {
+        "fremtpl2": {
+          "files": [
+            {
+              "file": "freMTPL2freq.arff.gz",
+              "sha256": "e8f3c575e76287ff213957c82a4aa5164857605fb6e2a5818fcab54b15a955a5",
+              "size_bytes": 6999116,
+              "source": "https://www.openml.org/d/41214",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            },
+            {
+              "file": "freMTPL2freq.csv",
+              "sha256": "b894039a42a5f6c74a0dec457138c2dd633378122a827ebc37e62c396560f1aa",
+              "size_bytes": 33905437,
+              "source": "https://www.openml.org/d/41214",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            },
+            {
+              "file": "freMTPL2sev.arff.gz",
+              "sha256": "56d1ce287e2b29e76d4c5bcbd2d869a9b1d1f1bab3b3d3a8e16316a2115a2085",
+              "size_bytes": 228612,
+              "source": "https://www.openml.org/d/41215",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            },
+            {
+              "file": "freMTPL2sev.csv",
+              "sha256": "2237a084c5d3543b64171133245c7141b778f274245a262a761d1a6a9f800ffc",
+              "size_bytes": 397397,
+              "source": "https://www.openml.org/d/41215",
+              "hashed_at_utc": "2026-10-10T22:02:58+00:00"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "credit": {
+    "results": {
+      "status": "not measured",
+      "reason": "Lending Club requires Kaggle credentials; run make data after adding a Kaggle token",
+      "detail": "data/raw/lending_club/lending-club.zip does not exist",
+      "expected_input": "data/raw/lending_club/lending-club.zip",
+      "pipeline": "Implemented and tested on SYNTHETIC Lending Club-shaped data only (tests/risk/test_credit.py). No Lending Club metric has been computed."
+    },
+    "metadata": {
+      "git_commit": "bbedb8d30fa8f4d761a926d70c61cf25d7771743",
+      "git_worktree_dirty": true,
+      "generated_at_utc": "2026-10-11T00:30:40+00:00",
+      "python_version": "3.11.17",
+      "package_versions": {
+        "numpy": "2.4.6",
+        "pandas": "3.0.6",
+        "scipy": "1.17.1",
+        "scikit-learn": "1.9.1",
+        "lightgbm": "4.7.0",
+        "statsmodels": "0.15.0",
+        "shap": "0.51.0",
+        "mlflow": "3.17.0"
+      },
+      "datasets": {
+        "lending_club": {
+          "files": [],
+          "note": "no checksum record found in checksums.jsonl"
+        }
+      }
+    }
+  }
+}

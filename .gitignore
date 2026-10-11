@@ -26,9 +26,18 @@ qdrant_storage/
 *.sqlite-shm
 *.sqlite-wal
 
-# Experiment tracking (local file store)
+# Experiment tracking: MLflow SQLite store (mlruns.db) + artifacts (mlruns/). mlflow.db is MLflow's own default name.
 mlruns/
 mlartifacts/
+mlruns.db
+mlflow.db
+
+# Trained models at the repo root (rebuilt by the training scripts)
+/models/
+
+# Lock and temporary files written while updating results/*.json
+results/*.lock
+results/*.tmp
 
 # Notebooks checkpoints
 .ipynb_checkpoints/
