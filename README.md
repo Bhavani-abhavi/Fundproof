@@ -86,26 +86,39 @@ cp .env.example .env      # add your Kaggle key (and an LLM key from Phase 2 on)
 make setup                # install exact versions from uv.lock
 make test                 # run the test suite
 make data                 # download the public datasets
+make phase1               # Phase 1: insurance and fairness models, credit (needs the Kaggle data), reports
+make serve                # scoring API on http://127.0.0.1:8000 (interactive docs at /docs)
 ```
 
 Run `make help` to see every target.
 
 ## Results
 
-From Phase 1 on, a script will write this table from `results/*.json`; no number will be typed by hand.
-Rows that have not been run say "not measured".
+`make reports` writes this table from `results/risk_metrics.json`; no number is typed by hand. Rows that have
+not been run say "not measured", with the reason.
 
 <!-- RESULTS:START -->
 | Component | Metric | Value |
 |---|---|---|
-| Credit-default model (Lending Club) | Test AUC | not measured |
-| Insurance frequency model (freMTPL2) | Mean Poisson deviance | not measured |
-| Document extraction | Field F1 | not measured |
-| Contradiction detection | Recall | not measured |
-| Sanctions screening | Recall at alerts per 1,000 | not measured |
-| Evidence-to-Action Engine | Next-best-evidence top-3 accuracy | not measured |
-| Agent | Escalation correctness | not measured |
-| Agent | Cost and p95 latency per packet | not measured |
+| Credit-default model (Lending Club), chosen model | Test AUC, out-of-time 2017-2018 [95% CI] | not measured (Lending Club requires Kaggle credentials; run make data after adding a Kaggle token) |
+| Insurance frequency (freMTPL2), Poisson GLM baseline | Mean Poisson deviance, test [95% CI] (lower is better) | 0.4584 [0.4488, 0.4672] |
+| Insurance frequency (freMTPL2), LightGBM | Mean Poisson deviance, test [95% CI] | 0.4493 [0.4395, 0.4583] |
+| Insurance frequency, LightGBM minus GLM | Paired difference in mean Poisson deviance [95% CI] | -0.0091 [-0.0107, -0.0075] |
+| Insurance frequency, LightGBM (preferred on validation) | Lorenz Gini, test [95% CI] | 0.3208 [0.3065, 0.3365] |
+| Insurance severity (freMTPL2), GLM (preferred on validation) | Mean Gamma deviance, test [95% CI] | 1.1678 [1.0855, 1.2565] |
+| Insurance severity, LightGBM minus GLM | Paired difference in mean Gamma deviance [95% CI] | -0.0024 [-0.0135, 0.0089] |
+| Expected loss = frequency x severity, GLM pair | Observed / predicted capped loss, test [95% CI] | 1.0187 [0.9570, 1.0812] |
+| Expected loss = frequency x severity, LightGBM pair | Observed / predicted capped loss, test [95% CI] | 1.0437 [0.9808, 1.1093] |
+| Expected loss, pair served by the API (LightGBM frequency x GLM severity) | Observed / predicted capped loss, test [95% CI] | 1.0185 [0.9569, 1.0822] |
+| Fairness demo (UCI German Credit), logistic regression | Adverse impact ratio, age under 25 vs 25 and over [95% CI] | 0.855 [0.669, 1.051] |
+| Document extraction | Field F1 | not measured (Phase 2 not built yet) |
+| Contradiction detection | Recall | not measured (Phase 2 not built yet) |
+| Sanctions screening | Recall at alerts per 1,000 | not measured (Phase 3 not built yet) |
+| Evidence-to-Action Engine | Next-best-evidence top-3 accuracy | not measured (Phase 4 not built yet) |
+| Agent | Escalation correctness | not measured (Phase 5 not built yet) |
+| Agent | Cost and p95 latency per packet | not measured (Phase 5 not built yet) |
+
+Written by `scripts/render_reports.py` from `results/risk_metrics.json`. Bootstrap: 1,000 resamples, seed 42. Model cards and the validation report are in [docs/model_cards/](docs/model_cards/).
 <!-- RESULTS:END -->
 
 ## Limitations
