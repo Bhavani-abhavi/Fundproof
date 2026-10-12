@@ -120,7 +120,7 @@ Phase 1 risk models and the phases not built yet, written by `make reports` from
 <!-- RESULTS:START -->
 | Component | Metric | Value |
 |---|---|---|
-| Credit-default model (Lending Club), chosen model | Test AUC, out-of-time 2017-2018 [95% CI] | not measured (Lending Club requires Kaggle credentials; run make data after adding a Kaggle token) |
+| Credit-default model (Lending Club), chosen model | Test AUC, out-of-time 2017-2018 [95% CI] | 0.7151 [0.7123, 0.7177] |
 | Insurance frequency (freMTPL2), Poisson GLM baseline | Mean Poisson deviance, test [95% CI] (lower is better) | 0.4584 [0.4488, 0.4672] |
 | Insurance frequency (freMTPL2), LightGBM | Mean Poisson deviance, test [95% CI] | 0.4493 [0.4395, 0.4583] |
 | Insurance frequency, LightGBM minus GLM | Paired difference in mean Poisson deviance [95% CI] | -0.0091 [-0.0107, -0.0075] |
