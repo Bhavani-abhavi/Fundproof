@@ -122,7 +122,10 @@ UNIT_WORDS: tuple[tuple[re.Pattern[str], Unit], ...] = (
 )
 # A following word that makes an integer a count ("3 claims"). Anything that is a unit or a connector is excluded.
 COUNT_NOUN = re.compile(r"^\s+(?!(?:or|and|to|of|in|on|per|the|a|an|is|are|was|were)\b)[A-Za-z][A-Za-z-]*")
-RANGE_CONNECTOR = re.compile(r"^\s*(?:to|-|–|—|and|or|through)\s*$", re.IGNORECASE)
+RANGE_CONNECTOR = re.compile(r"^\s*(?:to|-|–|—|through)\s*$", re.IGNORECASE)
+# "and" joins a range only after "between": "between 12 and 84 months". "1.00 and $2" is two separate quantities.
+BETWEEN_AND = re.compile(r"^\s*and\s*$", re.IGNORECASE)
+BETWEEN_BEFORE = re.compile(r"\bbetween\s*$", re.IGNORECASE)
 
 # --------------------------------------------------------------------------------------------------------------
 # Number words
@@ -298,12 +301,16 @@ def word_mentions(original: str, masked: str, taken: list[tuple[int, int]]) -> l
 
 
 def propagate_range_units(text: str, mentions: list[NumberMention]) -> list[NumberMention]:
-    """'12 to 84 months': the first number of a range takes the unit of the second."""
+    """'12 to 84 months', 'between 12 and 84 months': the first number of a range takes the unit of the second."""
     result = list(mentions)
     for index in range(len(result) - 1):
         first, second = result[index], result[index + 1]
         if first.unit in ("NONE", "COUNT") and second.unit not in ("NONE", "COUNT"):
-            if RANGE_CONNECTOR.match(text[first.end : second.start]):
+            connector = text[first.end : second.start]
+            is_between = BETWEEN_AND.match(connector) and BETWEEN_BEFORE.search(
+                text[max(0, first.start - 12) : first.start]
+            )
+            if RANGE_CONNECTOR.match(connector) or is_between:
                 result[index] = NumberMention(first.text, first.start, first.end, first.value, second.unit)
     return result
 

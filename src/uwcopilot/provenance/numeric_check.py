@@ -122,8 +122,17 @@ class NumericCheck:
         return bool(self.untraceable or self.comparator_mismatches)
 
 
+# "1.25. [NBC-4.2] Next" -> "1.25 [NBC-4.2]. Next": a citation written after the full stop belongs to that sentence.
+TRAILING_CITATION = re.compile(r"([.!?])\s*((?:\[[^\[\]]+\]\s*)+)(?=\s|$)")
+
+
 def split_sentences(text: str) -> list[tuple[int, str]]:
-    """Sentences with their start offsets. A citation right after a full stop stays with its sentence."""
+    """Sentences with their start offsets (in the text after trailing citations are moved before the full stop).
+
+    A citation written right after a sentence's full stop stays with that sentence, so the next sentence cannot
+    borrow it.
+    """
+    text = TRAILING_CITATION.sub(lambda match: f" {match.group(2).strip()}{match.group(1)} ", text)
     sentences = []
     position = 0
     for part in SENTENCE_SPLIT.split(text):

@@ -1,0 +1,348 @@
+{
+  "data_label": "SYNTHETIC guidelines (corpus/guidelines); no LLM call was made by this script",
+  "numeric_checker": {
+    "mutation_test": {
+      "n_reference_sentences": 203,
+      "n_mutations": 791,
+      "n_controls": 290,
+      "seed": 42,
+      "regenerated_from_seed_matches_file": true,
+      "recall_by_type": {
+        "value_perturb": {
+          "n": 179,
+          "detected": 179,
+          "rate": 1.0,
+          "wilson_ci95": [
+            0.979,
+            1.0
+          ]
+        },
+        "magnitude_x10": {
+          "n": 184,
+          "detected": 184,
+          "rate": 1.0,
+          "wilson_ci95": [
+            0.9795,
+            1.0
+          ]
+        },
+        "unit_swap": {
+          "n": 89,
+          "detected": 89,
+          "rate": 1.0,
+          "wilson_ci95": [
+            0.9586,
+            1.0
+          ]
+        },
+        "comparator_flip": {
+          "n": 108,
+          "detected": 89,
+          "rate": 0.8241,
+          "wilson_ci95": [
+            0.7415,
+            0.8844
+          ]
+        },
+        "cross_section": {
+          "n": 176,
+          "detected": 176,
+          "rate": 1.0,
+          "wilson_ci95": [
+            0.9786,
+            1.0
+          ]
+        },
+        "wrong_row": {
+          "n": 55,
+          "detected": 10,
+          "rate": 0.1818,
+          "wilson_ci95": [
+            0.1019,
+            0.3033
+          ]
+        }
+      },
+      "false_flag_rate": {
+        "unmutated": {
+          "n": 203,
+          "flagged": 0,
+          "rate": 0.0,
+          "wilson_ci95": [
+            0.0,
+            0.0186
+          ]
+        },
+        "equivalent_rewrite": {
+          "n": 87,
+          "flagged": 0,
+          "rate": 0.0,
+          "wilson_ci95": [
+            0.0,
+            0.0423
+          ]
+        }
+      },
+      "comparator_unverifiable": {
+        "n_comparator_flips": 108,
+        "unverifiable": 20
+      },
+      "known_blind_spot": "wrong_row: a value from another row of the same cited table looks traceable",
+      "development_note": "The checker was debugged on these reference sentences during development (sentence splitting around citations, soft line wraps, table header binding). The fixes were general, but the mutation set is not a held-out test, and the same author wrote the guidelines, the reference-sentence rules and the mutations."
+    },
+    "incumbent_claim_checker": {
+      "description": "uwcopilot.agent.claim_checker: a number is supported when some number in the cited section rounds to it at the written precision; no units, no comparators",
+      "recall_by_type": {
+        "value_perturb": {
+          "n": 179,
+          "detected": 169,
+          "rate": 0.9441,
+          "wilson_ci95": [
+            0.9002,
+            0.9694
+          ]
+        },
+        "magnitude_x10": {
+          "n": 184,
+          "detected": 174,
+          "rate": 0.9457,
+          "wilson_ci95": [
+            0.9029,
+            0.9702
+          ]
+        },
+        "unit_swap": {
+          "n": 89,
+          "detected": 0,
+          "rate": 0.0,
+          "wilson_ci95": [
+            0.0,
+            0.0414
+          ]
+        },
+        "comparator_flip": {
+          "n": 108,
+          "detected": 0,
+          "rate": 0.0,
+          "wilson_ci95": [
+            0.0,
+            0.0343
+          ]
+        },
+        "cross_section": {
+          "n": 176,
+          "detected": 148,
+          "rate": 0.8409,
+          "wilson_ci95": [
+            0.7797,
+            0.8876
+          ]
+        },
+        "wrong_row": {
+          "n": 55,
+          "detected": 0,
+          "rate": 0.0,
+          "wilson_ci95": [
+            0.0,
+            0.0653
+          ]
+        }
+      },
+      "false_flag_rate": {
+        "unmutated": {
+          "n": 203,
+          "flagged": 0,
+          "rate": 0.0,
+          "wilson_ci95": [
+            0.0,
+            0.0186
+          ]
+        },
+        "equivalent_rewrite": {
+          "n": 87,
+          "flagged": 17,
+          "rate": 0.1954,
+          "wilson_ci95": [
+            0.1257,
+            0.2908
+          ]
+        }
+      }
+    },
+    "on_rag_answers": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)"
+  },
+  "validator_adversarial": {
+    "file": "eval/provenance/validator_adversarial.jsonl",
+    "file_sha256": "ec5aea78d573a1d826cd2fe18cde44aa688cdb6925a91f7193302204a8fb95eb",
+    "authorship": "hand-written by the same author as the validator (a SEEN set), frozen before scoring",
+    "n_should_reject": 105,
+    "recall_overall": {
+      "k": 105,
+      "n": 105,
+      "rate": 1.0,
+      "wilson_ci95": [
+        0.9647,
+        1.0
+      ]
+    },
+    "recall": {
+      "V1_DIGIT": {
+        "k": 12,
+        "n": 12,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7575,
+          1.0
+        ]
+      },
+      "V2_NUMBER_WORD": {
+        "k": 12,
+        "n": 12,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7575,
+          1.0
+        ]
+      },
+      "V3_SYMBOL": {
+        "k": 11,
+        "n": 11,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7412,
+          1.0
+        ]
+      },
+      "V4_UNKNOWN_SLOT": {
+        "k": 11,
+        "n": 11,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7412,
+          1.0
+        ]
+      },
+      "V5_UNSLOTTED_COMPARATIVE": {
+        "k": 12,
+        "n": 12,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7575,
+          1.0
+        ]
+      },
+      "V6_OMISSION": {
+        "k": 14,
+        "n": 14,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7847,
+          1.0
+        ]
+      },
+      "V7_DISPOSITION_LANGUAGE": {
+        "k": 11,
+        "n": 11,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7412,
+          1.0
+        ]
+      },
+      "V8_MALFORMED_SLOT": {
+        "k": 11,
+        "n": 11,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7412,
+          1.0
+        ]
+      },
+      "V9_UNKNOWN_CITATION": {
+        "k": 11,
+        "n": 11,
+        "rate": 1.0,
+        "wilson_ci95": [
+          0.7412,
+          1.0
+        ]
+      }
+    },
+    "n_clean": 50,
+    "false_reject_rate": {
+      "k": 3,
+      "n": 50,
+      "rate": 0.06,
+      "wilson_ci95": [
+        0.0206,
+        0.1622
+      ]
+    },
+    "missed": [],
+    "false_rejects": [
+      {
+        "text": "The five-year loss ratio is {{claim:loss_ratio_5y}} and it {{assert:R-HM-06}} [HM-4.2].",
+        "got": [
+          "V2_NUMBER_WORD"
+        ]
+      },
+      {
+        "text": "The coverage result {{assert:R-NBC-04}}, so a human approver decides [NBC-4.2].",
+        "got": [
+          "V7_DISPOSITION_LANGUAGE"
+        ]
+      },
+      {
+        "text": "Operating income is adjusted when verified revenue is lower than the profit and loss revenue [NBC-4.1].",
+        "got": [
+          "V5_UNSLOTTED_COMPARATIVE"
+        ]
+      }
+    ]
+  },
+  "memo": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)",
+  "kyc_memo": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)",
+  "provenance": {
+    "git_sha": "5bbfa4dc4de28dc18133bf71b595d6e881c6fc7e",
+    "git_dirty": true,
+    "generated_at_utc": "2026-10-12T18:43:06+00:00",
+    "generated_by": "scripts/eval_provenance.py",
+    "prompts": {},
+    "corpus_checksum": "79a71528663e5c46548ef8281e45acda961e315508fe74077edd893c8be67302",
+    "eval_sets": {
+      "eval/provenance/reference_sentences.jsonl": "6670827a6cf4e2f8c4cb05d99cf6bd5847e94e6543397964d8029c5096adaa2d",
+      "eval/provenance/mutations.jsonl": "480af16a17cbfa4cd8fecca8fd6e9003cdb55175fcd5ae7d073a09ad3889e1d1",
+      "eval/provenance/validator_adversarial.jsonl": "ec5aea78d573a1d826cd2fe18cde44aa688cdb6925a91f7193302204a8fb95eb"
+    },
+    "models": [],
+    "data_snapshots": {},
+    "packages": {
+      "python": "3.11.17",
+      "anthropic": "1.13.0",
+      "openai": "3.28.0",
+      "httpx": "0.28.1",
+      "pydantic": "2.14.0",
+      "pyyaml": "6.0.3",
+      "numpy": "2.4.6",
+      "scikit-learn": "1.9.1",
+      "lightgbm": "4.7.0",
+      "fastembed": "0.9.0",
+      "qdrant-client": "1.19.1",
+      "langgraph": "1.2.14",
+      "mcp": "2.3.0"
+    },
+    "environment": {
+      "cpu_count": 4,
+      "load_average_start": [
+        0.36,
+        0.27,
+        0.29
+      ],
+      "load_average_end": [
+        0.36,
+        0.27,
+        0.29
+      ]
+    }
+  }
+}
