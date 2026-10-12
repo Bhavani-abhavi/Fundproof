@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import numpy as np
 import pandas as pd
 import pytest
@@ -500,3 +501,46 @@ def test_insurance_model_version_strings() -> None:
     assert insurance_model_version(metadata, "severity", "glm") == (
         "insurance_severity_glm (MLflow run abc, commit fedcba987654)"
     )
+
+
+# ---------------------------------------------------------------------------
+# The shared HTTP client against the real app (the contract the agent and the MCP server rely on)
+# ---------------------------------------------------------------------------
+
+
+def test_risk_api_client_round_trip_against_the_real_service(
+    client: TestClient, insurance_data: dict[str, pd.DataFrame], insurance_bundle: insurance.InsuranceModels
+) -> None:
+    """uwcopilot.risk.client talks to the real FastAPI app: baseline and scenario come back as tool responses.
+
+    An earlier client posted the tool model (with a scenario label the service forbids) and expected the tool model
+    back; this test fails on that version, so the two contracts cannot drift apart again.
+    """
+    from uwcopilot.risk.client import RiskApiClient
+    from uwcopilot.tools.schemas import RiskScoreRequest
+
+    class ForwardToTestClient(httpx.BaseTransport):
+        """An httpx transport that hands each request to the FastAPI TestClient (no network)."""
+
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            answer = client.request(request.method, str(request.url), content=request.read(), headers=request.headers)
+            return httpx.Response(answer.status_code, headers=answer.headers, content=answer.content)
+
+    api = RiskApiClient("http://testserver", transport=ForwardToTestClient())
+    policy = _policy(insurance_data)
+    baseline = api.score(RiskScoreRequest(product="insurance_frequency", features=policy))
+    direct = client.post("/score", json={"product": "insurance_frequency", "features": policy}).json()
+    assert baseline.prediction == pytest.approx(direct["prediction"])
+    assert baseline.risk_band == direct["risk_band"] and baseline.scenario == "baseline"
+    assert [reason.description for reason in baseline.reason_codes] == [r["reason"] for r in direct["reason_codes"]]
+
+    worst = insurance_bundle.feature_ranges["BonusMalus"].max_value
+    stressed = api.score(
+        RiskScoreRequest(
+            product="insurance_frequency", features=policy, overrides={"BonusMalus": worst}, scenario="bonus_malus_max"
+        )
+    )
+    expected = float(insurance_bundle.frequency_lgbm.predict_rate(pd.DataFrame([{**policy, "BonusMalus": worst}]))[0])
+    assert stressed.prediction == pytest.approx(expected)
+    assert stressed.scenario == "bonus_malus_max"
+    assert stressed.model_version == direct["model_version"]

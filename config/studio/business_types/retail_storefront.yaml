@@ -1,0 +1,273 @@
+# Business-type profile (Founder Studio S1). Schema: src/uwcopilot/studio/profiles/models.py.
+# EVERY number below is an ASSUMPTION of the project author: a deliberately wide range, user-editable in the app,
+# with a note naming the source that should replace it. Nothing is SOURCED (no source could be opened in this build).
+id: retail_storefront
+display_name: Small retail storefront (convenience or specialty)
+
+naics:
+  - code: "445131"
+    title: Convenience retailers
+    verified: false
+    note: Written from the author's knowledge of NAICS 2022; confirm the code and vintage against the Census NAICS reference (https://www.census.gov/naics/).
+  - code: "44"
+    title: Retail trade (sector 44-45; specialty stores fall under several codes)
+    verified: false
+    note: The specialty-store code depends on what is sold; the founder picks it in the app, checked against the Census NAICS reference.
+
+demand_unit: transactions/day
+demand:
+  formula: traffic_conversion
+  inputs:
+    drive_by_conversion:
+      low: 0.001
+      mode: 0.004
+      high: 0.012
+      unit: share of the frontage road's AADT that stops and buys
+      status: ASSUMPTION
+      source: null
+      note: No public source identified; calibrate from founder or outcome data (S9).
+    visits_per_resident_per_month:
+      low: 0.5
+      mode: 2
+      high: 6
+      unit: visits to this kind of store per resident per month
+      status: ASSUMPTION
+      source: null
+      note: Replace with a cited consumer-spending study for the store category.
+    capture_share:
+      low: 0.01
+      mode: 0.04
+      high: 0.12
+      unit: share of the trade area's category visits captured by this site
+      status: ASSUMPTION
+      source: null
+      note: No public source; calibrate from founder or outcome data (S9).
+
+price:
+  low: 5
+  mode: 15
+  high: 60
+  unit: USD per transaction (average basket)
+  status: ASSUMPTION
+  source: null
+  note: Replace with the founder's pricing plan; specialty baskets vary widely.
+
+capacity:
+  max_demand:
+    low: 150
+    mode: 500
+    high: 1500
+    unit: transactions/day
+    status: ASSUMPTION
+    source: null
+    note: Founder input (checkout lanes x transactions per lane-hour x open hours); this range is only the default.
+  basis: checkout lanes x transactions per lane-hour x open hours
+
+hours:
+  hours_per_day:
+    low: 10
+    mode: 14
+    high: 24
+    unit: hours/day
+    status: ASSUMPTION
+    source: null
+    note: Founder input; this range is only the default.
+  days_per_week:
+    low: 6
+    mode: 7
+    high: 7
+    unit: days/week
+    status: ASSUMPTION
+    source: null
+    note: Founder input; this range is only the default.
+
+cost_ratios:
+  cogs:
+    low: 0.55
+    mode: 0.68
+    high: 0.78
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with supplier price lists or a cited retail trade survey (for example the Census Annual Retail Trade Survey, gross margins by kind of business).
+  utilities:
+    low: 0.01
+    mode: 0.03
+    high: 0.05
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Refrigeration raises this for convenience stores; replace with utility quotes.
+  supplies:
+    low: 0.005
+    mode: 0.01
+    high: 0.03
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with supplier quotes.
+  marketing:
+    low: 0.005
+    mode: 0.015
+    high: 0.04
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Founder's marketing plan; no public benchmark identified.
+  insurance:
+    low: 0.005
+    mode: 0.01
+    high: 0.03
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with an insurance quote.
+  maintenance:
+    low: 0.005
+    mode: 0.015
+    high: 0.03
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with the founder's estimate.
+  shrink:
+    low: 0.005
+    mode: 0.015
+    high: 0.04
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Inventory loss; replace with a cited retail loss survey if one is found.
+
+labor:
+  paid_hours_per_month:
+    low: 400
+    mode: 800
+    high: 1800
+    unit: paid staff hours per month
+    status: ASSUMPTION
+    source: null
+    note: Founder's staffing plan.
+  hourly_wage:
+    low: 12
+    mode: 16
+    high: 22
+    unit: USD/hour
+    status: ASSUMPTION
+    source: null
+    note: Replace with BLS QCEW average weekly wage for the store's NAICS code in the metro (hours conversion stated) or BLS OEWS retail salespersons and cashiers for the metro.
+
+rent:
+  handling: founder_quote_else_metro_range
+  monthly_rent:
+    low: 2000
+    mode: 5000
+    high: 14000
+    unit: USD/month
+    status: ASSUMPTION
+    source: null
+    note: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found.
+  annual_escalation:
+    low: 0.0
+    mode: 0.03
+    high: 0.05
+    unit: share per year
+    status: ASSUMPTION
+    source: null
+    note: Replace with the lease's escalation clause.
+
+capex:
+  - name: Build-out
+    cost:
+      low: 30000
+      mode: 90000
+      high: 250000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with contractor quotes.
+  - name: Shelving and refrigeration
+    cost:
+      low: 15000
+      mode: 50000
+      high: 150000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with equipment quotes.
+  - name: Point of sale and security systems
+    cost:
+      low: 5000
+      mode: 15000
+      high: 40000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes.
+  - name: Opening inventory
+    cost:
+      low: 20000
+      mode: 60000
+      high: 150000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with supplier orders.
+  - name: Signage and permits
+    cost:
+      low: 3000
+      mode: 10000
+      high: 30000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes and the city's fee schedule (cited).
+
+seasonality:
+  values: [0.95, 0.9, 0.95, 1.0, 1.0, 1.05, 1.05, 1.05, 1.0, 1.0, 0.95, 1.1]
+  unit: multiplier on average monthly demand (January to December; mean 1.0)
+  status: ASSUMPTION
+  source: null
+  note: Replace with a sourced monthly series (for example Census Monthly Retail Trade for the store's kind of business); specialty retail may differ a lot from convenience.
+
+ramp_up:
+  starting_share:
+    low: 0.4
+    mode: 0.6
+    high: 0.85
+    unit: share of mature demand in the first month
+    status: ASSUMPTION
+    source: null
+    note: No public source identified.
+  months_to_maturity:
+    low: 3
+    mode: 8
+    high: 15
+    unit: months
+    status: ASSUMPTION
+    source: null
+    note: No public source identified; calibrate from outcome data (S9) once it exists.
+
+design:
+  status: DESIGN_CHOICE
+  note: Scoring-method choices by the project author, not facts. Weights are tuned in S2 on the SYNTHETIC metro only.
+  trade_area_rings_miles: [0.5, 1, 3]
+  location_weights:
+    resident_population: {weight: 0.20, direction: higher_is_better}
+    daytime_workers: {weight: 0.15, direction: higher_is_better}
+    traffic_aadt: {weight: 0.20, direction: higher_is_better}
+    median_household_income: {weight: 0.10, direction: higher_is_better}
+    competition: {weight: 0.20, direction: lower_is_better}
+    anchors: {weight: 0.10, direction: higher_is_better}
+    commercial_rent: {weight: 0.05, direction: lower_is_better}
+
+competitor_tags: [shop=convenience, shop=variety_store, shop=kiosk, shop=supermarket]
+anchor_tags: [office, amenity=school, public_transport=station, amenity=fuel, shop=mall]
+
+key_risks:
+  - Thin margins
+  - Competition from chains
+  - Shrink (inventory loss)
+  - Inventory management
+
+metro_overrides: {}

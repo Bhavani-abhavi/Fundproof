@@ -5,6 +5,8 @@ Real providers are wrapped as Cached(Budgeted(provider client)):
 - on a cache miss, the budget check runs before any money is spent.
 The fake provider is wrapped only in the budget layer (it is free) and is never cached, so tests always see
 exactly the scripted responses.
+The ollama provider (local open-weight models) needs no API key. It still goes through Cached(Budgeted(...)): its
+price list entries are 0.0, and the cache key holds the model digest and every model option.
 """
 
 from collections.abc import Sequence
@@ -15,6 +17,7 @@ from uwcopilot.llm.base import LLMClient
 from uwcopilot.llm.budget import BudgetedLLMClient, CostTracker, load_prices
 from uwcopilot.llm.cache import CachedLLMClient, LLMCache
 from uwcopilot.llm.fake_client import FakeLLM, FakeResponder
+from uwcopilot.llm.ollama_client import OllamaClient, OllamaOptions
 from uwcopilot.llm.openai_client import OpenAIClient
 from uwcopilot.llm.settings import LLMSettings, load_llm_settings, validate_provider
 
@@ -39,18 +42,22 @@ def get_llm_client(
     use_cache: bool = True,
     fake_responses: Sequence[str] | FakeResponder | None = None,
     http_client: Any | None = None,
+    ollama_options: OllamaOptions | None = None,
 ) -> LLMClient:
     """Build an LLM client.
 
-    provider: "anthropic", "openai" or "fake" (default: settings.provider, i.e. UWC_LLM_PROVIDER).
+    provider: "anthropic", "openai", "ollama" or "fake" (default: settings.provider, i.e. UWC_LLM_PROVIDER).
     settings: defaults to load_llm_settings() (repo .env plus project variables).
     model: overrides the model from settings.
     cost_tracker: share one tracker across clients so the cap covers the whole run.
     use_cache: real providers only; set False to always call the API.
     fake_responses: scripted strings or a responder function for the fake provider.
-    http_client: test hook passed to the SDK (an httpx2.Client with a mock transport).
+    http_client: test hook passed to the SDK (an httpx2.Client with a mock transport); for ollama, an
+        httpx.Client with a MockTransport.
+    ollama_options: num_ctx, seed, optional JSON-schema format and expected digest for the ollama provider.
 
-    Raises MissingAPIKeyError when a real provider has no API key; no request is attempted in that case.
+    Raises MissingAPIKeyError when a paid provider has no API key; no request is attempted in that case.
+    The ollama client contacts the local server when it is built (version and model digest).
     """
     settings = settings or load_llm_settings()
     chosen = validate_provider(provider or settings.provider)
@@ -61,6 +68,13 @@ def get_llm_client(
         fake = FakeLLM(fake_responses if fake_responses is not None else [], model=chosen_model)
         return BudgetedLLMClient(fake, tracker)
 
+    provider_client: LLMClient
+    if chosen == "ollama":
+        provider_client = OllamaClient(
+            settings.ollama_base_url, chosen_model, options=ollama_options, http_client=http_client
+        )
+        return wrap_provider_client(provider_client, tracker, settings, use_cache)
+
     api_key = settings.api_key_for(chosen)
     if not api_key:
         raise MissingAPIKeyError(
@@ -68,14 +82,19 @@ def get_llm_client(
             "No LLM call was made; metrics that need an LLM stay 'not measured'."
         )
     base_url = settings.base_url_for(chosen) or ""
-    provider_client: LLMClient
     if chosen == "anthropic":
         provider_client = AnthropicClient(
             api_key, base_url, chosen_model, http_client=http_client, effort=settings.anthropic_effort
         )
     else:
         provider_client = OpenAIClient(api_key, base_url, chosen_model, http_client=http_client)
+    return wrap_provider_client(provider_client, tracker, settings, use_cache)
 
+
+def wrap_provider_client(
+    provider_client: LLMClient, tracker: CostTracker, settings: LLMSettings, use_cache: bool
+) -> LLMClient:
+    """Wrap a real provider client as Cached(Budgeted(client)), or only Budgeted(client) when use_cache is False."""
     budgeted = BudgetedLLMClient(provider_client, tracker)
     if not use_cache:
         return budgeted

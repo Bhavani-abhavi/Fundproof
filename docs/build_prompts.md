@@ -523,3 +523,44 @@ None of this makes the project compliant with anything. It shows how the documen
   credentials for Phase 7. The cost cap is $10 per run.
 - **Expected cost:** roughly $30-80 in LLM API calls across phases (extraction is cached, so reruns are free)
   plus a short cloud deployment. This is a planning guess, not a measurement.
+
+---
+
+## Founder Studio (merged into this project)
+
+Founder Studio is the borrower's side of the same product: a founder picks a city, a business type and candidate
+sites, and gets site scores, a simulated feasibility check, a path to approval and a lender-ready package that drops
+into this lender copilot, where a human still decides. It is not a separate project. The full prompts are in
+[docs/studio/founder_studio_build_prompts.md](studio/founder_studio_build_prompts.md). How it connects to the phases
+above is in [docs/studio/architecture.md](studio/architecture.md); the module reuse table is in
+[docs/studio/reuse.md](studio/reuse.md). The Studio ground-rules addendum is in CLAUDE.md, pending both owners'
+sign-off.
+
+**Merge decisions (lead engineer, 2026-10-12):**
+- One product, one repo, one package `uwcopilot`. Studio code lives in `src/uwcopilot/studio/*`.
+- Studio S4 does not build a second ledger. It uses the Phase 4 evidence ledger (`src/uwcopilot/evidence`) and the
+  SIG provenance-locked memo stack (`src/uwcopilot/provenance`).
+- Studio S7 is the Phase 7 website: one Next.js (static export) + FastAPI app with a founder portal and a lender
+  portal. The lender portal replaces the Streamlit demo suggested in Prompt 7.
+- Studio S9 monitoring is shared with Phase 6 governance. Studio S12 is merged with Phase 8.
+- LLM: the local qwen2.5 3B model (Q4_K_M) via Ollama is the working provider here. A Hugging Face Inference
+  provider (S4) is an optional extra behind the same LLM interface.
+- Documents and tests stay synthetic or public-data only.
+
+**Phases** ("Studio S1" etc., not to be confused with the innovation items S1-S6 in innovations.md):
+
+| Phase | One line | Shared with |
+|---|---|---|
+| S0 | Align the Studio plan with the existing repo (docs only): architecture, reuse table, business types, metros, data sources, open questions | - |
+| S1 | Business-type profiles, metro configs and the data fabric (national layer first, then metro enhancements), with a coverage report | - |
+| S2 | SiteIQ: score a site with reasons and a data-coverage score, and suggest better census tracts | - |
+| S3 | Site-level Monte Carlo feasibility: probability of covering loan payments, cash runway, P10/P50/P90 revenue | Reuses `agent/credit_calculations.py` (loan math) |
+| S4 | Evidence ledger claims for a founder package and a provenance-locked narrative | Phase 4 ledger + SIG |
+| S5 | Path to approval: the smallest plan changes that reach the target probabilities | - |
+| S6 | Lender-ready package (PDF + JSON) and handoff into the agent, which stops at the human checkpoint | Phase 5 agent |
+| S7 | The website: founder portal and lender portal, measured for performance and accessibility | Phase 7 A |
+| S8 | Privacy, security and trust for real users | Phase 5 B security |
+| S9 | After-funding monitoring and the outcome flywheel (after the first deployment) | Phase 6 B/C |
+| S10 | Voice intake (later) | - |
+| S11 | Deploy to a Hugging Face Space | Phase 7 C |
+| S12 | Evaluation, README and resume lines | Phase 8 (and Phase 7 B business value) |

@@ -1,0 +1,76 @@
+# Named configurations for the frozen RAG generation evaluation and the LLM migration gate (docs/innovations.md, S1).
+#
+# A config fixes everything that can change a generated answer: the local model (pinned by its Ollama digest), the
+# prompt id, how many retrieved passages go into the prompt (k) and the decoding options. scripts/eval_generation.py
+# --config <id> runs one config; scripts/llm_migration_gate.py compares a champion config with a challenger config.
+# The release gate (S3) reads expected_digest from here without contacting Ollama.
+#
+# Models are open-weight Qwen2.5 Instruct GGUF files imported into a LOCAL Ollama server with
+# scripts/fetch_local_model.py (Docker Hub model artifacts; the Ollama registry and Hugging Face were not reachable
+# from the build machine when the models were imported on 2026-10-12). Local inference has no API charge
+# (config/llm_pricing.yaml lists 0.0).
+#
+# Licenses: two sources are recorded for each model and neither is chosen silently. The Docker Hub artifact carries a
+# license layer whose text is the Apache License 2.0 (same layer for both models). The upstream Hugging Face model
+# cards, re-checked on 2026-10-12 (README front matter and GET https://huggingface.co/api/models/<repo>), say:
+# Qwen/Qwen2.5-3B-Instruct "license: other, license_name: qwen-research" (its LICENSE file is titled "Qwen RESEARCH
+# LICENSE AGREEMENT"), card revision aa8e72537993ba99e69dfaafa59ed015b17504d1; Qwen/Qwen2.5-1.5B-Instruct
+# "license: apache-2.0", card revision 989aa7980e4cf806f80c7fef2b1adb7bc71aa306. The two sources disagree for the
+# 3B model; the upstream card is the licensor's own statement, so treat the 3B model as research-licensed until a
+# legal review says otherwise. For a real institution, name an Apache-2.0 or enterprise-hosted model.
+
+configs:
+  qwen3b_v1_k3:
+    provider: ollama
+    model: qwen2.5-3b-instruct-q4km
+    expected_digest: fae2485a8df6d917bc97274961a6fb59820bdd058fbf5849157fa2e8a0abcd6b
+    prompt_id: rag_answer_v1
+    k: 3
+    num_predict: 200
+    num_ctx: 4096
+    temperature: 0
+    seed: 42
+    role: champion
+
+  qwen15b_v1_k3:
+    provider: ollama
+    model: qwen2.5-1.5b-instruct-f16
+    expected_digest: 75a307d2fa0d2d6d5158a9d22a4bad38836b9b998ebb106fd9ea1e8c1a9d33d3
+    prompt_id: rag_answer_v1
+    k: 3
+    num_predict: 200
+    num_ctx: 4096
+    temperature: 0
+    seed: 42
+    role: challenger
+    note: >-
+      The challenger differs from the champion in quantization (F16 vs Q4_K_M) as well as in size (1.5B vs 3.1B
+      parameters). The plan's challenger was qwen2.5:1.5b (Q4_K_M) from the Ollama library, which was not reachable;
+      only the F16 1.5B artifact was available on Docker Hub, so a migration result cannot be attributed to size alone.
+
+# Where each local model came from. ollama_digest is what Ollama reports in GET /api/tags after `ollama create`;
+# gguf_sha256 is the Docker Hub layer digest of the weights file, verified by scripts/fetch_local_model.py.
+models:
+  qwen2.5-3b-instruct-q4km:
+    source: docker.io/ai/qwen2.5:3B-Q4_K_M
+    gguf_sha256: 48f4925de3417c3e259c5b460024ec9907458c52c9a7aab81269a4befd473e5e
+    gguf_size_bytes: 1929903008
+    ollama_digest: fae2485a8df6d917bc97274961a6fb59820bdd058fbf5849157fa2e8a0abcd6b
+    parameter_size: 3.1B
+    quantization: Q4_K_M
+    license_docker_artifact: "Apache-2.0 (license layer sha256:609e2cb599f84aaa41d8ef29d8fdb04d164fab22e8d9292ca34a599d0f56a338)"
+    upstream_card: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
+    license_upstream_card: "Qwen Research License (Hugging Face card: license other, license_name qwen-research; checked 2026-10-12)"
+    license: "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Qwen Research License (qwen-research, checked 2026-10-12)"
+
+  qwen2.5-1.5b-instruct-f16:
+    source: docker.io/ai/qwen2.5:1.5B-F16
+    gguf_sha256: b6eaec3509f1d0373d1f4802654c4a7bfcde0768645d2d45e8885f6922b428ee
+    gguf_size_bytes: 3093669376
+    ollama_digest: 75a307d2fa0d2d6d5158a9d22a4bad38836b9b998ebb106fd9ea1e8c1a9d33d3
+    parameter_size: 1.5B
+    quantization: F16
+    license_docker_artifact: "Apache-2.0 (license layer sha256:609e2cb599f84aaa41d8ef29d8fdb04d164fab22e8d9292ca34a599d0f56a338)"
+    upstream_card: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct
+    license_upstream_card: "Apache-2.0 (Hugging Face card: license apache-2.0; checked 2026-10-12)"
+    license: "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Apache-2.0 (checked 2026-10-12)"

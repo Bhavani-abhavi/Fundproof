@@ -21,7 +21,7 @@ def test_success_returns_the_validated_response() -> None:
 
 
 def test_request_is_a_json_post_of_the_request_model() -> None:
-    """The body is the RiskScoreRequest as JSON, sent to <configured base URL>/score."""
+    """The body is the SERVICE contract (product, features; overrides only when given), sent to <base URL>/score."""
     sent: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -35,8 +35,6 @@ def test_request_is_a_json_post_of_the_request_model() -> None:
     assert json.loads(sent[0].content) == {
         "product": "credit",
         "features": {"dscr": 1.3, "fico": None},
-        "overrides": None,
-        "scenario": "baseline",
     }
 
 
@@ -117,7 +115,9 @@ def test_client_ignores_proxy_settings_from_the_environment(monkeypatch: pytest.
 
 def test_result_envelope_cannot_mix_score_and_error() -> None:
     """status "scored" needs a score; status "error" needs an error and forbids a score."""
-    score = RiskScoreResponse.model_validate(risk_response())
+    score = RiskScoreResponse(
+        product="credit", prediction=0.083, risk_band="B", reason_codes=[], model_version="fake-1", scenario="baseline"
+    )
     error = RiskApiErrorInfo(code="risk_api_unreachable", message="down", endpoint="http://x/score")
     assert ScoreApplicationResult(status="scored", score=score).error is None
     assert ScoreApplicationResult(status="error", error=error).score is None

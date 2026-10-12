@@ -91,3 +91,26 @@ def test_a_new_cache_object_reads_existing_entries(tmp_path: Path) -> None:
     CachedLLMClient(FakeLLM(["persisted"]), LLMCache(tmp_path)).complete("sys", USER, max_tokens=100)
     rerun = CachedLLMClient(FakeLLM([]), LLMCache(tmp_path))
     assert rerun.complete("sys", USER, max_tokens=100).text == "persisted"
+
+
+def test_entries_written_before_the_metadata_field_still_load(tmp_path: Path) -> None:
+    cache = LLMCache(tmp_path)
+    key = "ab" + "0" * 62
+    old_response = {
+        "text": "old answer",
+        "model": "claude-haiku-5-5",
+        "input_tokens": 10,
+        "output_tokens": 2,
+        "latency_s": 0.5,
+        "cost_usd": 0.0001,
+        "cached": False,
+        "provider": "anthropic",
+        "stop_reason": "end_turn",
+    }
+    path = cache.path_for(key)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"format_version": 2, "key": key, "request": {}, "response": old_response}))
+    loaded = cache.get(key)
+    assert loaded is not None
+    assert loaded.text == "old answer"
+    assert loaded.metadata == {}

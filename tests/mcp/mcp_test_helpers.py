@@ -93,15 +93,24 @@ def build_guideline_retriever() -> Retriever:
 
 
 def risk_response(product: str = "credit", scenario: str = "baseline") -> dict[str, Any]:
-    """A valid RiskScoreResponse body, as the risk service would send it (FAKE numbers)."""
+    """A valid POST /score body in the service contract (uwcopilot.risk.service.ScoreResponse); FAKE numbers.
+
+    scenario is accepted for call-site compatibility; the service has no scenario label (the client adds the
+    request's label), so it is not part of the body.
+    """
+    del scenario
     return {
         "product": product,
+        "prediction_name": "probability_of_default",
+        "prediction_unit": "probability",
         "prediction": 0.083,
         "risk_band": "B",
-        "reason_codes": [{"feature": "dscr", "contribution": -0.4, "description": "DSCR above the minimum"}],
+        "reason_codes": [{"feature": "dscr", "value": 1.3, "contribution": -0.4, "reason": "DSCR above the minimum"}],
+        "model": "fake",
         "model_version": "fake-risk-model-0.0.1",
-        "scenario": scenario,
-        "unknown_features": [],
+        "risk_band_definition": {"method": "fake"},
+        "scenario": None,
+        "note": "FAKE test response",
     }
 
 

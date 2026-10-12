@@ -1,0 +1,219 @@
+# Business-type profile (Founder Studio S1). Schema: src/uwcopilot/studio/profiles/models.py.
+# EVERY number below is an ASSUMPTION of the project author: a deliberately wide range, user-editable in the app,
+# with a note naming the source that should replace it. Nothing is SOURCED (no source could be opened in this build).
+# Local short-term rental rules can restrict or prohibit this business; they are checked per city with a cited
+# primary source, never stated from memory.
+id: short_term_rental
+display_name: Short-term rental (Airbnb-style home or unit)
+
+naics:
+  - code: "721199"
+    title: All other traveler accommodation
+    verified: false
+    note: Which NAICS code covers individual short-term rental hosts is itself to verify (531110, lessors of residential buildings, is another candidate). Confirm against the Census NAICS reference.
+
+demand_unit: booked nights/month
+demand:
+  formula: nights_comparables
+  inputs:
+    nights_available_per_month:
+      low: 20
+      mode: 28
+      high: 30
+      unit: nights the unit is offered per month
+      status: ASSUMPTION
+      source: null
+      note: Founder input; this range is only the default.
+    occupancy:
+      low: 0.35
+      mode: 0.60
+      high: 0.85
+      unit: share of available nights booked
+      status: ASSUMPTION
+      source: null
+      note: Replace with comparable listings from Inside Airbnb where the city is covered; otherwise UNKNOWN for the metro.
+
+price:
+  low: 80
+  mode: 160
+  high: 400
+  unit: USD per booked night (ADR)
+  status: ASSUMPTION
+  source: null
+  note: Replace with comparable listings from Inside Airbnb where the city is covered.
+
+capacity:
+  max_demand:
+    low: 20
+    mode: 28
+    high: 30
+    unit: booked nights/month
+    status: ASSUMPTION
+    source: null
+    note: Equals the nights available (founder input); this range is only the default.
+  basis: nights the unit is available per month
+
+hours: null
+
+cost_ratios:
+  cogs:
+    low: 0.0
+    mode: 0.01
+    high: 0.03
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Guest consumables; replace with the founder's estimate.
+  utilities:
+    low: 0.04
+    mode: 0.08
+    high: 0.15
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with the unit's utility bills.
+  supplies:
+    low: 0.02
+    mode: 0.04
+    high: 0.08
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Linens and toiletries; replace with supplier quotes.
+  marketing:
+    low: 0.03
+    mode: 0.12
+    high: 0.20
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Platform service fees and listing costs; replace with the platform's published host fee page (cited).
+  insurance:
+    low: 0.01
+    mode: 0.03
+    high: 0.06
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with a short-term rental insurance quote.
+  maintenance:
+    low: 0.03
+    mode: 0.06
+    high: 0.12
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with the founder's estimate.
+
+labor:
+  paid_hours_per_month:
+    low: 20
+    mode: 40
+    high: 90
+    unit: paid cleaning and host hours per month
+    status: ASSUMPTION
+    source: null
+    note: Depends on turnovers; founder's plan or a cleaning-service quote.
+  hourly_wage:
+    low: 15
+    mode: 20
+    high: 32
+    unit: USD/hour
+    status: ASSUMPTION
+    source: null
+    note: Replace with BLS OEWS maids and housekeeping cleaners for the metro, or a cleaning-service quote.
+
+rent:
+  handling: founder_quote_else_metro_range
+  monthly_rent:
+    low: 1200
+    mode: 2500
+    high: 6000
+    unit: USD/month (lease, or mortgage and carrying cost)
+    status: ASSUMPTION
+    source: null
+    note: Founder's lease or mortgage first. HUD Fair Market Rents are a residential reference only and are never used as this value.
+  annual_escalation:
+    low: 0.0
+    mode: 0.03
+    high: 0.06
+    unit: share per year
+    status: ASSUMPTION
+    source: null
+    note: Replace with the lease's escalation clause.
+
+capex:
+  - name: Furnishing
+    cost:
+      low: 5000
+      mode: 15000
+      high: 40000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes.
+  - name: Renovation
+    cost:
+      low: 0
+      mode: 10000
+      high: 60000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with contractor quotes.
+  - name: Appliances, smart locks and safety devices
+    cost:
+      low: 1000
+      mode: 4000
+      high: 12000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes.
+
+seasonality:
+  values: [0.8, 0.85, 0.95, 1.0, 1.05, 1.15, 1.25, 1.2, 1.05, 0.95, 0.85, 0.9]
+  unit: multiplier on average monthly demand (January to December; mean 1.0)
+  status: ASSUMPTION
+  source: null
+  note: Summer peak is the author's assumption. Replace with comparable listings' calendars (Inside Airbnb) where the city is covered.
+
+ramp_up:
+  starting_share:
+    low: 0.3
+    mode: 0.5
+    high: 0.8
+    unit: share of mature demand in the first month
+    status: ASSUMPTION
+    source: null
+    note: New listings without reviews may book less; no public source identified.
+  months_to_maturity:
+    low: 2
+    mode: 6
+    high: 12
+    unit: months
+    status: ASSUMPTION
+    source: null
+    note: No public source identified; calibrate from comparables' listing history where covered.
+
+design:
+  status: DESIGN_CHOICE
+  note: Scoring-method choices by the project author, not facts. Comparable listings count as evidence of demand here; saturation is the competition factor. Weights are tuned in S2 on the SYNTHETIC metro only.
+  trade_area_rings_miles: [0.5, 1, 3]
+  location_weights:
+    tourism: {weight: 0.35, direction: higher_is_better}
+    str_comparables: {weight: 0.20, direction: higher_is_better}
+    median_household_income: {weight: 0.15, direction: higher_is_better}
+    anchors: {weight: 0.15, direction: higher_is_better}
+    competition: {weight: 0.15, direction: lower_is_better}
+
+competitor_tags: [tourism=apartment, tourism=guest_house, tourism=hotel]
+anchor_tags: [railway=station, public_transport=station, leisure=park, amenity=theatre, amenity=restaurant]
+
+key_risks:
+  - Local short-term rental rules (checked per city with a cited primary source)
+  - Platform dependence
+  - Seasonality
+  - Comparables are UNKNOWN where Inside Airbnb has no coverage
+
+metro_overrides: {}

@@ -1,0 +1,274 @@
+# Business-type profile (Founder Studio S1). Schema: src/uwcopilot/studio/profiles/models.py.
+# EVERY number below is an ASSUMPTION of the project author: a deliberately wide range, user-editable in the app,
+# with a note naming the source that should replace it. No source could be opened in this build (every data host is
+# blocked), so nothing is SOURCED. A test fails if any field is marked SOURCED without a source.
+id: restaurant_cafe
+display_name: Restaurant / cafe / dessert shop (ice cream, coffee, bakery)
+
+naics:
+  - code: "722511"
+    title: Full-service restaurants
+    verified: false
+    note: Written from the author's knowledge; confirm against the Census NAICS reference (https://www.census.gov/naics/).
+  - code: "722513"
+    title: Limited-service restaurants
+    verified: false
+    note: Same as above.
+  - code: "722515"
+    title: Snack and nonalcoholic beverage bars (coffee, ice cream)
+    verified: false
+    note: Same as above.
+  - code: "311811"
+    title: Retail bakeries
+    verified: false
+    note: Same as above.
+
+demand_unit: covers/day
+demand:
+  formula: population_visit_rate
+  inputs:
+    visits_per_resident_per_month:
+      low: 0.5
+      mode: 2
+      high: 6
+      unit: visits to this kind of venue per resident per month
+      status: ASSUMPTION
+      source: null
+      note: Replace with a published consumer-spending or visit-frequency study for food away from home.
+    visits_per_worker_per_month:
+      low: 0.5
+      mode: 3
+      high: 10
+      unit: visits to this kind of venue per daytime worker per month
+      status: ASSUMPTION
+      source: null
+      note: Replace with a published study of workday food purchases; no free source identified yet.
+    capture_share:
+      low: 0.01
+      mode: 0.04
+      high: 0.12
+      unit: share of the trade area's category visits captured by this site
+      status: ASSUMPTION
+      source: null
+      note: No public source; calibrate from founder sales data or outcome data (S9) once it exists.
+
+price:
+  low: 6
+  mode: 12
+  high: 30
+  unit: USD per cover
+  status: ASSUMPTION
+  source: null
+  note: Replace with the founder's menu prices or a published average-check study for the metro.
+
+capacity:
+  max_demand:
+    low: 80
+    mode: 250
+    high: 600
+    unit: covers/day
+    status: ASSUMPTION
+    source: null
+    note: Replace with the founder's seat count x table turns, or counter service rate x open hours.
+  basis: seats x table turns per day, or counter service rate x open hours
+
+hours:
+  hours_per_day:
+    low: 8
+    mode: 11
+    high: 16
+    unit: hours/day
+    status: ASSUMPTION
+    source: null
+    note: Founder input; this range is only the default.
+  days_per_week:
+    low: 5
+    mode: 7
+    high: 7
+    unit: days/week
+    status: ASSUMPTION
+    source: null
+    note: Founder input; this range is only the default.
+
+cost_ratios:
+  cogs:
+    low: 0.22
+    mode: 0.30
+    high: 0.38
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with a published restaurant cost survey or the founder's supplier quotes.
+  utilities:
+    low: 0.02
+    mode: 0.04
+    high: 0.07
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with utility quotes for the site or a published restaurant cost survey.
+  supplies:
+    low: 0.01
+    mode: 0.03
+    high: 0.05
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Paper goods and cleaning supplies; replace with supplier quotes.
+  marketing:
+    low: 0.005
+    mode: 0.02
+    high: 0.05
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Founder's marketing plan; no public benchmark identified.
+  insurance:
+    low: 0.005
+    mode: 0.015
+    high: 0.03
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with an insurance quote for the business.
+  maintenance:
+    low: 0.01
+    mode: 0.02
+    high: 0.04
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with a published restaurant cost survey or the founder's estimate.
+
+labor:
+  paid_hours_per_month:
+    low: 500
+    mode: 1000
+    high: 2500
+    unit: paid staff hours per month
+    status: ASSUMPTION
+    source: null
+    note: Founder's staffing plan; this range is only the default.
+  hourly_wage:
+    low: 13
+    mode: 17
+    high: 26
+    unit: USD/hour
+    status: ASSUMPTION
+    source: null
+    note: Replace with BLS QCEW average weekly wage for NAICS 722513/722515 in the metro (hours conversion stated), or BLS OEWS food preparation and serving occupations for the metro.
+
+rent:
+  handling: founder_quote_else_metro_range
+  monthly_rent:
+    low: 2500
+    mode: 6000
+    high: 15000
+    unit: USD/month
+    status: ASSUMPTION
+    source: null
+    note: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found.
+  annual_escalation:
+    low: 0.0
+    mode: 0.03
+    high: 0.05
+    unit: share per year
+    status: ASSUMPTION
+    source: null
+    note: Replace with the escalation clause in the founder's lease or quote.
+
+capex:
+  - name: Build-out (plumbing, electrical, ventilation)
+    cost:
+      low: 50000
+      mode: 150000
+      high: 400000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with contractor quotes.
+  - name: Kitchen and service equipment (freezers, espresso machine, ovens)
+    cost:
+      low: 30000
+      mode: 80000
+      high: 200000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with equipment quotes.
+  - name: Furniture and fixtures
+    cost:
+      low: 10000
+      mode: 30000
+      high: 80000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes.
+  - name: Point of sale and signage
+    cost:
+      low: 3000
+      mode: 8000
+      high: 20000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes.
+  - name: Permits, fees and opening inventory
+    cost:
+      low: 5000
+      mode: 16000
+      high: 45000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with the city's fee schedule (cited) and supplier quotes.
+
+seasonality:
+  values: [0.85, 0.85, 0.95, 1.0, 1.05, 1.1, 1.15, 1.15, 1.05, 1.0, 0.9, 0.95]
+  unit: multiplier on average monthly demand (January to December; mean 1.0)
+  status: ASSUMPTION
+  source: null
+  note: Mild summer peak is the author's assumption. Replace with the founder's sales history or a sourced monthly series (for example Census Monthly Retail Trade, food services), with a metro override where sourced.
+
+ramp_up:
+  starting_share:
+    low: 0.4
+    mode: 0.6
+    high: 0.8
+    unit: share of mature demand in the first month
+    status: ASSUMPTION
+    source: null
+    note: No public source identified; calibrate from outcome data (S9) once it exists.
+  months_to_maturity:
+    low: 3
+    mode: 9
+    high: 18
+    unit: months
+    status: ASSUMPTION
+    source: null
+    note: No public source identified; calibrate from outcome data (S9) once it exists.
+
+design:
+  status: DESIGN_CHOICE
+  note: Scoring-method choices by the project author, not facts. Weights are tuned in S2 on the SYNTHETIC metro only.
+  trade_area_rings_miles: [0.5, 1, 3]
+  location_weights:
+    resident_population: {weight: 0.25, direction: higher_is_better}
+    daytime_workers: {weight: 0.20, direction: higher_is_better}
+    median_household_income: {weight: 0.10, direction: higher_is_better}
+    competition: {weight: 0.20, direction: lower_is_better}
+    anchors: {weight: 0.15, direction: higher_is_better}
+    commercial_rent: {weight: 0.10, direction: lower_is_better}
+
+competitor_tags: [amenity=restaurant, amenity=cafe, amenity=fast_food, amenity=ice_cream, shop=bakery]
+anchor_tags: [office, amenity=school, amenity=university, shop=mall, railway=station, tourism=attraction, amenity=cinema]
+
+key_risks:
+  - Thin margins; food-cost swings
+  - Labor cost and availability
+  - Competitor saturation in the trade area
+  - Slower ramp-up than planned
+  - Lease terms and health permits
+
+metro_overrides: {}

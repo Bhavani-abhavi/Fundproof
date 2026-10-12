@@ -1,0 +1,29 @@
+# Metro config (Founder Studio S1). Schema: src/uwcopilot/studio/metros/models.py.
+# SYNTHETIC: a generated city (src/uwcopilot/studio/data/synthetic_city.py), not a real place. It is placed in open
+# ocean on purpose so its coordinates can never be mistaken for a real neighborhood. The app, the tests and the S2/S3
+# validations use it until real data snapshots exist; every page and result that uses it says SYNTHETIC.
+id: synthetic_metro
+name: Synthetic Metro (SYNTHETIC)
+data_label: SYNTHETIC
+verified: false
+states: []
+cbsa_code: null
+counties: []
+delineation_source: null
+crs: EPSG:4326
+bbox: null
+trade_area:
+  ring_multiplier: 1.0
+  status: DESIGN_CHOICE
+  note: The generated city is scaled so the profiles' default rings apply unchanged.
+enhancements: []
+snapshot_date: null
+coverage_threshold: 0.8
+synthetic:
+  seed: 20261012
+  n_tracts: 300
+  origin_lat: 10.0
+  origin_lon: -140.0
+  extent_miles: 25
+  note: Generator settings are design choices of the project author, not data. Changing the seed gives a different city.
+note: SYNTHETIC metro for demonstration and validation. No real place, person or business is represented.

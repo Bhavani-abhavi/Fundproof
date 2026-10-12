@@ -123,14 +123,19 @@ def test_execute_records_success_unavailable_and_errors() -> None:
 
 
 RISK_REQUEST = RiskScoreRequest(product="credit", features={"requested_amount": 90_000.0, "industry": None})
+# A successful POST /score body in the SERVICE contract (uwcopilot.risk.service.ScoreResponse); FAKE numbers.
 RISK_BODY = {
     "product": "credit",
+    "prediction_name": "probability_of_default",
+    "prediction_unit": "probability",
     "prediction": 0.031,
     "risk_band": "B",
-    "reason_codes": [{"feature": "requested_amount", "contribution": 0.01, "description": "loan size"}],
+    "reason_codes": [{"feature": "requested_amount", "value": 90000.0, "contribution": 0.01, "reason": "loan size"}],
+    "model": "lightgbm",
     "model_version": "credit-pd-1",
-    "scenario": "baseline",
-    "unknown_features": ["industry"],
+    "risk_band_definition": {"method": "quantiles"},
+    "scenario": None,
+    "note": "FAKE test response",
 }
 
 

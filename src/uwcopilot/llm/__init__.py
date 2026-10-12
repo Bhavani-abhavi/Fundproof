@@ -1,4 +1,4 @@
-"""LLM provider adapter: one small interface over Anthropic, OpenAI, and a deterministic fake.
+"""LLM provider adapter: one small interface over Anthropic, OpenAI, a local Ollama server and a deterministic fake.
 
 Every client takes its base URL and API key from project settings (see settings.py), never implicitly from
 SDK environment variables. Responses can be cached on disk (cache.py) and every paid call is checked against
