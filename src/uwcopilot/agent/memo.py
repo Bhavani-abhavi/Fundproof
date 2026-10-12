@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from uwcopilot.agent.applications import CreditApplication, InsuranceApplication
+from uwcopilot.agent.applications import AnyApplication
 from uwcopilot.agent.evidence import EvidenceItem
 from uwcopilot.agent.injection import InjectionHit
 from uwcopilot.agent.policy import PolicyResult
@@ -145,7 +145,7 @@ def render_evidence(evidence: dict[str, EvidenceItem]) -> str:
     return "\n".join(blocks)
 
 
-def render_untrusted(application: CreditApplication | InsuranceApplication, hits: list[InjectionHit]) -> str:
+def render_untrusted(application: AnyApplication, hits: list[InjectionHit]) -> str:
     """The notes as quoted, escaped data. A flagged note keeps its warning attribute."""
     if not application.notes.strip():
         return f'<{UNTRUSTED_TAG} field="notes">(empty)</{UNTRUSTED_TAG}>'
@@ -155,7 +155,7 @@ def render_untrusted(application: CreditApplication | InsuranceApplication, hits
 
 
 def build_memo_prompt(
-    application: CreditApplication | InsuranceApplication,
+    application: AnyApplication,
     policy: PolicyResult,
     evidence: dict[str, EvidenceItem],
     injection_hits: list[InjectionHit],

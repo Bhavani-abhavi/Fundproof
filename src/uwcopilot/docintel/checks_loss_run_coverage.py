@@ -56,6 +56,20 @@ def loss_run_carriers(submission: InsuranceSubmission) -> set[str]:
     return {canonical_name(item.carrier.value) for item in submission.loss_runs if item.carrier.found}
 
 
+def has_loss_run(carrier: str, carriers: set[str]) -> bool:
+    """True when a loss run in the packet is from this carrier (canonical names).
+
+    The names match when they are equal, or when one name's words contain the other's, so "Example Mutual" and
+    "Example Mutual Insurance Co" match.
+    """
+    words = set(carrier.split())
+    for other in carriers:
+        other_words = set(other.split())
+        if carrier == other or (words and other_words and (words <= other_words or other_words <= words)):
+            return True
+    return False
+
+
 def prior_carrier_rows(submission: InsuranceSubmission) -> list[tuple[str, date | None, Evidence | None]]:
     """(canonical carrier, policy year start, evidence) for each row of the application's prior-carriers table."""
     application = submission.application
@@ -78,7 +92,7 @@ def coverage_issues(submission: InsuranceSubmission) -> tuple[list[CheckIssue], 
     rows = prior_carrier_rows(submission)
     missing: dict[str, list[Evidence]] = {}
     for name, _start, evidence in rows:
-        if name not in carriers and evidence is not None:
+        if not has_loss_run(name, carriers) and evidence is not None:
             missing.setdefault(name, []).append(evidence)
     for evidence_rows in missing.values():
         issues.append(
@@ -99,7 +113,9 @@ def coverage_issues(submission: InsuranceSubmission) -> tuple[list[CheckIssue], 
         uncovered = []
         for year_start in required_year_starts(effective):
             by_table = any(
-                name in carriers and row_start is not None and abs((row_start - year_start).days) <= YEAR_MATCH_DAYS
+                has_loss_run(name, carriers)
+                and row_start is not None
+                and abs((row_start - year_start).days) <= YEAR_MATCH_DAYS
                 for name, row_start, _evidence in rows
             )
             if not by_table and not covered_by_rows(year_start, submission):

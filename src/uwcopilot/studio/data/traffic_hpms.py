@@ -1,0 +1,148 @@
+"""FHWA HPMS traffic: annual average daily traffic (AADT) on the road segments near a site. No key needed.
+
+FHWA publishes the Highway Performance Monitoring System (HPMS) public release as one ArcGIS FeatureServer layer per
+state and year on geo.dot.gov (for example Hosted/HPMS_FULL_TX_2024; the FHWA HPMS shapefile page links to these
+services). Studio asks the layer for segments with AADT > 0 within a small distance of the site, as GeoJSON, and takes
+the nearest one. Terms to verify at https://www.fhwa.dot.gov/policyinformation/hpms.cfm.
+
+A state DOT dataset can improve on HPMS where one is documented (traffic_state.py). When no segment is near the site,
+traffic is UNKNOWN for that site: drive-by demand is then not estimated from traffic.
+"""
+
+from dataclasses import dataclass
+from typing import Any
+
+from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
+from uwcopilot.studio.data.geo import point_to_polyline_miles
+from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
+
+HOST = "geo.dot.gov"
+DEFAULT_YEAR = 2024
+METERS_PER_MILE = 1609.344
+OUT_FIELDS = "route_id,routename,aadt,f_system,data_year,begin_point,end_point"
+SOURCE = SourceInfo(
+    source_id="fhwa_hpms",
+    publisher="U.S. Federal Highway Administration",
+    dataset="Highway Performance Monitoring System (HPMS) public release, state FeatureServer layer",
+    license_note="Terms to verify at https://www.fhwa.dot.gov/policyinformation/hpms.cfm (not yet recorded)",
+)
+
+
+@dataclass(frozen=True)
+class RoadSegment:
+    """One HPMS road segment with its AADT and shape [(lat, lon), ...]."""
+
+    route_id: str
+    route_name: str | None
+    aadt: int
+    functional_class: int | None
+    data_year: int | None
+    line: list[tuple[float, float]]
+
+
+@dataclass(frozen=True)
+class NearestRoad:
+    """The nearest segment to a site and how far it is."""
+
+    segment: RoadSegment
+    distance_miles: float
+    source: SourceRecord
+
+
+def layer_url(state: str, year: int = DEFAULT_YEAR) -> str:
+    """The FeatureServer query URL for one state's HPMS layer."""
+    if len(state) != 2 or not state.isalpha():
+        raise ValueError(f"state must be a two-letter postal code (got {state!r})")
+    return f"https://{HOST}/server/rest/services/Hosted/HPMS_FULL_{state.upper()}_{year}/FeatureServer/0/query"
+
+
+def segments_near_request(lat: float, lon: float, radius_miles: float, max_segments: int = 50) -> dict[str, str]:
+    """Query parameters for segments with AADT > 0 within radius_miles of a point, as GeoJSON."""
+    return {
+        "geometry": f"{lon:.6f},{lat:.6f}",
+        "geometryType": "esriGeometryPoint",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+        "distance": f"{radius_miles * METERS_PER_MILE:.0f}",
+        "units": "esriSRUnit_Meter",
+        "where": "aadt > 0",
+        "outFields": OUT_FIELDS,
+        "returnGeometry": "true",
+        "outSR": "4326",
+        "geometryPrecision": "6",
+        "resultRecordCount": str(max_segments),
+        "f": "geojson",
+    }
+
+
+def county_count_request(county_fips: str) -> dict[str, str]:
+    """Query parameters counting segments with AADT > 0 in one county (county_id is the 3-digit county code)."""
+    if len(county_fips) != 3 or not county_fips.isdigit():
+        raise ValueError(f"county FIPS codes have 3 digits (got {county_fips!r})")
+    return {"where": f"county_id = {int(county_fips)} AND aadt > 0", "returnCountOnly": "true", "f": "json"}
+
+
+def line_points(geometry: dict[str, Any]) -> list[tuple[float, float]]:
+    """[(lat, lon), ...] of a GeoJSON LineString or MultiLineString (parts are joined)."""
+    kind = geometry.get("type")
+    coordinates = geometry.get("coordinates") or []
+    if kind == "LineString":
+        parts = [coordinates]
+    elif kind == "MultiLineString":
+        parts = coordinates
+    else:
+        return []
+    return [(float(point[1]), float(point[0])) for part in parts for point in part]
+
+
+def parse_segments(data: dict[str, Any]) -> list[RoadSegment]:
+    """RoadSegments from the FeatureServer's GeoJSON answer (features without AADT or shape are skipped)."""
+    if "error" in data:
+        raise UpstreamError(HOST, str(data["error"]))
+    segments: list[RoadSegment] = []
+    for feature in data.get("features", []):
+        props = feature.get("properties") or {}
+        line = line_points(feature.get("geometry") or {})
+        if not line or props.get("aadt") in (None, 0):
+            continue
+        segments.append(
+            RoadSegment(
+                route_id=str(props.get("route_id")),
+                route_name=props.get("routename"),
+                aadt=int(props["aadt"]),
+                functional_class=props.get("f_system"),
+                data_year=props.get("data_year"),
+                line=line,
+            )
+        )
+    return segments
+
+
+def nearest_segment(segments: list[RoadSegment], lat: float, lon: float) -> tuple[RoadSegment, float]:
+    """(nearest segment, distance in miles). Raises NotAvailable for an empty list."""
+    if not segments:
+        raise NotAvailable("no HPMS road segment with traffic counts near this site")
+    distances = [point_to_polyline_miles(lat, lon, segment.line) for segment in segments]
+    best = min(range(len(segments)), key=lambda index: distances[index])
+    return segments[best], distances[best]
+
+
+def nearest_road(
+    client: PoliteClient, state: str, lat: float, lon: float, radius_miles: float = 0.25, year: int = DEFAULT_YEAR
+) -> NearestRoad:
+    """The nearest HPMS segment with AADT within radius_miles of the site."""
+    fetched = client.get(layer_url(state, year), segments_near_request(lat, lon, radius_miles))
+    segment, distance = nearest_segment(parse_segments(fetched.json()), lat, lon)
+    record = SOURCE.record(fetched, vintage=f"HPMS {year}", geography=f"{lat:.5f},{lon:.5f}")
+    return NearestRoad(segment=segment, distance_miles=distance, source=record)
+
+
+def county_segment_count(client: PoliteClient, state: str, county_fips: str, year: int = DEFAULT_YEAR) -> tuple[int, SourceRecord]:
+    """How many segments with AADT > 0 the HPMS layer has in one county (used by the coverage report)."""
+    fetched = client.get(layer_url(state, year), county_count_request(county_fips))
+    data = fetched.json()
+    if "count" not in data:
+        raise UpstreamError(HOST, str(data.get("error", "no count in the answer")))
+    record = SOURCE.record(fetched, vintage=f"HPMS {year}", geography=f"state {state} county {county_fips}")
+    return int(data["count"]), record

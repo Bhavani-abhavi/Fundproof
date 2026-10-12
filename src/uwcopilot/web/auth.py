@@ -146,8 +146,10 @@ def rate_limit_user_key(request: Request) -> str | None:
 def require_role(*roles: str) -> Callable[[Request], Principal]:
     """A FastAPI dependency: 401 when signed out, 403 when the user holds none of roles (no roles = any user).
 
-        @router.post("/decision")
-        def decide(principal: Principal = Depends(require_role("lender_senior"))) -> ...
+    SeniorLender = Annotated[Principal, Depends(require_role("lender_senior"))]
+
+    @router.post("/api/lender/files/{file_id}/decision")
+    def decide(file_id: str, principal: SeniorLender) -> ...
     """
     unknown = [role for role in roles if role not in ROLES]
     if unknown:
@@ -159,7 +161,8 @@ def require_role(*roles: str) -> Callable[[Request], Principal]:
         if principal is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="sign in required")
         if roles and not principal.has_any_role(roles):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"requires one of the roles {list(roles)}")
+            detail = f"requires one of the roles {list(roles)}"
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
         return principal
 
     return dependency

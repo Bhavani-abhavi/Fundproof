@@ -211,12 +211,6 @@
   .hatch {
     background-image: repeating-linear-gradient(-45deg, var(--hatch) 0 6px, transparent 6px 12px);
   }
-
-  /* Faint ruled-ledger lines behind the hero. */
-  .ledger-lines {
-    background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--rule) calc(100% - 1px));
-    background-size: 100% 2.25rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

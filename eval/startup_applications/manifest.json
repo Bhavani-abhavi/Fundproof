@@ -1,0 +1,31 @@
+{
+  "data_label": "SYNTHETIC",
+  "description": "SYNTHETIC startup term loan applications (line startup_credit, schema startup-application-v1) with designed ground truth, one per Fundproof business type, for the SYNTHETIC Northwind startup program (corpus/programs/northwind_startup_program.md). Every amount and assumption is a made-up example input, not a benchmark; no file carries simulator output.",
+  "generator_version": "synthetic-startup-applications-v1",
+  "seed": 42,
+  "as_of_date": "2026-09-30",
+  "count": 6,
+  "business_types": [
+    "car_wash",
+    "laundromat",
+    "motel",
+    "restaurant_cafe",
+    "retail_storefront",
+    "short_term_rental"
+  ],
+  "expected_recommendations": {
+    "approve": 1,
+    "refer": 2,
+    "decline_for_review": 1,
+    "request_more_information": 2
+  },
+  "files": {
+    "APP-S-001.json": "0dbbb22e08881d0f7da901dcf892a9f324b4580eff7a93bd2de1b3ef385d0daf",
+    "APP-S-002.json": "ae78cb988c66ea696a087c6ef3c370b8f4576fb1f864cadf3b05f30cb2b53103",
+    "APP-S-003.json": "d11c00e34e825850ab654ab880832545bb6525993e90f4909f1d44b9c9c616de",
+    "APP-S-004.json": "c2bfd7964944fd3d42c94dea72754aa786cb623c32bceee787a1749e38dd097c",
+    "APP-S-005.json": "b90c4e8dd32c57193ae525bb5b18a5e80f5f40126b2aee8a9e7de276f4dd78fa",
+    "APP-S-006.json": "cfb493100cddc19bf255f1e06c4133956c0c5415aa89a7b5a8276799c5884321"
+  },
+  "applications_sha256": "443f4ff36aa5024d91b27d9b9c98f2af9736886e867b90a2ddfec7d12eb04f75"
+}

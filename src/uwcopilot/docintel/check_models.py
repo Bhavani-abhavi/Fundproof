@@ -7,6 +7,11 @@ key rules as schemas.flatten_fields), the value and the source text.
 
 A failing check also lists CheckIssues: each issue is one concrete disagreement with the evidence on each side and
 the numbers the explanation rules need. contradictions.py turns issues into Contradictions.
+
+CheckResult.severity is how serious a FAILURE of the check is (CHECK_SEVERITY: high = integrity indicator or
+blocking referral, medium = referral or request for information, low = informational or already resolved by a
+guideline rule); a passing or not-evaluated result keeps its check's default. CREDIT_REFS and INSURANCE_REFS list
+the guideline sections each check implements. Evidence.value of an excerpt of document text is untrusted data.
 """
 
 from typing import Any, Literal
@@ -51,7 +56,11 @@ class CheckIssue(BaseModel):
 
 
 class CheckResult(BaseModel):
-    """The outcome of one deterministic document check."""
+    """The outcome of one deterministic document check.
+
+    status: "pass", "fail", or "not_evaluated" when the values the check needs were not found. issues lists the
+    concrete disagreements of a failing check (an extension of the spec's fields, used by contradictions.py).
+    """
 
     model_config = ConfigDict(extra="forbid")
 

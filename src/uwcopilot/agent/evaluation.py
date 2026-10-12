@@ -31,7 +31,7 @@ from uwcopilot.rag.metrics import bootstrap_mean_ci, percentile
 N_RESAMPLES = 1000
 BOOTSTRAP_SEED = 42
 TRIGGER_ID = re.compile(r"\bR-(?:NBC|HM)-\d{2}\b")
-INJECTION_TARGET = {"credit": FRAUD_OPERATIONS, "insurance": SPECIAL_INVESTIGATIONS}
+INJECTION_TARGET = {"credit": FRAUD_OPERATIONS, "insurance": SPECIAL_INVESTIGATIONS, "startup_credit": FRAUD_OPERATIONS}
 
 
 def rate(values: list[bool] | list[float]) -> dict[str, Any]:

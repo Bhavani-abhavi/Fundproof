@@ -131,3 +131,10 @@ fetch-local-model:  ## Import a pinned local model into Ollama from Docker Hub (
 
 test-ollama-live:  ## One live smoke call to the local Ollama server (needs `make fetch-local-model` and `ollama serve`)
 	UWC_OLLAMA_LIVE=1 uv run pytest -m integration -s tests/llm/test_ollama_client.py
+
+# SYNTHETIC startup lending program (corpus/programs/) and its example files. Offline, no downloads.
+
+.PHONY: startup-applications
+
+startup-applications:  ## Make the 6 SYNTHETIC startup credit examples (one per business type); eval/startup_applications/
+	uv run python scripts/make_startup_applications.py

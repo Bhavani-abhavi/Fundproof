@@ -56,7 +56,8 @@ OVERSTATEMENT_FACTOR = 1.10  # stated more than 10% above every supporting figur
 NAME_MAX_EDITS = 2
 FEIN_DIGITS = 9
 # Cover-email phrases that mention an updated schedule or values (HM-5.2 benign outdated application).
-UPDATE_WORDS = r"(?:updated|revised|refreshed|corrected|latest|new|current)"
+# "new" and "current" are left out on purpose: "new submission ... schedule" is ordinary broker wording.
+UPDATE_WORDS = r"(?:updated|revised|refreshed|corrected|latest)"
 UPDATE_TARGETS = r"(?:property schedule|schedule|statement of values|sov|replacement costs?|values|valuations?)"
 UPDATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(rf"\b{UPDATE_WORDS}\b(?:\W+\w+){{0,4}}?\W+{UPDATE_TARGETS}\b", re.IGNORECASE),
@@ -94,31 +95,32 @@ def other_period_figures(data: dict) -> list[tuple[str, float]]:
 
 
 def explain_revenue_gap(data: dict) -> Verdict:
-    """Revenue-gap rules 1-5 (module docstring)."""
+    """Revenue-gap rules 1-5 (module docstring). Every detail starts with the stated and verified figures."""
     stated = float(data["stated_annual_revenue"])
     verified = float(data["verified_annual_revenue"])
     gross = float(data["gross_deposits"])
     identified = float(data["identified_non_revenue"])
     unidentified = float(data["unidentified_deposits"])
     gap = stated - verified
+    opening = f"Stated revenue {money(stated)} vs verified {money(verified)} (gap {money(gap)}). "
     if near(gross, stated) and identified >= HALF_OF_GAP * gap:
         detail = (
-            f"Stated revenue {money(stated)} is within 2% of gross deposits {money(gross)}, and identified "
-            f"non-revenue deposits of {money(identified)} cover at least half of the {money(gap)} gap: the stated "
-            "figure appears to count transfers, refunds or loan proceeds as revenue."
+            f"{opening}Stated is within 2% of gross deposits {money(gross)}, and identified non-revenue deposits of "
+            f"{money(identified)} cover at least half of the gap: the stated figure appears to count transfers, "
+            "refunds or loan proceeds as revenue."
         )
         return Verdict("benign", "non_revenue_deposits_counted", detail)
     if unidentified >= HALF_OF_GAP * gap:
         detail = (
-            f"Deposits of unknown nature total {money(unidentified)}, at least half of the {money(gap)} gap; NBC-3.3 "
+            f"{opening}Deposits of unknown nature total {money(unidentified)}, at least half of the gap; NBC-3.3 "
             "excludes them until the applicant documents them, so documenting them may close the gap."
         )
         return Verdict("benign", "unidentified_deposits", detail)
     for label, amount in other_period_figures(data):
         if near(amount, stated):
             detail = (
-                f"Stated revenue {money(stated)} is within 2% of the {label} ({money(amount)}): the stated figure "
-                "appears to be for a different period than the 12 statement months."
+                f"{opening}Stated is within 2% of the {label} ({money(amount)}): the stated figure appears to be "
+                "for a different period than the 12 statement months."
             )
             return Verdict("benign", "fiscal_year_timing", detail)
     supports = [("gross deposits", gross)]
@@ -128,11 +130,11 @@ def explain_revenue_gap(data: dict) -> Verdict:
     largest = max(amount for _, amount in supports)
     if stated > OVERSTATEMENT_FACTOR * largest:
         listed = ", ".join(f"{label} {money(amount)}" for label, amount in supports)
-        detail = f"Stated revenue {money(stated)} is more than 10% above every supporting figure ({listed})."
+        detail = f"{opening}Stated is more than 10% above every supporting figure ({listed})."
         return Verdict("unsupported", "no_supporting_document", detail)
     detail = (
-        f"Stated revenue {money(stated)} vs verified {money(verified)}: no documented rule explains the "
-        f"{money(gap)} gap, and some document supports a figure within 10% of the stated one."
+        f"{opening}No documented rule explains the gap, and some document supports a figure within 10% of the "
+        "stated one."
     )
     return Verdict("unknown", "insufficient_evidence", detail)
 

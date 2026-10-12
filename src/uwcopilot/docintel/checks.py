@@ -11,9 +11,9 @@ builder (contradictions.py) use them. Where each check lives:
 - credit: checks_credit.py (required_documents, name/fein/owner consistency, tax_return_vs_pnl),
   checks_statements.py (statement_months_complete, balance_continuity, account_conduct) and checks_revenue.py
   (revenue_vs_deposits, debt_payment_consistency);
-- insurance: checks_insurance.py (required_documents, name/fein/owner consistency, tiv_consistency) and
-  checks_loss_runs.py (loss_run_line_balance, loss_run_totals, claims_history_consistency, loss_run_coverage,
-  loss_run_valuation_age);
+- insurance: checks_insurance.py (required_documents, name/fein/owner consistency, tiv_consistency),
+  checks_loss_runs.py (loss_run_line_balance, loss_run_totals, claims_history_consistency) and
+  checks_loss_run_coverage.py (loss_run_coverage, loss_run_valuation_age);
 - both: embedded_instructions, below.
 
 embedded_instructions (NBC-9.2, HM-11.2): instruction-like text inside a document is an integrity indicator. The

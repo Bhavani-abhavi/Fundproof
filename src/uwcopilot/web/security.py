@@ -18,7 +18,6 @@ body size limit -> CSRF -> the routes. So a 429, 413 or 403 still gets the secur
 import base64
 import hashlib
 import hmac
-import json
 import math
 import time
 from collections.abc import Callable, Iterable
@@ -351,15 +350,3 @@ class CsrfMiddleware:
             await json_error(403, detail)(scope, receive, send)
             return
         await self.app(scope, receive, send)
-
-
-def describe_limits(ip_limiter: RateLimiter, user_limiter: RateLimiter) -> str:
-    """One line for the startup log."""
-    return json.dumps(
-        {
-            "ip_per_minute": round(ip_limiter.refill_per_s * 60),
-            "ip_burst": int(ip_limiter.capacity),
-            "user_per_minute": round(user_limiter.refill_per_s * 60),
-            "user_burst": int(user_limiter.capacity),
-        }
-    )

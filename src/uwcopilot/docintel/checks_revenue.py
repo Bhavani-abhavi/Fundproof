@@ -16,6 +16,8 @@
   check's severity is low. Payments to lenders that are not on the schedule are listed in values only.
 """
 
+from pydantic import ValidationError
+
 from uwcopilot.agent.applications import BankStatementSummary, MonthlyDeposits
 from uwcopilot.agent.credit_calculations import month_index, revenue_gap_pct, verify_revenue
 from uwcopilot.agent.policy_credit import BENIGN_GAP_PCT, EXPLAINABLE_GAP_PCT
@@ -62,14 +64,21 @@ def statements_with_months(packet: LoanPacket) -> list[tuple[BankStatement, dict
 
 
 def verify(months: list[dict]) -> tuple[float | None, float]:
-    """(verified annual revenue or None, excluded cash) using the agent's verify_revenue."""
-    summary = BankStatementSummary(
-        account_number=PLACEHOLDER_ACCOUNT,
-        months=[MonthlyDeposits(**month) for month in months],
-        nsf_events_last_6_months=0,
-        negative_balance_months_last_12=0,
-        average_daily_balance_last_3_months=0.0,
-    )
+    """(verified annual revenue or None, excluded cash) using the agent's verify_revenue.
+
+    A month the agent model rejects (for example a negative total read from a damaged page) means revenue cannot
+    be verified, so the result is None rather than an exception.
+    """
+    try:
+        summary = BankStatementSummary(
+            account_number=PLACEHOLDER_ACCOUNT,
+            months=[MonthlyDeposits(**month) for month in months],
+            nsf_events_last_6_months=0,
+            negative_balance_months_last_12=0,
+            average_daily_balance_last_3_months=0.0,
+        )
+    except ValidationError:
+        return None, 0.0
     result = verify_revenue(summary)
     return result.verified_annual_revenue, result.excluded_cash
 

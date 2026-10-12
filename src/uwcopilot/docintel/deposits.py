@@ -37,8 +37,12 @@ the same rules, so they are written down precisely):
   minus the withdrawal), or the opening balance before the first row. Rounded to cents.
 - average_monthly_loan_payments / average_monthly_mca_remittance: the sum of loan_payment (mca_remittance) rows
   over all statements divided by the number of statement months present.
-- new_loans_last_90_days: the number of loan_proceeds deposit rows posted in the 90 days up to and including the
-  as-of date (normally the application date).
+- new_loans_last_90_days: the number of NEW loans or advances (NBC-4.4 "new loans or merchant cash advance
+  fundings"): loan_proceeds deposit rows whose description also matches NEW_LOAN_PATTERN (loan proceeds or
+  disbursements, MCA fundings and advances; not line-of-credit draws or card cash advances, which draw on credit
+  that already exists), posted in the 90 days up to and including the as-of date. NBC-4.4 counts "the most
+  recent 90 days of statements"; the caller chooses the as-of date (the application date or the last statement
+  period end) and must use the same one wherever the figure is compared.
 """
 
 import re
@@ -106,6 +110,11 @@ NON_REVENUE_FIELDS: dict[str, str] = {
     "unidentified": "unidentified_deposits",
 }
 IDENTIFIED_NON_REVENUE: tuple[str, ...] = ("transfer", "refund", "loan_proceeds", "owner_contribution", "one_time")
+# NBC-4.4 stacking counts new loans and MCA fundings, not draws on existing credit (see the module docstring).
+NEW_LOAN_PATTERN = re.compile(
+    r"\b(?:LOAN PROCEEDS|LOAN DISBURSEMENT|LOAN DEPOSIT|MCA FUNDING|MCA ADVANCE|MERCHANT CASH ADVANCE|"
+    r"ADVANCE FUNDING)\b"
+)
 NSF_WINDOW_MONTHS = 6  # NBC-3.5: NSF events in the most recent 6 months
 NEGATIVE_WINDOW_MONTHS = 12  # NBC-3.5: negative months within the most recent 12
 ADB_WINDOW_MONTHS = 3  # NBC-3.5: average daily balance over the most recent 3 months
@@ -335,14 +344,20 @@ def average_monthly_mca_remittance(statements: list[BankStatement]) -> float:
     return average_monthly_withdrawals(statements, "mca_remittance")
 
 
+def is_new_loan(row: ClassifiedRow) -> bool:
+    """True for a loan-proceeds deposit that is a new loan or MCA funding (NEW_LOAN_PATTERN)."""
+    if row.kind != "deposit" or row.category != "loan_proceeds":
+        return False
+    return NEW_LOAN_PATTERN.search(description_text(row.transaction.description.value)) is not None
+
+
 def new_loans_last_90_days(statements: list[BankStatement], as_of: date) -> int:
-    """Number of loan-proceeds deposits (loans, advances, MCA fundings) posted in the 90 days up to as_of."""
+    """Number of new loans and MCA fundings posted in the 90 days up to and including as_of (NBC-4.4)."""
     earliest = as_of - timedelta(days=NEW_LOAN_WINDOW_DAYS)
     count = 0
     for statement in statements:
         for row in classify_rows(statement):
             posted = row.transaction.posted_date.value
-            if row.kind == "deposit" and row.category == "loan_proceeds" and posted is not None:
-                if earliest <= posted <= as_of:
-                    count += 1
+            if is_new_loan(row) and posted is not None and earliest <= posted <= as_of:
+                count += 1
     return count

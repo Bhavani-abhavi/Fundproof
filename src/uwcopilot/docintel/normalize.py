@@ -4,7 +4,8 @@ Attackers can hide instructions from a keyword detector with characters a reader
 like ASCII letters. normalize_text() undoes the common tricks, in this order:
 
 1. strip invisible characters: zero-width characters U+200B-U+200F, the word joiner U+2060, the byte order mark
-   U+FEFF and the Unicode "tag" characters U+E0000-U+E007F (used for "ASCII smuggling");
+   U+FEFF and the Unicode "tag" characters U+E0000-U+E007F (used for "ASCII smuggling"), plus two more that
+   render as nothing inside a word: the soft hyphen U+00AD and the invisible operators U+2061-U+2064;
 2. NFKC normalization (fullwidth letters become ASCII, ligatures such as "fi" are split, the no-break space
    becomes a plain space);
 3. a small documented homoglyph fold (HOMOGLYPHS below): Cyrillic and Greek letters that look like Latin letters
@@ -21,8 +22,8 @@ person names and canonical_fein() for FEINs. Nothing here interprets the text; i
 import re
 import unicodedata
 
-# 1. Invisible characters removed before anything else.
-ZERO_WIDTH_CODEPOINTS: tuple[int, ...] = (*range(0x200B, 0x2010), 0x2060, 0xFEFF)
+# 1. Invisible characters removed before anything else (zero-width, word joiner, BOM, soft hyphen, invisible operators).
+INVISIBLE_CODEPOINTS: tuple[int, ...] = (*range(0x200B, 0x2010), 0x2060, 0xFEFF, 0x00AD, *range(0x2061, 0x2065))
 TAG_FIRST = 0xE0000
 TAG_LAST = 0xE007F
 # Tag characters U+E0020-U+E007E mirror printable ASCII 0x20-0x7E.
@@ -88,6 +89,8 @@ HOMOGLYPHS: dict[str, str] = {
     "’": "'",  # right single quote / apostrophe
     "“": '"',  # left double quote
     "”": '"',  # right double quote
+    "‐": "-",  # hyphen (NFKC turns the non-breaking hyphen U+2011 into this)
+    "‒": "-",  # figure dash
     "–": "-",  # en dash
     "—": "-",  # em dash
     "−": "-",  # minus sign
@@ -99,9 +102,9 @@ NAME_PUNCTUATION = re.compile(r"[.,'\"()&/\\-]")
 
 
 def is_invisible(character: str) -> bool:
-    """True for a zero-width character, the word joiner, the BOM or a Unicode tag character."""
+    """True for a character in INVISIBLE_CODEPOINTS or a Unicode tag character."""
     codepoint = ord(character)
-    return codepoint in ZERO_WIDTH_CODEPOINTS or TAG_FIRST <= codepoint <= TAG_LAST
+    return codepoint in INVISIBLE_CODEPOINTS or TAG_FIRST <= codepoint <= TAG_LAST
 
 
 def strip_invisible(text: str) -> str:

@@ -17,14 +17,21 @@ Recommendation precedence (documented in docs/agent_design.md):
 4. any other referral trigger -> "refer";
 5. otherwise -> "approve" (a person with authority still has to approve).
 
-The line-specific rules live in policy_credit.py (Northwind) and policy_insurance.py (Harborline).
+The line-specific rules live in policy_credit.py (Northwind), policy_insurance.py (Harborline) and
+policy_startup.py (the SYNTHETIC Northwind startup program, corpus/programs/). Startup files always need a senior
+underwriter (NSP-9.1), whatever the recommendation.
 """
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from uwcopilot.agent.applications import CreditApplication, InsuranceApplication, screened_parties
+from uwcopilot.agent.applications import (
+    AnyApplication,
+    CreditApplication,
+    StartupCreditApplication,
+    screened_parties,
+)
 from uwcopilot.agent.vocab import (
     BLOCKING_FUNCTIONS,
     COMPLIANCE,
@@ -43,12 +50,27 @@ CalcUnit = Literal["usd", "ratio", "pct", "months", "count", "days", "score", "u
 # NBC-8.1: a model probability of default above 12.0% is band E and a referral (R-NBC-12).
 PD_REFERRAL_THRESHOLD = 0.12
 
-# Section ids and trigger ids for the rules both lines share, by line.
-SANCTIONS_SECTIONS = {"credit": ["NBC-6.3", "NBC-7.3"], "insurance": ["HM-8.2", "HM-9.3"]}
-SANCTIONS_TRIGGER = {"credit": "R-NBC-10", "insurance": "R-HM-13"}
-INJECTION_SECTIONS = {"credit": ["NBC-9.2", "NBC-7.3"], "insurance": ["HM-11.2", "HM-9.3"]}
-INJECTION_TRIGGER = {"credit": "R-NBC-13", "insurance": "R-HM-16"}
-INJECTION_REFER_TO = {"credit": FRAUD_OPERATIONS, "insurance": SPECIAL_INVESTIGATIONS}
+# Section ids and trigger ids for the rules every line shares, by line. The startup program keeps the Northwind
+# sanctions and injection rules unchanged (NSP-7.3), so startup files cite the same sections and triggers.
+SANCTIONS_SECTIONS = {
+    "credit": ["NBC-6.3", "NBC-7.3"],
+    "insurance": ["HM-8.2", "HM-9.3"],
+    "startup_credit": ["NBC-6.3", "NBC-7.3"],
+}
+SANCTIONS_TRIGGER = {"credit": "R-NBC-10", "insurance": "R-HM-13", "startup_credit": "R-NBC-10"}
+INJECTION_SECTIONS = {
+    "credit": ["NBC-9.2", "NBC-7.3"],
+    "insurance": ["HM-11.2", "HM-9.3"],
+    "startup_credit": ["NBC-9.2", "NBC-7.3"],
+}
+INJECTION_TRIGGER = {"credit": "R-NBC-13", "insurance": "R-HM-16", "startup_credit": "R-NBC-13"}
+INJECTION_REFER_TO = {
+    "credit": FRAUD_OPERATIONS,
+    "insurance": SPECIAL_INVESTIGATIONS,
+    "startup_credit": FRAUD_OPERATIONS,
+}
+# NSP-9.1: lines whose files always need a senior underwriter, whatever the recommendation.
+SENIOR_REVIEW_LINES = frozenset({"startup_credit"})
 INJECTION_EVIDENCE_ID = "CHK-injection_screen"
 
 
@@ -140,7 +162,7 @@ class PolicyResult(PolicyModel):
     """The reference policy's answer for one application."""
 
     application_id: str
-    line: Literal["credit", "insurance"]
+    line: Literal["credit", "insurance", "startup_credit"]
     policy_version: str = POLICY_VERSION
     recommendation: Recommendation
     findings: list[Finding]
@@ -242,9 +264,7 @@ def pct(value: float) -> str:
 # --------------------------------------------------------------------------------------------------------------
 
 
-def check_sanctions(
-    application: CreditApplication | InsuranceApplication, inputs: PolicyInputs, context: RuleContext
-) -> None:
+def check_sanctions(application: AnyApplication, inputs: PolicyInputs, context: RuleContext) -> None:
     """NBC-6.3 / HM-8.2: every party must be screened; any potential match is a blocking Compliance referral."""
     line = application.line
     sections = SANCTIONS_SECTIONS[line]
@@ -286,9 +306,7 @@ def check_sanctions(
         )
 
 
-def check_injection(
-    application: CreditApplication | InsuranceApplication, inputs: PolicyInputs, context: RuleContext
-) -> None:
+def check_injection(application: AnyApplication, inputs: PolicyInputs, context: RuleContext) -> None:
     """NBC-9.2 / HM-11.2: instruction-like text in a document is an integrity indicator and a blocking referral.
 
     It changes nothing else: no calculation, screening step or other rule reads the flagged text.
@@ -377,29 +395,40 @@ def referral_targets(findings: list[Finding]) -> list[str]:
     return [target for target in REFERRAL_PRIORITY if target in named]
 
 
-def review_queue_for(recommendation: str, targets: list[str]) -> str:
-    """The first queue the file goes to: the most urgent referral target, else the underwriter."""
+def review_queue_for(recommendation: str, targets: list[str], line: str = "credit") -> str:
+    """The first queue the file goes to: the most urgent referral target, else the underwriter.
+
+    A startup file with no referral target goes to the Senior Underwriter queue (NSP-9.1).
+    """
     if targets:
         return targets[0]
+    if line in SENIOR_REVIEW_LINES:
+        return SENIOR_UNDERWRITER
     return UNDERWRITER if recommendation in ("approve", "request_more_information") else SENIOR_UNDERWRITER
 
 
-def required_role_for(recommendation: str) -> ReviewerRole:
-    """Refer and decline-for-review files need a senior underwriter at the checkpoint (NBC-7.2, HM-9.2)."""
-    if recommendation in ("refer", "decline_for_review"):
+def required_role_for(recommendation: str, line: str = "credit") -> ReviewerRole:
+    """Refer and decline-for-review files need a senior underwriter at the checkpoint (NBC-7.2, HM-9.2).
+
+    Every startup file needs one, whatever the recommendation (NSP-9.1).
+    """
+    if recommendation in ("refer", "decline_for_review") or line in SENIOR_REVIEW_LINES:
         return "senior_underwriter"
     return "underwriter"
 
 
-def evaluate_policy(application: CreditApplication | InsuranceApplication, inputs: PolicyInputs) -> PolicyResult:
+def evaluate_policy(application: AnyApplication, inputs: PolicyInputs) -> PolicyResult:
     """Run every rule for the application's line and return the reference recommendation with its reasons."""
     from uwcopilot.agent.policy_credit import evaluate_credit_rules  # local imports avoid a cycle
     from uwcopilot.agent.policy_insurance import evaluate_insurance_rules
+    from uwcopilot.agent.policy_startup import STARTUP_POLICY_VERSION, evaluate_startup_rules
 
     context = RuleContext()
     if isinstance(application, CreditApplication):
         evaluate_credit_rules(application, inputs, context)
         check_credit_risk_model(inputs, context)
+    elif isinstance(application, StartupCreditApplication):
+        evaluate_startup_rules(application, inputs, context)
     else:
         evaluate_insurance_rules(application, inputs, context)
     check_sanctions(application, inputs, context)
@@ -407,9 +436,11 @@ def evaluate_policy(application: CreditApplication | InsuranceApplication, input
 
     recommendation = decide_recommendation(context.findings)
     targets = referral_targets(context.findings)
+    line = application.line
     return PolicyResult(
         application_id=application.application_id,
-        line=application.line,
+        line=line,
+        policy_version=STARTUP_POLICY_VERSION if line == "startup_credit" else POLICY_VERSION,
         recommendation=recommendation,
         findings=context.findings,
         checks_passed=context.checks,
@@ -417,8 +448,8 @@ def evaluate_policy(application: CreditApplication | InsuranceApplication, input
         not_evaluated=context.not_evaluated,
         referral_targets=targets,
         blocking_open=any(finding.blocking for finding in context.findings),
-        required_reviewer_role=required_role_for(recommendation),
-        review_queue=review_queue_for(recommendation, targets),
+        required_reviewer_role=required_role_for(recommendation, line),
+        review_queue=review_queue_for(recommendation, targets, line),
     )
 
 

@@ -23,7 +23,10 @@ export interface HealthResponse {
   git_sha?: string | null;
 }
 
-/** GET /api/config. `metros` and `business_types` are empty until the Studio data loaders are ready. */
+/**
+ * GET /api/config. `metros` and `business_types` are empty (with `metros_note` saying why) until the Studio
+ * loaders are available. Optional fields are read defensively because the server shell is still evolving.
+ */
 export interface ConfigResponse {
   product_name: string;
   disclaimer: string;
@@ -32,6 +35,14 @@ export interface ConfigResponse {
   data_labels?: unknown;
   metros: unknown[];
   business_types: unknown[];
+  metros_note?: string | null;
+  roles?: string[];
+  /** True when Hugging Face sign-in is configured (inside a Space with `hf_oauth: true`). */
+  hf_oauth?: boolean;
+  is_space?: boolean;
+  /** The Space's direct URL (outside the huggingface.co iframe), when running in a Space. */
+  space_url?: string | null;
+  payments_enabled?: boolean;
 }
 
 /** GET /api/me */

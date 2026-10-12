@@ -48,7 +48,7 @@ class HostPolicy:
 
 # Per-host settings. Overpass asks heavy users to slow down, so it gets a longer interval and timeout.
 DEFAULT_POLICIES: dict[str, HostPolicy] = {
-    "overpass-api.de": HostPolicy(min_interval_s=5.0, timeout_s=120.0),
+    "overpass-api.de": HostPolicy(min_interval_s=5.0, timeout_s=60.0, max_retries=1),
     "www2.census.gov": HostPolicy(min_interval_s=1.0, timeout_s=120.0),
     "geo.dot.gov": HostPolicy(min_interval_s=1.0, timeout_s=60.0),
 }
@@ -107,7 +107,10 @@ class PoliteClient:
         all_params = {str(name): str(value) for name, value in (params or {}).items()}
         public = {name: value for name, value in all_params.items() if name not in set(secret_params)}
         secrets = [all_params[name] for name in secret_params if name in all_params]
-        secrets += [str((headers or {})[name]) for name in secret_headers if name in (headers or {})]
+        for name in secret_headers:
+            value = str((headers or {}).get(name, ""))
+            # Both the whole value ("Bearer abc") and the token alone ("abc") are redacted.
+            secrets += [value, value.split()[-1]] if value.strip() else []
         key = request_key("GET", url, public)
         return self.fetch("GET", url, all_params, public, None, None, headers, secrets, key, use_cache)
 

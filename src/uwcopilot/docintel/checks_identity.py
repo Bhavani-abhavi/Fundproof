@@ -46,17 +46,17 @@ def doc_ids_of(items: list[Evidence]) -> list[str]:
     return seen
 
 
+def group_rank(items: list[Evidence]) -> tuple[int, int]:
+    """(number of documents, 1 if the application is in the group else 0): the larger rank wins the majority."""
+    has_application = any(item.field.startswith("application.") for item in items)
+    return len(doc_ids_of(items)), 1 if has_application else 0
+
+
 def majority_key(groups: dict[str, list[Evidence]]) -> str:
     """The group printed on the most documents; ties go to the group with the application's value."""
-
-    def rank(key: str) -> tuple[int, int]:
-        items = groups[key]
-        has_application = any(item.field.startswith("application.") for item in items)
-        return len(doc_ids_of(items)), 1 if has_application else 0
-
     best = list(groups)[0]
     for key in groups:
-        if rank(key) > rank(best):
+        if group_rank(groups[key]) > group_rank(groups[best]):
             best = key
     return best
 

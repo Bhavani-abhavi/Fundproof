@@ -172,14 +172,17 @@ class MetroConfig(StrictModel):
         return [item for item in self.enhancements if item.enabled and (kind is None or item.kind == kind)]
 
 
-def metro_mode(metro: MetroConfig, coverage_share: float | None) -> tuple[MetroMode, str]:
+def metro_mode(
+    metro: MetroConfig, coverage_share: float | None, snapshot_date: date | None = None
+) -> tuple[MetroMode, str]:
     """(mode, plain-language reason) for a metro, given the share of required factors that have data.
 
-    coverage_share is None when it could not be computed (for example no snapshot).
+    coverage_share is None when it could not be computed (for example no snapshot). snapshot_date is the date of the
+    snapshot in use (found on disk by the data fabric); when None, the config's pinned snapshot_date is used.
     """
     if metro.data_label == "SYNTHETIC":
         return "synthetic", "SYNTHETIC metro: generated data for demonstration and validation only"
-    if metro.snapshot_date is None:
+    if (snapshot_date or metro.snapshot_date) is None:
         return "limited", "no data snapshot"
     if not metro.verified:
         return "limited", "county list not yet verified against the Census delineation file"

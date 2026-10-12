@@ -18,7 +18,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict
 
-from uwcopilot.agent.applications import CreditApplication, InsuranceApplication
+from uwcopilot.agent.applications import AnyApplication, StartupCreditApplication
 from uwcopilot.rag.prompt import INSTRUCTION_PATTERNS, InstructionPattern
 
 MAX_EXCERPT_CHARS = 200
@@ -67,15 +67,29 @@ def detect(text: str) -> list[str]:
     return [item.name for item in ALL_PATTERNS if item.pattern.search(text)]
 
 
-def free_text_fields(application: CreditApplication | InsuranceApplication) -> dict[str, str]:
-    """Every free-text field an applicant controls: the notes, the legal name and each owner's name."""
-    fields = {"notes": application.notes, "applicant.legal_name": application.applicant.legal_name}
+def free_text_fields(application: AnyApplication) -> dict[str, str]:
+    """Every free-text field an applicant controls: the notes, the legal name and each owner's name.
+
+    A startup application names the business (business_name) and adds two more free-text places: the site
+    description and the source text of each material assumption.
+    """
+    if isinstance(application, StartupCreditApplication):
+        fields = {
+            "notes": application.notes,
+            "applicant.business_name": application.applicant.business_name,
+            "applicant.site_description": application.applicant.site_description,
+        }
+    else:
+        fields = {"notes": application.notes, "applicant.legal_name": application.applicant.legal_name}
     for owner in application.owners:
         fields[f"owners.{owner.owner_id}.name"] = owner.name
+    if isinstance(application, StartupCreditApplication):
+        for item in application.material_assumptions:
+            fields[f"material_assumptions.{item.name}.source"] = item.source or ""
     return fields
 
 
-def screen_application(application: CreditApplication | InsuranceApplication) -> list[InjectionHit]:
+def screen_application(application: AnyApplication) -> list[InjectionHit]:
     """Check every free-text field; return one hit per field that contains instruction-like text."""
     hits = []
     for field, text in free_text_fields(application).items():

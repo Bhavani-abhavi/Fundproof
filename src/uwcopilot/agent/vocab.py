@@ -26,11 +26,13 @@ MATCHING_ACTION: dict[str, str] = {
 ReviewerRole = Literal["underwriter", "senior_underwriter"]
 REVIEWER_ROLES: tuple[str, ...] = ("underwriter", "senior_underwriter")
 
-# Business lines and the guideline document each one follows.
-Line = Literal["credit", "insurance"]
+# Business lines and the guideline document each one follows. startup_credit follows the SYNTHETIC startup program
+# in corpus/programs/ (plus the Northwind sections it keeps); that document is not in the RAG index.
+Line = Literal["credit", "insurance", "startup_credit"]
 GUIDELINE_DOC_FOR_LINE: dict[str, str] = {
     "credit": "northwind_business_credit",
     "insurance": "harborline_mutual_commercial",
+    "startup_credit": "northwind_startup_program",
 }
 
 # Functions a file can be referred to, in the order a review queue is chosen (most urgent first).

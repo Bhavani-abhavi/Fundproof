@@ -5,8 +5,9 @@
    first four digits of its CBSA code; the code and title are checked against the QCEW area-titles file
    (area_titles.csv) before use. Rows are filtered to private ownership (own_code 5, "Private" in the QCEW
    ownership-titles file). Small cells are not disclosed (disclosure_code "N"); then the next broader NAICS level is
-   used (6 -> 5 -> 4 -> 3 digits -> sector) and the level used is recorded. A quarter whose rows are not yet
-   published (disclosure_code "-") is skipped.
+   tried, but never broader than MIN_NAICS_DIGITS digits (a 3-digit group such as "repair and maintenance" mixes in
+   other industries, so it would misstate a car wash's wages). The level used is recorded. A quarter whose rows are
+   not yet published (disclosure_code "-") is skipped.
 2. BLS Public Data API v2 (needs BLS_API_KEY): a POST with series ids, for example OEWS hourly wages by occupation.
    The series ids must be taken from the BLS series-id documentation; this module does not build them.
 
@@ -21,7 +22,7 @@ from datetime import date
 from typing import Any
 
 from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.http import FetchResult, PoliteClient
 from uwcopilot.studio.data.keys import require_key
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
@@ -29,6 +30,8 @@ QCEW_BASE = "https://data.bls.gov/cew/data/api"
 AREA_TITLES_URL = "https://data.bls.gov/cew/doc/titles/area/area_titles.csv"
 BLS_V2_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 PRIVATE_OWNERSHIP = "5"
+# Design choice: accept a parent NAICS level down to 5 digits (e.g. 72251 for 722511), no broader.
+MIN_NAICS_DIGITS = 5
 ALL_INDUSTRIES = "10"
 # QCEW codes for NAICS sectors that span several two-digit codes (from the QCEW industry-titles file).
 SECTOR_RANGES: dict[str, str] = {"31": "31-33", "32": "31-33", "33": "31-33", "44": "44-45", "45": "44-45",
@@ -104,11 +107,15 @@ def area_url(year: int, quarter: int, area_code: str) -> str:
     return f"{QCEW_BASE}/{year}/{quarter}/area/{area_code}.csv"
 
 
-def naics_fallbacks(naics: str) -> list[str]:
-    """The code and its broader levels: 722511 -> 722511, 72251, 7225, 722, 72 (sectors use QCEW range codes)."""
-    levels = [naics[:length] for length in range(len(naics), 2, -1)]
-    sector = naics[:2]
-    levels.append(SECTOR_RANGES.get(sector, sector))
+def naics_fallbacks(naics: str, min_digits: int = MIN_NAICS_DIGITS) -> list[str]:
+    """The code and its broader levels down to min_digits: 722511 -> 722511, 72251 (with the default of 5).
+
+    With min_digits=2 the sector is last, in QCEW's range form for multi-code sectors (31 -> 31-33).
+    """
+    levels = [naics[:length] for length in range(len(naics), max(min_digits, 3) - 1, -1)]
+    if min_digits <= 2:
+        sector = naics[:2]
+        levels.append(SECTOR_RANGES.get(sector, sector))
     return levels
 
 
@@ -140,11 +147,22 @@ def previous_quarter(year: int, quarter: int) -> tuple[int, int]:
     return (year, quarter - 1) if quarter > 1 else (year - 1, 4)
 
 
-def latest_published_quarter(
-    client: PoliteClient, area_code: str, today: date, max_back: int = 8
-) -> tuple[int, int, str, Any]:
-    """(year, quarter, csv text, fetch) of the newest quarter whose private all-industries row is published."""
+@dataclass(frozen=True)
+class QcewQuarter:
+    """One published quarter of an area slice."""
+
+    year: int
+    quarter: int
+    text: str
+    fetched: FetchResult
+
+
+def published_quarters(
+    client: PoliteClient, area_code: str, today: date, wanted: int = 4, max_back: int = 10
+) -> list[QcewQuarter]:
+    """Up to `wanted` newest quarters whose private all-industries row is published, newest first."""
     year, quarter = today.year, (today.month - 1) // 3 + 1
+    found: list[QcewQuarter] = []
     for _ in range(max_back):
         try:
             fetched = client.get(area_url(year, quarter, area_code))
@@ -155,12 +173,16 @@ def latest_published_quarter(
             text = fetched.text()
             total = parse_area_rows(text).get(ALL_INDUSTRIES)
             if total is not None and is_disclosed(total):
-                return year, quarter, text, fetched
+                found.append(QcewQuarter(year, quarter, text, fetched))
+                if len(found) == wanted:
+                    break
         year, quarter = previous_quarter(year, quarter)
-    raise NotAvailable(f"no published QCEW quarter found for {area_code} in the last {max_back} quarters")
+    if not found:
+        raise NotAvailable(f"no published QCEW quarter found for {area_code} in the last {max_back} quarters")
+    return found
 
 
-def qcew_wage(text: str, fetched: Any, area_code: str, naics: str, year: int, quarter: int) -> QcewWage:
+def qcew_wage(text: str, fetched: FetchResult, area_code: str, naics: str, year: int, quarter: int) -> QcewWage:
     """The QCEW wage for one NAICS code from an already-fetched area slice; NotAvailable when nothing is disclosed."""
     row = pick_wage_row(parse_area_rows(text), naics)
     if row is None:
