@@ -118,3 +118,16 @@ phase1:  ## Phase 1 end to end, in order: train-insurance, fairness, train-credi
 .PHONY: serve
 serve:  ## Start the scoring API (POST /score, GET /health) on http://127.0.0.1:8000 (docs at /docs)
 	uv run uvicorn uwcopilot.risk.service:app --host 127.0.0.1 --port 8000
+
+# Local open-weight model (innovations S1). Never part of CI: downloads GBs and needs a running `ollama serve`.
+
+.PHONY: fetch-local-model test-ollama-live
+
+LOCAL_MODEL ?= qwen2.5-3b-instruct-q4km
+OLLAMA_BIN ?= ollama
+
+fetch-local-model:  ## Import a pinned local model into Ollama from Docker Hub (LOCAL_MODEL=<name>|all, OLLAMA_BIN=path)
+	uv run python scripts/fetch_local_model.py --model $(LOCAL_MODEL) --ollama-bin $(OLLAMA_BIN)
+
+test-ollama-live:  ## One live smoke call to the local Ollama server (needs `make fetch-local-model` and `ollama serve`)
+	UWC_OLLAMA_LIVE=1 uv run pytest -m integration -s tests/llm/test_ollama_client.py

@@ -8,6 +8,9 @@
 #   - Re-check before relying on these numbers; prices change.
 # `long_context` holds the higher prices that apply when the prompt has more than `above_input_tokens` tokens.
 # The fake provider used in tests is always free and needs no entry here.
+# Local models (provider: ollama) run on this machine: there is no API charge, so their prices are 0.0 and the
+# `source` says so instead of naming a pricing page. Their CPU time is reported separately (latency, durations).
+# Ids are the local names given by scripts/fetch_local_model.py (see config/generation_eval.yaml for digests).
 
 models:
   claude-haiku-5-5:
@@ -56,3 +59,17 @@ models:
       output_usd_per_mtok: 15.00
     source: https://developers.openai.com/api/docs/pricing
     checked_on: "2026-10-10"
+
+  qwen2.5-3b-instruct-q4km:
+    provider: ollama
+    input_usd_per_mtok: 0.0
+    output_usd_per_mtok: 0.0
+    source: "local inference via Ollama; no API charge (CPU time reported separately)"
+    checked_on: "2026-10-12"
+
+  qwen2.5-1.5b-instruct-f16:
+    provider: ollama
+    input_usd_per_mtok: 0.0
+    output_usd_per_mtok: 0.0
+    source: "local inference via Ollama; no API charge (CPU time reported separately)"
+    checked_on: "2026-10-12"

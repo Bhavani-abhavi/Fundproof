@@ -1,0 +1,41 @@
+# Metro config (Founder Studio S1). Schema: src/uwcopilot/studio/metros/models.py.
+# UNVERIFIED: the official title, CBSA code and county list must come from the Census delineation file, which could
+# not be opened in this build (www.census.gov is blocked; see docs/studio/metros.md). Counties stay empty and
+# verified stays false until then; the model refuses counties without a delineation_source. With no data snapshot,
+# this metro runs in "limited mode" and every data factor is UNKNOWN.
+id: new_york_ny_nj_pa
+name: "New York-Newark-Jersey City (title from the Studio plan, UNVERIFIED)"
+data_label: PUBLIC
+verified: false
+states: [NY, NJ, PA]
+cbsa_code: null
+counties: []
+delineation_source: null
+crs: EPSG:4326
+bbox: null
+trade_area:
+  ring_multiplier: 0.6
+  status: DESIGN_CHOICE
+  note: >-
+    Scales every profile's trade-area rings. Tighter rings for dense metros and wider rings for
+    car-dependent ones follow the Studio plan; the density premise itself is UNVERIFIED (docs/studio/metros.md).
+enhancements:
+  - kind: traffic_state
+    adapter: NY
+    enabled: true
+  - kind: traffic_state
+    adapter: NJ
+    enabled: true
+  - kind: traffic_state
+    adapter: PA
+    enabled: true
+  - kind: city_open_data
+    adapter: nyc
+    enabled: true
+  - kind: str_comps
+    adapter: new_york_city
+    enabled: true
+snapshot_date: null
+coverage_threshold: 0.8
+synthetic: null
+note: Expected v1 metro from the Studio plan; rank and title to confirm from the Census tables (docs/studio/metros.md).

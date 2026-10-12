@@ -1,0 +1,250 @@
+# Business-type profile (Founder Studio S1). Schema: src/uwcopilot/studio/profiles/models.py.
+# EVERY number below is an ASSUMPTION of the project author: a deliberately wide range, user-editable in the app,
+# with a note naming the source that should replace it. Nothing is SOURCED (no source could be opened in this build).
+id: laundromat
+display_name: Laundromat
+
+naics:
+  - code: "812310"
+    title: Coin-operated laundries and drycleaners
+    verified: false
+    note: Written from the author's knowledge; confirm against the Census NAICS reference (https://www.census.gov/naics/).
+
+demand_unit: machine turns/day
+demand:
+  formula: renter_usage
+  inputs:
+    share_of_renters_using:
+      low: 0.10
+      mode: 0.25
+      high: 0.45
+      unit: share of renter households that use a laundromat
+      status: ASSUMPTION
+      source: null
+      note: Replace with a cited housing survey on in-unit laundry (for example the Census American Housing Survey) if one is found.
+    turns_per_user_household_per_week:
+      low: 2
+      mode: 4
+      high: 7
+      unit: washer or dryer cycles per user household per week
+      status: ASSUMPTION
+      source: null
+      note: No public source identified.
+    capture_share:
+      low: 0.05
+      mode: 0.15
+      high: 0.35
+      unit: share of the trade area's laundromat use captured by this site
+      status: ASSUMPTION
+      source: null
+      note: No public source; calibrate from founder or outcome data (S9).
+
+price:
+  low: 3
+  mode: 5
+  high: 9
+  unit: USD per machine turn
+  status: ASSUMPTION
+  source: null
+  note: Replace with the founder's price list.
+
+capacity:
+  max_demand:
+    low: 100
+    mode: 350
+    high: 900
+    unit: machine turns/day
+    status: ASSUMPTION
+    source: null
+    note: Founder input (machine count x turns per machine per open hour x open hours); this range is only the default.
+  basis: machines x turns per machine per open hour x open hours
+
+hours:
+  hours_per_day:
+    low: 12
+    mode: 15
+    high: 24
+    unit: hours/day
+    status: ASSUMPTION
+    source: null
+    note: Founder input; this range is only the default.
+  days_per_week:
+    low: 6
+    mode: 7
+    high: 7
+    unit: days/week
+    status: ASSUMPTION
+    source: null
+    note: Founder input; this range is only the default.
+
+cost_ratios:
+  cogs:
+    low: 0.0
+    mode: 0.02
+    high: 0.05
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Vending and detergent sales; replace with supplier quotes.
+  utilities:
+    low: 0.15
+    mode: 0.22
+    high: 0.32
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Water, sewer, gas and electricity; replace with the local utilities' published tariffs (cited) and the machines' rated usage.
+  supplies:
+    low: 0.01
+    mode: 0.02
+    high: 0.05
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with supplier quotes.
+  marketing:
+    low: 0.005
+    mode: 0.02
+    high: 0.04
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Founder's marketing plan; no public benchmark identified.
+  insurance:
+    low: 0.01
+    mode: 0.02
+    high: 0.04
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Replace with an insurance quote.
+  maintenance:
+    low: 0.03
+    mode: 0.06
+    high: 0.10
+    unit: share of revenue
+    status: ASSUMPTION
+    source: null
+    note: Equipment repair; replace with the machine maker's service quote.
+
+labor:
+  paid_hours_per_month:
+    low: 0
+    mode: 400
+    high: 800
+    unit: paid attendant hours per month
+    status: ASSUMPTION
+    source: null
+    note: Zero for an unattended store; founder's staffing plan.
+  hourly_wage:
+    low: 12
+    mode: 16
+    high: 22
+    unit: USD/hour
+    status: ASSUMPTION
+    source: null
+    note: Replace with BLS QCEW average weekly wage for NAICS 812310 in the metro (hours conversion stated) or BLS OEWS laundry workers for the metro.
+
+rent:
+  handling: founder_quote_else_metro_range
+  monthly_rent:
+    low: 2000
+    mode: 5000
+    high: 12000
+    unit: USD/month
+    status: ASSUMPTION
+    source: null
+    note: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found.
+  annual_escalation:
+    low: 0.0
+    mode: 0.03
+    high: 0.05
+    unit: share per year
+    status: ASSUMPTION
+    source: null
+    note: Replace with the lease's escalation clause. A lease shorter than the equipment's life is a key risk.
+
+capex:
+  - name: Washers and dryers
+    cost:
+      low: 100000
+      mode: 300000
+      high: 600000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with equipment quotes.
+  - name: Water heaters, plumbing and venting
+    cost:
+      low: 30000
+      mode: 80000
+      high: 200000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with contractor quotes.
+  - name: Build-out, seating and folding tables
+    cost:
+      low: 30000
+      mode: 100000
+      high: 250000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with contractor quotes.
+  - name: Payment system and signage
+    cost:
+      low: 5000
+      mode: 20000
+      high: 50000
+      unit: USD
+      status: ASSUMPTION
+      source: null
+      note: Replace with quotes.
+
+seasonality:
+  values: [1.05, 1.0, 1.0, 1.0, 0.95, 0.95, 0.95, 0.95, 1.0, 1.0, 1.05, 1.1]
+  unit: multiplier on average monthly demand (January to December; mean 1.0)
+  status: ASSUMPTION
+  source: null
+  note: Nearly flat is still an assumption, not a neutral default. Replace with the founder's or a seller's history.
+
+ramp_up:
+  starting_share:
+    low: 0.4
+    mode: 0.6
+    high: 0.8
+    unit: share of mature demand in the first month
+    status: ASSUMPTION
+    source: null
+    note: No public source identified.
+  months_to_maturity:
+    low: 4
+    mode: 10
+    high: 18
+    unit: months
+    status: ASSUMPTION
+    source: null
+    note: No public source identified; calibrate from outcome data (S9) once it exists.
+
+design:
+  status: DESIGN_CHOICE
+  note: Scoring-method choices by the project author, not facts. Lower income counts as better here because the author assumes lower-income renters more often lack in-unit laundry. Weights are tuned in S2 on the SYNTHETIC metro only.
+  trade_area_rings_miles: [0.5, 1, 2]
+  location_weights:
+    renter_households: {weight: 0.35, direction: higher_is_better}
+    median_household_income: {weight: 0.15, direction: lower_is_better}
+    competition: {weight: 0.30, direction: lower_is_better}
+    anchors: {weight: 0.10, direction: higher_is_better}
+    commercial_rent: {weight: 0.10, direction: lower_is_better}
+
+competitor_tags: [shop=laundry, shop=dry_cleaning]
+anchor_tags: [shop=supermarket, shop=convenience, public_transport=station, amenity=school]
+
+key_risks:
+  - Utility costs
+  - Equipment repair and replacement
+  - Competition
+  - A lease shorter than the equipment's life
+
+metro_overrides: {}

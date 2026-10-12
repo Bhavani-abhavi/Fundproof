@@ -38,8 +38,13 @@ def test_repo_price_list_has_a_source_and_date_for_every_model() -> None:
     prices = load_prices(CONFIG_DIR / "llm_pricing.yaml")
     assert "claude-haiku-5-5" in prices
     for price in prices.values():
-        assert price.source.startswith("https://")
         assert price.checked_on
+        if price.provider == "ollama":
+            # Local models: no pricing page exists; the source says there is no API charge and the price is 0.0.
+            assert "no API charge" in price.source
+            assert (price.input_usd_per_mtok, price.output_usd_per_mtok) == (0.0, 0.0)
+        else:
+            assert price.source.startswith("https://")
 
 
 def test_cost_uses_the_standard_and_long_context_tiers() -> None:

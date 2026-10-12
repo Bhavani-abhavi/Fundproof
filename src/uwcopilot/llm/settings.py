@@ -4,11 +4,13 @@ Why not let the SDKs read the environment themselves? The anthropic and openai S
 such as ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN or OPENAI_BASE_URL. A hosting platform can set those for its
 own purposes, and then a script would send requests (and documents) to a server nobody chose. So:
 
-- base URLs come only from UWC_ANTHROPIC_BASE_URL / UWC_OPENAI_BASE_URL (defaults: the public APIs);
+- base URLs come only from UWC_ANTHROPIC_BASE_URL / UWC_OPENAI_BASE_URL (defaults: the public APIs) and
+  UWC_OLLAMA_BASE_URL (default: a local Ollama server on the loopback interface);
 - API keys come only from ANTHROPIC_API_KEY / OPENAI_API_KEY;
 - a value in the repo .env file wins over the same name in the process environment.
 
 The clients then pass these values to the SDK explicitly (see anthropic_client.py and openai_client.py).
+The "ollama" provider runs open-weight models on this machine and needs no API key (see ollama_client.py).
 """
 
 import os
@@ -21,19 +23,24 @@ from urllib.parse import urlsplit
 from uwcopilot.common.paths import CACHE_DIR, CONFIG_DIR, ENV_FILE
 from uwcopilot.common.settings import env_reader, is_http_url
 
-Provider = Literal["anthropic", "openai", "fake"]
-PROVIDERS: tuple[str, ...] = ("anthropic", "openai", "fake")
+Provider = Literal["anthropic", "openai", "ollama", "fake"]
+PROVIDERS: tuple[str, ...] = ("anthropic", "openai", "ollama", "fake")
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+# Ollama's default port on the loopback interface. Plain http is accepted only for loopback hosts (see
+# validate_base_url), so a remote Ollama server must be reached over https.
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
 # Low-cost current models, checked on 2026-10-10:
 # - claude-haiku-5-5: https://platform.claude.com/docs/en/about-claude/models (models overview, "Claude API ID")
 # - gpt-6-luna: https://developers.openai.com/api/docs/models ("Our most efficient model")
+# - qwen2.5-3b-instruct-q4km: the local name given by scripts/fetch_local_model.py to Qwen2.5 3B Instruct (Q4_K_M).
 # Override with UWC_LLM_MODEL (for example claude-opus-5-5 for harder tasks).
 DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-haiku-5-5",
     "openai": "gpt-6-luna",
+    "ollama": "qwen2.5-3b-instruct-q4km",
     "fake": "fake-llm",
 }
 DEFAULT_MAX_RUN_COST_USD = 10.0
@@ -81,6 +88,7 @@ class LLMSettings:
     openai_api_key: str | None = field(default=None, repr=False)
     anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
     openai_base_url: str = DEFAULT_OPENAI_BASE_URL
+    ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     max_run_cost_usd: float = DEFAULT_MAX_RUN_COST_USD
     cache_dir: Path = DEFAULT_LLM_CACHE_DIR
     pricing_file: Path = DEFAULT_PRICING_FILE
@@ -93,7 +101,7 @@ class LLMSettings:
         return DEFAULT_MODELS[provider]
 
     def api_key_for(self, provider: str) -> str | None:
-        """The API key for a provider, or None if it is not configured (the fake provider needs none)."""
+        """The API key for a provider, or None if it is not configured (the fake and ollama providers need none)."""
         if provider == "anthropic":
             return self.anthropic_api_key
         if provider == "openai":
@@ -106,6 +114,8 @@ class LLMSettings:
             return self.anthropic_base_url
         if provider == "openai":
             return self.openai_base_url
+        if provider == "ollama":
+            return self.ollama_base_url
         return None
 
 
@@ -148,8 +158,8 @@ def load_llm_settings(
     """Build LLMSettings from the .env file and the process environment (the .env file wins).
 
     Only these names are read: UWC_LLM_PROVIDER, UWC_LLM_MODEL, ANTHROPIC_API_KEY, OPENAI_API_KEY,
-    UWC_ANTHROPIC_BASE_URL, UWC_OPENAI_BASE_URL, UWC_ANTHROPIC_EFFORT, MAX_RUN_COST_USD, UWC_LLM_CACHE_DIR,
-    UWC_LLM_PRICING_FILE.
+    UWC_ANTHROPIC_BASE_URL, UWC_OPENAI_BASE_URL, UWC_OLLAMA_BASE_URL, UWC_ANTHROPIC_EFFORT, MAX_RUN_COST_USD,
+    UWC_LLM_CACHE_DIR, UWC_LLM_PRICING_FILE.
     Pass env_file=None to ignore the .env file (tests do this).
     """
     read = env_reader(env_file, environ)
@@ -171,6 +181,7 @@ def load_llm_settings(
         openai_api_key=read("OPENAI_API_KEY"),
         anthropic_base_url=validate_base_url(read("UWC_ANTHROPIC_BASE_URL") or DEFAULT_ANTHROPIC_BASE_URL),
         openai_base_url=validate_base_url(read("UWC_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL),
+        ollama_base_url=validate_base_url(read("UWC_OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL),
         max_run_cost_usd=max_cost,
         cache_dir=Path(cache_dir_text) if cache_dir_text else DEFAULT_LLM_CACHE_DIR,
         pricing_file=Path(pricing_text) if pricing_text else DEFAULT_PRICING_FILE,

@@ -4,14 +4,16 @@ Callers only ever see LLMMessage, LLMResponse and the LLMClient protocol, so swa
 (or for the fake used in tests) does not change any calling code.
 """
 
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 FAKE_PROVIDER = "fake"
 # Stop reasons that mean the text is not a finished answer: the token limit cut it off (Anthropic "max_tokens",
-# OpenAI "max_output_tokens") or the model declined (Anthropic "refusal", OpenAI "content_filter").
-INCOMPLETE_STOP_REASONS: frozenset[str] = frozenset({"max_tokens", "max_output_tokens", "refusal", "content_filter"})
+# OpenAI "max_output_tokens", Ollama "length") or the model declined (Anthropic "refusal", OpenAI "content_filter").
+INCOMPLETE_STOP_REASONS: frozenset[str] = frozenset(
+    {"max_tokens", "max_output_tokens", "length", "refusal", "content_filter"}
+)
 
 
 class LLMMessage(BaseModel):
@@ -29,6 +31,9 @@ class LLMResponse(BaseModel):
     cost_usd is None when the model has no verified price in config/llm_pricing.yaml ("not measured").
     cached is True when the response came from the on-disk cache; a cached response cost nothing in this run,
     so its cost_usd is 0.0.
+    metadata holds provider-specific facts that do not fit the shared fields, as plain JSON values (for Ollama:
+    the model digest, the runtime version, raw durations and the possible_truncation flag). It defaults to an
+    empty dict, so cache entries written before the field existed still load.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -42,6 +47,7 @@ class LLMResponse(BaseModel):
     cached: bool = False
     provider: str
     stop_reason: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def is_fake(self) -> bool:
