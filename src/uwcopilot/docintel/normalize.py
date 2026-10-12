@@ -160,11 +160,16 @@ def edit_distance(first: str, second: str) -> int:
     return previous[-1]
 
 
+def digits_only(text: str | None) -> str:
+    """The ASCII digits of a normalized text, in order ("" for None). Used for account numbers and FEINs."""
+    if not text:
+        return ""
+    return "".join(character for character in normalize_text(text) if character in "0123456789")
+
+
 def canonical_fein(fein: str | None) -> str:
     """A comparison key for a FEIN: its digits as NN-NNNNNNN when there are nine, otherwise the digits alone."""
-    if not fein:
-        return ""
-    digits = "".join(character for character in normalize_text(fein) if character.isdigit())
+    digits = digits_only(fein)
     if len(digits) == 9:
         return f"{digits[:2]}-{digits[2:]}"
     return digits

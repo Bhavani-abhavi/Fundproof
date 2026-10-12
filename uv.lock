@@ -2954,6 +2954,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "beautifulsoup4" },
+    { name = "cryptography" },
     { name = "faker" },
     { name = "fastapi" },
     { name = "fastembed" },
@@ -3004,6 +3005,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=1.13.0" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "faker", specifier = ">=40.43.0" },
     { name = "fastapi", specifier = ">=0.143.0" },
     { name = "fastembed", specifier = ">=0.9.0" },

@@ -15,7 +15,7 @@ Input interfaces (so this module does not depend on the page-text models in doci
   joined pair is reported on the pair's first line.
 - scan_pages(pages, doc_ids): objects with `page_number: int` and `lines`, where each line has `text: str` and
   `line_number: int` (1-based), for example the PageText model of docintel/layout.py. doc_ids maps a page
-  number to its document id (pages not in the map get doc_id None).
+  number to its document id (a page not in the map uses its own `doc_id` attribute if it has one, else None).
 - scan_extraction_fields(extraction): the free-text values of an extraction (remarks, transaction descriptions,
   the cover email subject and body, business and owner names), each with its own citation.
 Every hit is a DocumentInjectionHit with the document, page, line, pattern names and a short excerpt of the
@@ -128,11 +128,14 @@ def scan_lines(lines: Iterable[ScanLine | tuple[str | None, int, int, str]]) -> 
 
 
 def scan_pages(pages: Iterable[PageLike], doc_ids: Mapping[int, str] | None = None) -> list[DocumentInjectionHit]:
-    """Scan page-text objects (see PageLike); doc_ids maps page numbers to document ids."""
+    """Scan page-text objects (see PageLike); doc_ids maps page numbers to document ids.
+
+    A page that is not in doc_ids uses its own doc_id attribute when it has one, otherwise None.
+    """
     mapping = doc_ids or {}
     lines = []
     for page in pages:
-        doc_id = mapping.get(page.page_number)
+        doc_id = mapping.get(page.page_number, getattr(page, "doc_id", None))
         for line in page.lines:
             lines.append(ScanLine(doc_id, page.page_number, line.line_number, line.text))
     return scan_lines(lines)

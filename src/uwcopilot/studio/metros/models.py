@@ -1,9 +1,9 @@
 """Pydantic models for a metro config (config/studio/metros/<id>.yaml) and the metro "mode".
 
 A metro is either a real US metro (data_label PUBLIC) or the generated SYNTHETIC metro used for demos, tests and
-validation. A real metro's county list stays empty and `verified` stays false until someone opens the Census
-delineation file and records it as `delineation_source`; the model refuses counties without that source, so FIPS
-codes cannot be typed in from memory.
+validation. A real metro's county list stays empty and `verified` stays false until scripts/studio_fetch_delineation.py
+reads the Census CBSA delineation file and records it in `delineation` (URL, date, SHA-256 of the file); the model
+refuses counties without that record, so FIPS codes cannot be typed in from memory.
 
 The mode tells the app how much to trust a metro's data:
 
@@ -14,7 +14,7 @@ The mode tells the app how much to trust a metro's data:
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -35,12 +35,23 @@ class County(StrictModel):
     state_fips: str = Field(pattern=r"^\d{2}$")
     county_fips: str = Field(pattern=r"^\d{3}$")
     name: str = Field(min_length=1)
+    state_name: str | None = None
     central_or_outlying: Literal["central", "outlying"] | None = None
 
     @property
     def geoid(self) -> str:
         """The 5-digit county GEOID (state FIPS + county FIPS)."""
         return self.state_fips + self.county_fips
+
+
+class DelineationRecord(StrictModel):
+    """Which delineation file a metro's CBSA code, title and counties were read from, and its checksum."""
+
+    source: Source
+    file_name: str = Field(min_length=1)
+    file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    retrieved_at_utc: datetime
+    generated_by: str = Field(min_length=1, description="The script that read the file and wrote this config")
 
 
 class BoundingBox(StrictModel):
@@ -96,8 +107,10 @@ class MetroConfig(StrictModel):
     verified: bool
     states: list[str]
     cbsa_code: str | None = Field(default=None, pattern=r"^\d{5}$")
+    # How scripts/studio_fetch_delineation.py finds the metro in the delineation file before cbsa_code is known.
+    cbsa_title_prefix: str | None = None
     counties: list[County] = Field(default_factory=list)
-    delineation_source: Source | None = None
+    delineation: DelineationRecord | None = None
     crs: Literal["EPSG:4326"] = "EPSG:4326"
     bbox: BoundingBox | None = None
     trade_area: TradeArea
@@ -121,20 +134,38 @@ class MetroConfig(StrictModel):
         if self.data_label == "SYNTHETIC":
             if self.synthetic is None:
                 raise ValueError("a SYNTHETIC metro needs synthetic generator settings")
-            if self.states or self.counties or self.cbsa_code or self.verified:
-                raise ValueError("a SYNTHETIC metro has no states, counties, CBSA code or verified flag")
+            if self.states or self.counties or self.cbsa_code or self.verified or self.delineation:
+                raise ValueError("a SYNTHETIC metro has no states, counties, CBSA code, delineation or verified flag")
             return self
         if self.synthetic is not None:
             raise ValueError("only a SYNTHETIC metro may have synthetic generator settings")
         if not self.states or any(not STATE_POSTAL.match(state) for state in self.states):
             raise ValueError("a real metro needs its states as two-letter postal codes")
-        if self.counties and self.delineation_source is None:
-            raise ValueError("counties need delineation_source (the Census delineation file that lists them)")
-        if self.verified and (not self.counties or self.delineation_source is None or self.cbsa_code is None):
-            raise ValueError("verified: true needs counties, a CBSA code and delineation_source")
+        if self.counties and self.delineation is None:
+            raise ValueError("counties need a delineation record (the Census delineation file that lists them)")
+        if self.verified and (not self.counties or self.delineation is None or self.cbsa_code is None):
+            raise ValueError("verified: true needs counties, a CBSA code and a delineation record")
         if self.counties and not self.verified:
             raise ValueError("counties may only be filled together with verified: true")
+        if self.verified:
+            self.check_verified_geography()
         return self
+
+    def check_verified_geography(self) -> None:
+        """A verified metro's counties span exactly its states, and no enabled state adapter names another state."""
+        state_fips = {county.state_fips for county in self.counties}
+        if len(state_fips) != len(self.states):
+            raise ValueError(f"counties span {len(state_fips)} states but states lists {self.states}")
+        geoids = [county.geoid for county in self.counties]
+        if len(set(geoids)) != len(geoids):
+            raise ValueError("a county is listed twice")
+        for item in self.enabled_enhancements("traffic_state"):
+            if item.adapter not in self.states:
+                raise ValueError(f"traffic_state adapter {item.adapter!r} is enabled but the metro has no such state")
+
+    def county_geoids(self) -> list[str]:
+        """The 5-digit GEOIDs of the metro's counties (empty until verified)."""
+        return [county.geoid for county in self.counties]
 
     def enabled_enhancements(self, kind: str | None = None) -> list[Enhancement]:
         """The enabled enhancements, optionally only of one kind."""
