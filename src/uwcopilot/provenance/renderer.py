@@ -22,7 +22,14 @@ from uwcopilot.provenance.numbers import NumberMention, extract_numbers, same_qu
 
 DISPLAY_FORMATS: tuple[str, ...] = ("usd0", "usd2", "ratio2", "ratio2x", "pct1", "int", "months", "years", "text")
 UNKNOWN_TEXT = "not available"
-STATUS_SUFFIX = {"CONFLICTING": " (conflicting sources)", "MODEL_ESTIMATE": " (model estimate)"}
+# How a claim's status shows next to its value. VERIFIED prints the value alone. USER_STATED and ASSUMPTION are the
+# Founder Studio statuses (a founder's own figure; a labeled planning assumption), shared with the Phase 4 ledger.
+STATUS_SUFFIX = {
+    "CONFLICTING": " (conflicting sources)",
+    "MODEL_ESTIMATE": " (model estimate)",
+    "USER_STATED": " (stated by the applicant)",
+    "ASSUMPTION": " (assumption)",
+}
 FOOTNOTE_LINE = re.compile(r"^\[\^[a-z]\d+\]:.*$", re.MULTILINE)
 FOOTNOTE_MARKER = re.compile(r"\[\^[a-z]\d+\]")
 
