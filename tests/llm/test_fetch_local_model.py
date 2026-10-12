@@ -181,3 +181,8 @@ def test_script_refuses_to_run_in_ci(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_unknown_model_name_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CI", raising=False)
     assert fetch.main(["--model", "not-a-pinned-model", "--check-only"]) == 2
+
+
+def test_plain_http_ollama_url_to_another_host_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CI", raising=False)
+    assert fetch.main(["--check-only", "--ollama-url", "http://10.0.0.5:11434"]) == 2

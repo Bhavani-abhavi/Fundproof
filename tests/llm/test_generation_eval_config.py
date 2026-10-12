@@ -60,12 +60,17 @@ def test_every_configured_model_has_a_price_and_a_source_record() -> None:
 
 
 def test_both_license_sources_are_recorded() -> None:
-    for record in load_config()["models"].values():
+    models = load_config()["models"]
+    for record in models.values():
         assert "Apache-2.0" in record["license_docker_artifact"]
         assert record["license_upstream_card"]
+        assert record["upstream_card"].startswith("https://huggingface.co/Qwen/")
         assert "Docker Hub artifact" in record["license"]
         assert "upstream Hugging Face card" in record["license"]
-    assert "Qwen Research License" in load_config()["models"]["qwen2.5-3b-instruct-q4km"]["license"]
+    # Upstream card facts as re-checked on 2026-10-12: the 3B card says qwen-research, the 1.5B card apache-2.0.
+    assert "Qwen Research License" in models["qwen2.5-3b-instruct-q4km"]["license"]
+    assert "qwen-research" in models["qwen2.5-3b-instruct-q4km"]["license_upstream_card"]
+    assert "apache-2.0" in models["qwen2.5-1.5b-instruct-f16"]["license_upstream_card"]
 
 
 def test_challenger_note_says_quantization_differs_too() -> None:

@@ -1,7 +1,7 @@
-"""Tests for uwcopilot.llm.ollama_client against a pretend server (httpx.MockTransport), plus one opt-in live test.
+"""Tests for uwcopilot.llm.ollama_client against a pretend server (httpx.MockTransport), plus two opt-in live tests.
 
-The live test calls the real local Ollama server. It is marked `integration` (excluded by default) and is also
-skipped unless UWC_OLLAMA_LIVE=1 was set when pytest started:
+The live tests (a one-word smoke call and a JSON-schema `format` call) use the real local Ollama server. They are
+marked `integration` (excluded by default) and are also skipped unless UWC_OLLAMA_LIVE=1 was set when pytest started:
 
     UWC_OLLAMA_LIVE=1 uv run pytest -m integration tests/llm/test_ollama_client.py
 
@@ -9,6 +9,7 @@ The variable is read at import time, because the autouse conftest fixture clears
 each test runs.
 """
 
+import json
 import math
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ from uwcopilot.llm.ollama_client import (
     OllamaOptions,
     estimate_prompt_tokens,
 )
+from uwcopilot.llm.ollama_queue import OllamaQueueBusy, ollama_queue_lock
 from uwcopilot.llm.settings import DEFAULT_OLLAMA_BASE_URL, LLMSettings, SettingsError
 
 LIVE = os.environ.get("UWC_OLLAMA_LIVE") == "1"
@@ -258,9 +260,7 @@ def test_digest_and_options_are_in_the_cache_key(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.skipif(not LIVE, reason="set UWC_OLLAMA_LIVE=1 to call the real local Ollama server")
-def test_live_local_ollama_smoke(tmp_path: Path) -> None:
-    from uwcopilot.llm.ollama_queue import OllamaQueueBusy, ollama_queue_lock
-
+def test_live_local_ollama_smoke() -> None:
     try:
         with ollama_queue_lock("tests/llm/test_ollama_client.py live smoke", timeout_s=600):
             client = OllamaClient(LIVE_BASE_URL, LIVE_MODEL)
@@ -281,3 +281,28 @@ def test_live_local_ollama_smoke(tmp_path: Path) -> None:
     assert response.text.strip()
     assert response.output_tokens > 0
     assert len(client.digest) == 64
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not LIVE, reason="set UWC_OLLAMA_LIVE=1 to call the real local Ollama server")
+def test_live_local_ollama_json_schema_format() -> None:
+    """Checks that the installed Ollama version honours a JSON-schema `format` (the spec asks to verify support)."""
+    schema = {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}
+    try:
+        with ollama_queue_lock("tests/llm/test_ollama_client.py live format", timeout_s=600):
+            client = OllamaClient(LIVE_BASE_URL, LIVE_MODEL, options=OllamaOptions(format_schema=schema))
+            response = client.complete(
+                "Reply in JSON.",
+                [LLMMessage(role="user", content="Which city is the capital of France?")],
+                max_tokens=30,
+                temperature=0,
+            )
+    except OllamaQueueBusy as busy:
+        pytest.skip(f"the Ollama queue stayed busy: {busy}")
+    print(
+        f"\nlive ollama format: version={client.runtime_version} latency_s={response.latency_s:.2f} "
+        f"tokens_in={response.input_tokens} tokens_out={response.output_tokens} text={response.text!r}"
+    )
+    parsed = json.loads(response.text)
+    assert isinstance(parsed, dict)
+    assert isinstance(parsed.get("city"), str)

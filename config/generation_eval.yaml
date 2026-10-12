@@ -7,13 +7,17 @@
 #
 # Models are open-weight Qwen2.5 Instruct GGUF files imported into a LOCAL Ollama server with
 # scripts/fetch_local_model.py (Docker Hub model artifacts; the Ollama registry and Hugging Face were not reachable
-# from the build machine). Local inference has no API charge (config/llm_pricing.yaml lists 0.0).
+# from the build machine when the models were imported on 2026-10-12). Local inference has no API charge
+# (config/llm_pricing.yaml lists 0.0).
 #
 # Licenses: two sources are recorded for each model and neither is chosen silently. The Docker Hub artifact carries a
-# license layer whose text is the Apache License 2.0. docs/innovations.md (section 9) records the Hugging Face model
-# cards as checked by the plan author on 2026-10-10: Qwen2.5-3B is "other" (Qwen Research License), Qwen2.5-1.5B is
-# Apache-2.0. Hugging Face was not reachable on 2026-10-12 to re-check. For a real institution, name an Apache-2.0
-# or enterprise-hosted model.
+# license layer whose text is the Apache License 2.0 (same layer for both models). The upstream Hugging Face model
+# cards, re-checked on 2026-10-12 (README front matter and GET https://huggingface.co/api/models/<repo>), say:
+# Qwen/Qwen2.5-3B-Instruct "license: other, license_name: qwen-research" (its LICENSE file is titled "Qwen RESEARCH
+# LICENSE AGREEMENT"), card revision aa8e72537993ba99e69dfaafa59ed015b17504d1; Qwen/Qwen2.5-1.5B-Instruct
+# "license: apache-2.0", card revision 989aa7980e4cf806f80c7fef2b1adb7bc71aa306. The two sources disagree for the
+# 3B model; the upstream card is the licensor's own statement, so treat the 3B model as research-licensed until a
+# legal review says otherwise. For a real institution, name an Apache-2.0 or enterprise-hosted model.
 
 configs:
   qwen3b_v1_k3:
@@ -55,8 +59,9 @@ models:
     parameter_size: 3.1B
     quantization: Q4_K_M
     license_docker_artifact: "Apache-2.0 (license layer sha256:609e2cb599f84aaa41d8ef29d8fdb04d164fab22e8d9292ca34a599d0f56a338)"
-    license_upstream_card: "Qwen Research License ('other' on the Hugging Face card; per docs/innovations.md, checked 2026-10-10; not re-checked)"
-    license: "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Qwen Research License (checked 2026-10-10 by the plan author)"
+    upstream_card: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
+    license_upstream_card: "Qwen Research License (Hugging Face card: license other, license_name qwen-research; checked 2026-10-12)"
+    license: "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Qwen Research License (qwen-research, checked 2026-10-12)"
 
   qwen2.5-1.5b-instruct-f16:
     source: docker.io/ai/qwen2.5:1.5B-F16
@@ -66,5 +71,6 @@ models:
     parameter_size: 1.5B
     quantization: F16
     license_docker_artifact: "Apache-2.0 (license layer sha256:609e2cb599f84aaa41d8ef29d8fdb04d164fab22e8d9292ca34a599d0f56a338)"
-    license_upstream_card: "Apache-2.0 (Hugging Face card; per docs/innovations.md, checked 2026-10-10; not re-checked)"
-    license: "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Apache-2.0 (checked 2026-10-10 by the plan author)"
+    upstream_card: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct
+    license_upstream_card: "Apache-2.0 (Hugging Face card: license apache-2.0; checked 2026-10-12)"
+    license: "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Apache-2.0 (checked 2026-10-12)"

@@ -1,8 +1,10 @@
 """Import a pinned open-weight model into a local Ollama server from a Docker Hub model artifact.
 
-Why Docker Hub: on the build machine the Ollama registry and Hugging Face were not reachable, but Docker Hub
-publishes the same open-weight models as GGUF "model artifacts" (repository ai/qwen2.5). The weights file is
-content-addressed (its SHA-256 is its name), so the download can be verified byte for byte.
+Why Docker Hub: when the models were imported on the build machine (2026-10-12), the Ollama registry and Hugging
+Face were not reachable, but Docker Hub publishes the same open-weight models as GGUF "model artifacts"
+(repository ai/qwen2.5). The weights file is content-addressed (its SHA-256 is its name), so the download can be
+verified byte for byte. The artifact's license layer (Apache-2.0) is not the only license statement: the config
+also records the upstream Hugging Face model card license, and the script prints both.
 
 What it does for each model listed under `models:` in config/generation_eval.yaml:
 1. Asks auth.docker.io for an anonymous pull token for the repository.
@@ -50,7 +52,7 @@ import yaml
 from uwcopilot.common.files import human_size, sha256_of_file
 from uwcopilot.common.paths import CACHE_DIR, CONFIG_DIR
 from uwcopilot.llm.ollama_client import find_model_entry, strip_digest_prefix
-from uwcopilot.llm.settings import load_llm_settings
+from uwcopilot.llm.settings import SettingsError, load_llm_settings, validate_base_url
 
 CONFIG_FILE = CONFIG_DIR / "generation_eval.yaml"
 DEFAULT_BLOB_DIR = CACHE_DIR / "ollama" / "blobs"
@@ -305,11 +307,17 @@ def fetch_model(client: httpx.Client, name: str, pinned: dict[str, Any], args: a
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the import. Returns 0 on success, 1 on a failure, 2 when refused (CI or unknown model)."""
+    """Run the import. Returns 0 on success, 1 on a failure, 2 when refused (CI, bad --ollama-url, unknown model)."""
     args = parse_args(argv)
     if os.environ.get("CI"):
         print("fetch_local_model.py downloads gigabytes and needs a local Ollama server; it does not run in CI.")
         return 2
+    if args.ollama_url:
+        try:
+            args.ollama_url = validate_base_url(args.ollama_url)
+        except SettingsError as error:
+            print(f"ERROR: --ollama-url: {error}", file=sys.stderr)
+            return 2
     pinned_models = load_pinned_models(args.config)
     names = sorted(pinned_models) if args.model == "all" else [args.model]
     unknown = [name for name in names if name not in pinned_models]
