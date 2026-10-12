@@ -1,0 +1,156 @@
+{"_meta": {"description": "Hand-written frozen test set for the numberless-memo validator (SIG). Written before the validator was run on it. reject rows must produce at least one violation with expected_code; clean rows must produce none.", "context": {"claim_ids": ["verified_annual_revenue", "stated_annual_revenue", "revenue_gap_pct", "dscr", "dscr_stated", "leverage", "stressed_dscr_revenue", "stressed_dscr_rate", "existing_annual_debt_service", "proposed_annual_debt_service", "loss_ratio_5y", "tiv_difference_pct", "schedule_tiv", "stated_tiv", "nsf_events", "negative_months"], "assertion_ids": ["R-NBC-02", "R-NBC-03", "R-NBC-04", "R-NBC-05", "R-NBC-06", "R-HM-06", "R-HM-08"], "allowed_sections": ["NBC-3.2", "NBC-3.3", "NBC-3.4", "NBC-3.5", "NBC-4.1", "NBC-4.2", "NBC-4.4", "NBC-4.5", "HM-4.1", "HM-4.2", "HM-5.2"]}, "author": "project lead engineer (same author as the validator: this is a SEEN set)", "data_label": "SYNTHETIC"}}
+{"kind": "reject", "text": "Verified revenue is 1,234 thousand dollars per year [NBC-3.2].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "The decision DSCR is 1.25 [NBC-4.2].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "Revenue fell by 12 points over the window [NBC-3.4].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "The file shows 3 statement months with negative balances [NBC-3.5].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "Leverage stands at 4.2 times NOI [NBC-4.4].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "The stressed coverage under revenue stress is 0.98 [NBC-4.5].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "The loss ratio for policy year 2 is elevated [HM-4.2].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "Proposed debt service is 145000 per year [NBC-4.1].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "The schedule lists 7 locations [HM-5.2].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "Rate stress adds 2.00 points to the note rate [NBC-4.5].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "There were 9 overdraft events in the period [NBC-3.5].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "The TIV difference is 18.4 [HM-5.2].", "expected_code": "V1_DIGIT", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is about one million [NBC-3.2].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "The applicant has twelve months of statements [NBC-3.2].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Coverage is roughly half of what the product requires [NBC-4.2].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Revenue is a quarter lower than stated [NBC-3.4].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "The gap is twice the benign band [NBC-3.4].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Debt service doubled after the new loan [NBC-4.1].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Nearly a third of deposits were transfers [NBC-3.3].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Three months ended with a negative balance [NBC-3.5].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "The stressed coverage drops by ten percent [NBC-4.5].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Leverage is close to four times operating income [NBC-4.4].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "The schedule covers a dozen locations [HM-5.2].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Losses tripled in the last policy year [HM-4.2].", "expected_code": "V2_NUMBER_WORD", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is {{claim:verified_annual_revenue}} against a $ figure on the application [NBC-3.4].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "The revenue gap is {{claim:revenue_gap_pct}} % of stated revenue [NBC-3.4].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Debt service was converted from \u20ac amounts [NBC-4.1].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "The schedule TIV is {{claim:schedule_tiv}} in \u00a3 terms [HM-5.2].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Coverage is {{claim:dscr}} \u00d7 debt service [NBC-4.1].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "The stressed DSCR {{assert:R-NBC-06}} because it is \u2265 the floor [NBC-4.5].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "The ratio {{assert:R-NBC-04}} and is \u2264 the floor [NBC-4.2].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Revenue is shown in $ on every statement [NBC-3.2].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Loss ratio is quoted in % per policy year [HM-4.1].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Deposits net of transfers are reported in USD $ [NBC-3.3].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Rate stress uses a % shock on the note rate [NBC-4.5].", "expected_code": "V3_SYMBOL", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is {{claim:verified_revenue}} [NBC-3.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The decision DSCR is {{claim:decision_dscr}} [NBC-4.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The revenue gap {{assert:R-NBC-99}} [NBC-3.4].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Leverage is {{claim:leverage_ratio}} [NBC-4.4].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The loss ratio {{assert:R-HM-07}} [HM-4.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Global DSCR is {{claim:global_dscr}} [NBC-4.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The TIV gap is {{claim:tiv_gap}} [HM-5.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Collateral coverage is {{claim:collateral_coverage}} [NBC-4.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Stress {{assert:stress_rate}} [NBC-4.5].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The model probability of default is {{claim:pd}} [NBC-4.2].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Existing service is {{claim:existing_service}} [NBC-4.1].", "expected_code": "V4_UNKNOWN_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The decision DSCR of {{claim:dscr}} is below the product minimum [NBC-4.2].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue of {{claim:verified_annual_revenue}} exceeds what the guideline requires [NBC-3.2].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Leverage of {{claim:leverage}} is higher than policy allows [NBC-4.4].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "The stressed DSCR of {{claim:stressed_dscr_revenue}} fails the revenue stress [NBC-4.5].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "The loss ratio of {{claim:loss_ratio_5y}} is above the acceptable band [HM-4.2].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "The TIV difference of {{claim:tiv_difference_pct}} is within policy [HM-5.2].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Coverage of {{claim:dscr}} meets the minimum for a term loan [NBC-4.2].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "The revenue gap of {{claim:revenue_gap_pct}} is greater than the benign band [NBC-3.4].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Stressed coverage of {{claim:stressed_dscr_rate}} is lower than the floor [NBC-4.5].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "The applicant has at least {{claim:negative_months}} negative months [NBC-3.5].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Coverage is insufficient at {{claim:dscr}} [NBC-4.2].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Debt service of {{claim:existing_annual_debt_service}} is more than expected [NBC-4.1].", "expected_code": "V5_UNSLOTTED_COMPARATIVE", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is {{claim:verified_annual_revenue}} [NBC-3.2].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-NBC-04"]}
+{"kind": "reject", "text": "The decision DSCR is {{claim:dscr}} [NBC-4.2].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-NBC-04"]}
+{"kind": "reject", "text": "Leverage is {{claim:leverage}} [NBC-4.4].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-NBC-04"]}
+{"kind": "reject", "text": "The decision DSCR of {{claim:dscr}} {{assert:R-NBC-04}} [NBC-4.2].", "expected_code": "V6_OMISSION", "required_refs": ["claim:revenue_gap_pct"]}
+{"kind": "reject", "text": "Stated revenue is {{claim:stated_annual_revenue}} [NBC-3.4].", "expected_code": "V6_OMISSION", "required_refs": ["claim:revenue_gap_pct"]}
+{"kind": "reject", "text": "The loss ratio is {{claim:loss_ratio_5y}} [HM-4.1].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-HM-06"]}
+{"kind": "reject", "text": "The schedule TIV is {{claim:schedule_tiv}} [HM-5.2].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-HM-06"]}
+{"kind": "reject", "text": "The schedule TIV is {{claim:schedule_tiv}} and the stated TIV is {{claim:stated_tiv}} [HM-5.2].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-HM-08"]}
+{"kind": "reject", "text": "Verified revenue is {{claim:verified_annual_revenue}} [NBC-3.2].", "expected_code": "V6_OMISSION", "required_refs": ["claim:stated_annual_revenue", "assert:R-NBC-02"]}
+{"kind": "reject", "text": "The stressed DSCR is {{claim:stressed_dscr_revenue}} [NBC-4.5].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-NBC-06"]}
+{"kind": "reject", "text": "Account conduct shows {{claim:nsf_events}} fee events [NBC-3.5].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-NBC-03"]}
+{"kind": "reject", "text": "Leverage is {{claim:leverage}} [NBC-4.4].", "expected_code": "V6_OMISSION", "required_refs": ["assert:R-NBC-05"]}
+{"kind": "reject", "text": "The revenue gap {{assert:R-NBC-02}} [NBC-3.4].", "expected_code": "V6_OMISSION", "required_refs": ["claim:revenue_gap_pct"]}
+{"kind": "reject", "text": "Debt service is {{claim:existing_annual_debt_service}} [NBC-4.1].", "expected_code": "V6_OMISSION", "required_refs": ["claim:dscr"]}
+{"kind": "reject", "text": "The application is approved based on the coverage [NBC-4.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "This loan has been declined because of the gap [NBC-3.4].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "We approve the request subject to conditions [NBC-4.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "The sanctions alert was cleared after review [NBC-3.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "The screening match is a false positive [NBC-3.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "This is the final decision on the file [NBC-4.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "The submission is hereby bound at the quoted terms [HM-4.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "The request was denied for insufficient revenue [NBC-3.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "I decline the application on the evidence [NBC-3.4].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "The loan is now funded [NBC-4.1].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "The alert has been dismissed by the assistant [NBC-3.2].", "expected_code": "V7_DISPOSITION_LANGUAGE", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is {claim:verified_annual_revenue} [NBC-3.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The decision DSCR is {{claim:}} [NBC-4.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Leverage is {{leverage}} [NBC-4.4].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The gap is {{claim:revenue_gap_pct} [NBC-3.4].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The gap is {claim:revenue_gap_pct}} [NBC-3.4].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Coverage {{assert R-NBC-04}} [NBC-4.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Revenue is {{ claim:verified_annual_revenue }} [NBC-3.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Revenue is {{claim:verified annual revenue}} [NBC-3.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Revenue is {{{claim:verified_annual_revenue}}} [NBC-3.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "The stressed result {{assert:}} [NBC-4.5].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Coverage is {{value:dscr}} [NBC-4.2].", "expected_code": "V8_MALFORMED_SLOT", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is {{claim:verified_annual_revenue}} [NBC-7.1].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "The decision DSCR is {{claim:dscr}} [NBC-12.4].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "Leverage is {{claim:leverage}} [NBC-4.3].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "The loss ratio is {{claim:loss_ratio_5y}} [HM-9.9].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "The TIV difference is {{claim:tiv_difference_pct}} [HM-5.3].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "The revenue gap is {{claim:revenue_gap_pct}} [NBC-3.4, NBC-6.3].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "The stressed DSCR is {{claim:stressed_dscr_rate}} [R-NBC-06].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "Debt service is {{claim:existing_annual_debt_service}} [NBC-8.1].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "The schedule TIV is {{claim:schedule_tiv}} [HM-11.2].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "Account conduct shows {{claim:nsf_events}} events [NBC-9.1].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "reject", "text": "Verified revenue is {{claim:verified_annual_revenue}} [AB-1.1].", "expected_code": "V9_UNKNOWN_CITATION", "required_refs": []}
+{"kind": "clean", "text": "Verified annual revenue is {{claim:verified_annual_revenue}} [NBC-3.2].", "required_refs": []}
+{"kind": "clean", "text": "The application states revenue of {{claim:stated_annual_revenue}} [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "The revenue gap is {{claim:revenue_gap_pct}}, and the gap {{assert:R-NBC-02}} [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "The decision DSCR of {{claim:dscr}} {{assert:R-NBC-04}} [NBC-4.2].", "required_refs": []}
+{"kind": "clean", "text": "Using stated revenue instead, the DSCR would be {{claim:dscr_stated}} for information only [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "Leverage is {{claim:leverage}}, which {{assert:R-NBC-05}} [NBC-4.4].", "required_refs": []}
+{"kind": "clean", "text": "Under the revenue stress the DSCR is {{claim:stressed_dscr_revenue}} and the stress test {{assert:R-NBC-06}} [NBC-4.5].", "required_refs": []}
+{"kind": "clean", "text": "The rate stress gives a DSCR of {{claim:stressed_dscr_rate}} [NBC-4.5].", "required_refs": []}
+{"kind": "clean", "text": "Existing annual debt service is {{claim:existing_annual_debt_service}} [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "Proposed annual debt service is {{claim:proposed_annual_debt_service}} [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "Account conduct shows {{claim:nsf_events}} fee events and {{claim:negative_months}} months ending negative [NBC-3.5].", "required_refs": []}
+{"kind": "clean", "text": "Account conduct {{assert:R-NBC-03}} [NBC-3.5].", "required_refs": []}
+{"kind": "clean", "text": "The five-year loss ratio is {{claim:loss_ratio_5y}} and it {{assert:R-HM-06}} [HM-4.2].", "required_refs": []}
+{"kind": "clean", "text": "The schedule TIV is {{claim:schedule_tiv}} while the application states {{claim:stated_tiv}} [HM-5.2].", "required_refs": []}
+{"kind": "clean", "text": "The TIV difference is {{claim:tiv_difference_pct}} and it {{assert:R-HM-08}} [HM-5.2].", "required_refs": []}
+{"kind": "clean", "text": "Revenue was verified from bank statements rather than from the application [NBC-3.2].", "required_refs": []}
+{"kind": "clean", "text": "Transfers between the applicant's accounts were removed before revenue was verified [NBC-3.3].", "required_refs": []}
+{"kind": "clean", "text": "Refunds and loan proceeds are excluded from eligible deposits [NBC-3.3].", "required_refs": []}
+{"kind": "clean", "text": "The underwriter should review the explanation for the revenue gap [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "A senior underwriter must review this file because of the referral [NBC-4.2].", "required_refs": []}
+{"kind": "clean", "text": "The memo recommends that the file be referred to a senior underwriter.", "required_refs": []}
+{"kind": "clean", "text": "Supporting documents should be requested before any decision is made [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "No one has reviewed the explanation letter yet [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "One of the owners signed the application [NBC-3.2].", "required_refs": []}
+{"kind": "clean", "text": "The stress results are recorded even though they are informational [NBC-4.5].", "required_refs": []}
+{"kind": "clean", "text": "The calculation uses verified revenue, not stated revenue [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "Loss runs were produced by the prior carriers [HM-4.1].", "required_refs": []}
+{"kind": "clean", "text": "The property schedule was signed by the applicant [HM-5.2].", "required_refs": []}
+{"kind": "clean", "text": "Capped incurred losses are compared with earned premium for each policy year [HM-4.1].", "required_refs": []}
+{"kind": "clean", "text": "The account shows {{claim:negative_months}} months that ended with a negative balance [NBC-3.5].", "required_refs": []}
+{"kind": "clean", "text": "Debt service on the proposed loan is {{claim:proposed_annual_debt_service}} at the note rate [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "The reviewer should confirm whether the stated figure includes transfers [NBC-3.3].", "required_refs": []}
+{"kind": "clean", "text": "Revenue verification relies on the statements for every operating account [NBC-3.2].", "required_refs": []}
+{"kind": "clean", "text": "The difference between the schedule and the application needs a corrected schedule [HM-5.2].", "required_refs": []}
+{"kind": "clean", "text": "The coverage result {{assert:R-NBC-04}}, so a human approver decides [NBC-4.2].", "required_refs": []}
+{"kind": "clean", "text": "Each guideline section cited here governs the calculation shown [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "The applicant's operating account statements are complete for the window [NBC-3.2].", "required_refs": []}
+{"kind": "clean", "text": "Someone from credit administration will request the missing explanation [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "The memo does not state a decision; a person with authority decides [NBC-4.2].", "required_refs": []}
+{"kind": "clean", "text": "Earned premium comes from the submission for each policy year [HM-4.1].", "required_refs": []}
+{"kind": "clean", "text": "The revenue stress assumes verified revenue falls and operating income falls by the same amount [NBC-4.5].", "required_refs": []}
+{"kind": "clean", "text": "Leverage combines existing debt and the new loan relative to operating income [NBC-4.4].", "required_refs": []}
+{"kind": "clean", "text": "Every principal must be screened, and the results are shown separately [NBC-3.2].", "required_refs": []}
+{"kind": "clean", "text": "Rate stress applies only to variable-rate products [NBC-4.5].", "required_refs": []}
+{"kind": "clean", "text": "The schedule values are at replacement cost [HM-5.2].", "required_refs": []}
+{"kind": "clean", "text": "Stated revenue is {{claim:stated_annual_revenue}} and verified revenue is {{claim:verified_annual_revenue}} [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "The gap {{assert:R-NBC-02}}, so an explanation is requested [NBC-3.4].", "required_refs": []}
+{"kind": "clean", "text": "The rate stress {{assert:R-NBC-06}} [NBC-4.5].", "required_refs": []}
+{"kind": "clean", "text": "Operating income is adjusted when verified revenue is lower than the profit and loss revenue [NBC-4.1].", "required_refs": []}
+{"kind": "clean", "text": "The file lists the loss runs used in the calculation [HM-4.1].", "required_refs": []}
