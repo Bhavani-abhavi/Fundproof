@@ -22,6 +22,9 @@ jobs:
           python-version: "3.11"
           enable-cache: true
 
+      - name: Install Tesseract OCR (document-intelligence tests run real OCR on SYNTHETIC scanned pages)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
       - name: Install dependencies from the lockfile
         run: uv sync --locked
 
