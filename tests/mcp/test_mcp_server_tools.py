@@ -408,9 +408,12 @@ def test_score_success_passes_the_service_answer_through(guideline_retriever: An
     assert payload["error"] is None
     assert payload["score"]["prediction"] == 0.083
     assert payload["score"]["model_version"] == "fake-risk-model-0.0.1"
+    assert payload["score"]["scenario"] == "revenue_down_20"
+    assert payload["score"]["unknown_features"] == ["years_in_business"]
     body = httpx.Response(200, content=sent[0].content).json()
     assert sent[0].method == "POST"
-    assert body == arguments
+    # The service contract has no scenario label: the client keeps it and labels the answer with it.
+    assert body == {key: value for key, value in arguments.items() if key != "scenario"}
 
 
 @pytest.mark.parametrize(

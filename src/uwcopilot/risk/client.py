@@ -9,11 +9,15 @@ One setting, one meaning, for every caller:
   unavailable (error code risk_api_not_configured). There is no localhost default and no score is ever made up.
 - UWC_RISK_API_TIMEOUT_S: seconds to wait for an answer (default 10, at most 120).
 
-The request body is a RiskScoreRequest and a successful answer must be a valid RiskScoreResponse. Every failure
-becomes a RiskApiError carrying a RiskApiErrorInfo with a fixed code, so the MCP server can return it as a
-structured error. Failures that mean "the service is not there" (not configured, unreachable, timeout) are
-RiskApiUnavailable, which is also a registry ToolUnavailable: the agent records the tool as unavailable and the
-policy reports the model PD as "not evaluated".
+Callers pass a RiskScoreRequest and get a RiskScoreResponse (the tool contract in uwcopilot.tools.schemas). On the
+wire the client speaks the SERVICE contract (uwcopilot.risk.service ScoreRequest / ScoreResponse): it sends only
+product, features and overrides, and it accepts only a response with exactly the service's fields (ServiceScore),
+which it then translates. An earlier version posted the tool model as-is and expected the tool model back, which
+the real service never accepts or sends; tests/risk/test_client_service_integration.py now wires this client to the
+real FastAPI app. Every failure becomes a RiskApiError carrying a RiskApiErrorInfo with a fixed code, so the MCP
+server can return it as a structured error. Failures that mean "the service is not there" (not configured,
+unreachable, timeout) are RiskApiUnavailable, which is also a registry ToolUnavailable: the agent records the tool
+as unavailable and the policy reports the model PD as "not evaluated".
 
 Two deliberate choices:
 - trust_env=False: proxy and .netrc settings in the environment are never applied. Only UWC_RISK_API_URL decides
@@ -30,12 +34,12 @@ from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from pydantic import Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from uwcopilot.common.paths import ENV_FILE
 from uwcopilot.common.settings import env_reader, is_http_url
 from uwcopilot.tools.registry import ToolUnavailable
-from uwcopilot.tools.schemas import RiskScoreRequest, RiskScoreResponse, StrictOutput
+from uwcopilot.tools.schemas import ReasonCode, RiskScoreRequest, RiskScoreResponse, StrictOutput
 
 SCORE_PATH = "/score"
 DEFAULT_TIMEOUT_S = 10.0
@@ -81,6 +85,91 @@ class RiskApiError(RuntimeError):
 
 class RiskApiUnavailable(RiskApiError, ToolUnavailable):
     """The service is not configured, cannot be reached, or did not answer in time."""
+
+
+class ServiceModel(BaseModel):
+    """Base for the service's response models: unknown fields are refused, so nothing extra is passed along."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ServiceReason(ServiceModel):
+    """One reason code as the service sends it (uwcopilot.risk.service.ReasonCode)."""
+
+    feature: str
+    value: str | int | float | None = None
+    contribution: float
+    reason: str
+
+
+class ServiceAssessment(ServiceModel):
+    """Prediction, band and reasons for one set of feature values (uwcopilot.risk.service.Assessment)."""
+
+    prediction: float
+    risk_band: str = Field(min_length=1)
+    reason_codes: list[ServiceReason]
+
+
+class ServiceScenario(ServiceModel):
+    """Baseline vs scenario after overrides (uwcopilot.risk.service.ScenarioResult)."""
+
+    overrides: dict[str, Any]
+    baseline: ServiceAssessment
+    scenario: ServiceAssessment
+    prediction_change: float
+    relative_change: float | None
+    risk_band_changed: bool
+
+
+class ServiceScore(ServiceModel):
+    """The body of a successful POST /score (uwcopilot.risk.service.ScoreResponse), field for field.
+
+    Kept here instead of importing the service module, which loads LightGBM and SHAP at import time.
+    """
+
+    product: str
+    prediction_name: str
+    prediction_unit: str
+    prediction: float
+    risk_band: str = Field(min_length=1)
+    reason_codes: list[ServiceReason]
+    model: str
+    model_version: str = Field(min_length=1)
+    risk_band_definition: dict[str, Any]
+    scenario: ServiceScenario | None = None
+    note: str
+
+
+def service_body(request: RiskScoreRequest) -> dict[str, Any]:
+    """The JSON the service accepts: product, features and (only when given) overrides. No other field."""
+    body: dict[str, Any] = {"product": request.product, "features": request.features}
+    if request.overrides:
+        body["overrides"] = request.overrides
+    return body
+
+
+def tool_response(request: RiskScoreRequest, score: ServiceScore) -> RiskScoreResponse:
+    """Translate the service's answer into the tool contract.
+
+    With overrides, the scenario assessment is the answer (the caller asked "what if"), labelled with the request's
+    scenario name; otherwise the baseline. Features the request sent as None are listed as unknown, so a score
+    based on incomplete data is never shown as complete.
+    """
+    assessment: ServiceAssessment | ServiceScore = score
+    if request.overrides and score.scenario is not None:
+        assessment = score.scenario.scenario
+    return RiskScoreResponse(
+        product=request.product,
+        prediction=assessment.prediction,
+        risk_band=assessment.risk_band,
+        reason_codes=[
+            ReasonCode(feature=reason.feature, contribution=reason.contribution, description=reason.reason)
+            for reason in assessment.reason_codes
+        ],
+        model_version=score.model_version,
+        scenario=request.scenario,
+        unknown_features=sorted(name for name, value in request.features.items() if value is None),
+    )
 
 
 @dataclass(frozen=True)
@@ -206,7 +295,7 @@ class RiskApiClient:
         """Send the request; network failures become RiskApiUnavailable (unreachable or timeout)."""
         try:
             with httpx.Client(transport=self.transport, timeout=self.timeout_s, trust_env=False) as client:
-                return client.post(score_url, json=request.model_dump(mode="json"))
+                return client.post(score_url, json=service_body(request))
         except httpx.TimeoutException as error:
             message = f"The risk service did not answer within {self.timeout_s:g} s ({type(error).__name__})."
             raise self.error("risk_api_timeout", message) from error
@@ -233,9 +322,12 @@ class RiskApiClient:
             message = f"The risk service returned HTTP {status} instead of 200 (redirects are not followed)."
             raise self.error("risk_api_invalid_response", message, status)
         try:
-            return RiskScoreResponse.model_validate(response.json())
+            score = ServiceScore.model_validate(response.json())
+            if score.product != request.product:
+                raise ValueError(f"asked for {request.product}, got {score.product}")
+            return tool_response(request, score)
         except (ValueError, ValidationError) as error:
-            message = "The risk service answered, but not with a valid RiskScoreResponse. No score was produced."
+            message = "The risk service answered, but not with a valid score response. No score was produced."
             raise self.error("risk_api_invalid_response", message, status) from error
 
 

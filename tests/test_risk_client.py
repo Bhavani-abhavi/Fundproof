@@ -24,14 +24,19 @@ from uwcopilot.tools.registry import ToolUnavailable, call_tool
 from uwcopilot.tools.schemas import RiskScoreRequest
 
 REQUEST = RiskScoreRequest(product="credit", features={"dscr": 1.3})
+# A successful POST /score body in the SERVICE contract (uwcopilot.risk.service.ScoreResponse); FAKE numbers.
 BODY = {
     "product": "credit",
+    "prediction_name": "probability_of_default",
+    "prediction_unit": "probability",
     "prediction": 0.05,
     "risk_band": "C",
     "reason_codes": [],
+    "model": "lightgbm",
     "model_version": "test-1",
-    "scenario": "baseline",
-    "unknown_features": [],
+    "risk_band_definition": {"method": "quantiles"},
+    "scenario": None,
+    "note": "FAKE test response",
 }
 
 
