@@ -1,0 +1,123 @@
+# Catalog of evidence requests the Evidence-to-Action Engine may recommend (Phase 4, docs/build_prompts.md D).
+#
+# The engine can only recommend requests listed here. Each request says which problem types it can resolve.
+# The packet generator (docintel/synthetic) records, for every injected problem, the request that resolves it.
+#
+# cost_weight is a RELATIVE effort weight (applicant time + underwriter time to obtain and review the item), on a
+# scale where 1.0 is "re-send a document you already have". These weights are PLANNING ASSUMPTIONS written by the
+# project author, not measurements. They only order requests of similar decision value; the value-of-information
+# score divides by them. Changing a weight changes rankings, so the evaluation reports rankings under these weights.
+#
+# Every request is SYNTHETIC: Northwind Business Credit and Harborline Mutual are fictional institutions.
+
+version: evidence-requests-v1
+
+requests:
+  # ---------------------------------------------------------------- credit (Northwind) ----------------------------
+  missing_statement_month:
+    line: credit
+    title: Missing bank statement month
+    ask: "Bank statement for the missing month of the operating account"
+    resolves: [missing_pages]
+    guideline_refs: [NBC-3.1, NBC-3.2, NBC-3.5]
+    cost_weight: 1.0
+  revenue_breakdown_by_account:
+    line: credit
+    title: Revenue breakdown by account
+    ask: "Breakdown of deposits by source for each statement month, identifying transfers, refunds and loan proceeds"
+    resolves: [revenue_gap]
+    guideline_refs: [NBC-3.3, NBC-3.4]
+    cost_weight: 2.0
+  fiscal_year_revenue_reconciliation:
+    line: credit
+    title: Fiscal-year revenue reconciliation
+    ask: "Reconciliation of the stated fiscal-year revenue to the 12 statement months, with an accounts receivable aging"
+    resolves: [revenue_gap]
+    guideline_refs: [NBC-3.2, NBC-3.4]
+    cost_weight: 2.0
+  revenue_source_documentation:
+    line: credit
+    title: Documentation for the stated revenue
+    ask: "Documents supporting the stated annual revenue (filed tax returns and merchant processor statements)"
+    resolves: [revenue_gap]
+    guideline_refs: [NBC-3.4]
+    cost_weight: 3.0
+  debt_schedule_update:
+    line: credit
+    title: Updated debt schedule
+    ask: "Updated schedule of business debt showing the current monthly payment for each lender"
+    resolves: [debt_payment_mismatch]
+    guideline_refs: [NBC-3.1, NBC-4.1]
+    cost_weight: 1.0
+  bank_verified_statement:
+    line: credit
+    title: Statement obtained directly from the bank
+    ask: "Statements for the affected months obtained directly from the bank or its portal"
+    resolves: [balance_discontinuity]
+    guideline_refs: [NBC-3.5, NBC-9.1]
+    cost_weight: 3.0
+  ownership_reconciliation:
+    line: credit
+    title: Ownership reconciliation
+    ask: "Corrected beneficial ownership certification reconciled to the formation documents"
+    resolves: [owner_mismatch]
+    guideline_refs: [NBC-6.1]
+    cost_weight: 2.0
+  # ---------------------------------------------------------------- insurance (Harborline) ------------------------
+  corrected_loss_run:
+    line: insurance
+    title: Corrected carrier loss run
+    ask: "A current loss run produced by the named carrier, with claim lines that reconcile to its totals"
+    resolves: [loss_run_total_mismatch, paid_reserve_mismatch]
+    guideline_refs: [HM-3.2, HM-3.3, HM-11.1]
+    cost_weight: 2.0
+  missing_loss_run:
+    line: insurance
+    title: Missing carrier loss run
+    ask: "The loss run of the named prior carrier for the missing policy years"
+    resolves: [missing_document]
+    guideline_refs: [HM-3.1, HM-3.2]
+    cost_weight: 2.0
+  updated_property_schedule:
+    line: insurance
+    title: Updated, signed property schedule
+    ask: "A property schedule signed and dated within 12 months that reconciles to the application TIV"
+    resolves: [tiv_mismatch]
+    guideline_refs: [HM-5.1, HM-5.2]
+    cost_weight: 1.5
+  claims_history_reconciliation:
+    line: insurance
+    title: Claims history reconciliation
+    ask: "A corrected application loss history reconciled to the carrier loss runs"
+    resolves: [claims_history_mismatch]
+    guideline_refs: [HM-3.3]
+    cost_weight: 1.5
+  # ---------------------------------------------------------------- both lines ------------------------------------
+  missing_document:
+    line: both
+    title: Missing required document
+    ask: "The required document named in the request"
+    resolves: [missing_document]
+    guideline_refs: [NBC-3.1, HM-3.1]
+    cost_weight: 1.5
+  corrected_application:
+    line: both
+    title: Corrected application
+    ask: "A corrected, re-signed application page for the inconsistent field"
+    resolves: [name_mismatch, fein_mismatch]
+    guideline_refs: [NBC-3.1, HM-3.1]
+    cost_weight: 1.0
+  identity_reverification:
+    line: both
+    title: Identity and registration re-verification
+    ask: "Formation documents and IRS EIN confirmation letter re-verifying the legal name and FEIN"
+    resolves: [name_mismatch, fein_mismatch, owner_mismatch]
+    guideline_refs: [NBC-6.1, NBC-6.2, HM-8.1]
+    cost_weight: 2.5
+  fraud_operations_review:
+    line: both
+    title: Fraud Operations / SIU review of embedded instructions
+    ask: "Fraud Operations (credit) or the SIU (insurance) reviews the document that contains embedded instructions"
+    resolves: [prompt_injection]
+    guideline_refs: [NBC-9.2, HM-11.2]
+    cost_weight: 2.0

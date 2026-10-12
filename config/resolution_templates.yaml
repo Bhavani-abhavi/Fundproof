@@ -1,0 +1,189 @@
+# Plausible resolutions for each problem type, with documented prior weights (Phase 4 value of information).
+#
+# For every open CONFLICTING or UNKNOWN claim the Evidence-to-Action Engine asks: "if this problem were resolved
+# each plausible way, would the reference policy's recommendation change?" The options below are those plausible
+# ways. The packet generator instantiates the same templates with case values and records which option is closest
+# to the (hidden) truth, plus the exact true values, so the simulator can reveal them.
+#
+# PRIORS ARE ASSUMPTIONS written by the project author, not estimates from data. The evaluation reports how the
+# ranking behaves when they are wrong (x0.5, x1.5, and with the true resolution missing from the set).
+#
+# Lever vocabulary used in substitutions (applied by evidence/levers.py):
+#   <dotted.path[i]>          set a field of the agent's CreditApplication / InsuranceApplication JSON
+#   "@verified_annual_revenue" rebalance MonthlyDeposits so NBC-3.2 verified revenue equals the value
+#   "@schedule_tiv"            scale every location's building, contents and income values so the schedule
+#                              TIV equals the value
+#   "+<list.path>"             append an item (a dict) to a list, e.g. "+bank_statements.months"
+#   "documents_provided+"      add a document code to documents_provided
+#   "check:<check_id>"         set a document check (docintel/checks.py) to "resolved" or "confirmed"
+# Values written as {name} are filled from the case (for example {verified} = verified annual revenue).
+
+version: resolution-templates-v1
+
+templates:
+  revenue_gap:
+    options:
+      - option_id: verified_is_right
+        description: The stated figure was wrong (non-revenue deposits counted, or a different period); restate it.
+        prior: 0.6
+        substitutions: {stated_annual_revenue: "{verified}"}
+      - option_id: stated_is_right
+        description: Deposits excluded as non-revenue or unidentified were documented as revenue.
+        prior: 0.2
+        substitutions: {"@verified_annual_revenue": "{stated}"}
+      - option_id: midpoint
+        description: Part of the gap is explained with documents; both figures move to the midpoint.
+        prior: 0.2
+        substitutions: {stated_annual_revenue: "{midpoint}", "@verified_annual_revenue": "{midpoint}"}
+  missing_pages:
+    # A missing statement month: verified revenue cannot be computed (NBC-3.2) until it arrives.
+    options:
+      - option_id: month_typical
+        description: The missing month looks like the median of the other months.
+        prior: 0.6
+        substitutions: {"+bank_statements.months": "{month_at_median}"}
+      - option_id: month_low
+        description: The missing month has half the median eligible deposits.
+        prior: 0.2
+        substitutions: {"+bank_statements.months": "{month_at_half_median}"}
+      - option_id: month_high
+        description: The missing month has one and a half times the median eligible deposits.
+        prior: 0.2
+        substitutions: {"+bank_statements.months": "{month_at_1_5_median}"}
+  missing_document:
+    options:
+      - option_id: provided_consistent
+        description: The document arrives and agrees with the rest of the file.
+        prior: 0.9
+        substitutions: {"documents_provided+": "{document}"}
+      - option_id: provided_inconsistent
+        description: The document arrives and shows an inconsistency that needs review.
+        prior: 0.1
+        substitutions: {"documents_provided+": "{document}", "check:{document}_consistency": "confirmed"}
+  missing_loss_run:
+    # A missing carrier loss run (insurance): the loss ratio cannot be computed (HM-4.1) until it arrives.
+    options:
+      - option_id: clean_history
+        description: No claims in the missing years.
+        prior: 0.5
+        substitutions: {"+loss_runs.years": "{years_without_claims}"}
+      - option_id: typical_losses
+        description: Losses in the missing years at the rate of the other years.
+        prior: 0.3
+        substitutions: {"+loss_runs.years": "{years_at_observed_rate}"}
+      - option_id: adverse_losses
+        description: Losses in the missing years at twice the rate of the other years.
+        prior: 0.2
+        substitutions: {"+loss_runs.years": "{years_at_twice_observed_rate}"}
+  name_mismatch:
+    options:
+      - option_id: typo_confirmed
+        description: One document has a transcription error; the majority value is right.
+        prior: 0.7
+        substitutions: {"check:name_consistency": "resolved"}
+      - option_id: identity_issue
+        description: The names refer to different entities; the inconsistency stands.
+        prior: 0.3
+        substitutions: {"check:name_consistency": "confirmed"}
+  fein_mismatch:
+    options:
+      - option_id: typo_confirmed
+        description: One document has a transcription error; the majority FEIN is right.
+        prior: 0.7
+        substitutions: {"check:fein_consistency": "resolved"}
+      - option_id: identity_issue
+        description: The FEINs belong to different entities; the inconsistency stands.
+        prior: 0.3
+        substitutions: {"check:fein_consistency": "confirmed"}
+  owner_mismatch:
+    options:
+      - option_id: application_correct
+        description: The application's ownership is right and the other document is out of date.
+        prior: 0.5
+        substitutions: {"check:owner_consistency": "resolved"}
+      - option_id: other_document_correct
+        description: The other document's ownership is right; the application is corrected to it.
+        prior: 0.3
+        substitutions: {"check:owner_consistency": "resolved", "owners": "{owners_per_other_document}"}
+      - option_id: unresolved
+        description: The ownership cannot be reconciled; the KYC referral stands.
+        prior: 0.2
+        substitutions: {"check:owner_consistency": "confirmed"}
+  balance_discontinuity:
+    options:
+      - option_id: bank_confirms
+        description: The bank-issued statement matches; the break was a rendering or pending-item artifact.
+        prior: 0.6
+        substitutions: {"check:balance_continuity": "resolved"}
+      - option_id: tampering_indicated
+        description: The bank-issued statement differs; the integrity referral stands.
+        prior: 0.4
+        substitutions: {"check:balance_continuity": "confirmed"}
+  debt_payment_mismatch:
+    # NBC-4.1 already uses the higher of the scheduled and observed payment, so no resolution changes the decision
+    # DSCR. This is the textbook zero-value request.
+    options:
+      - option_id: observed_is_current
+        description: The statements show the current payment; the schedule is out of date.
+        prior: 0.7
+        substitutions: {"debt.existing_monthly_payment_schedule": "{observed_payment}"}
+      - option_id: schedule_is_current
+        description: The schedule is current; the statements included a one-off extra payment.
+        prior: 0.3
+        substitutions: {"debt.existing_monthly_payment_schedule": "{scheduled_payment}"}
+  loss_run_total_mismatch:
+    options:
+      - option_id: rows_correct
+        description: The claim lines are right; the carrier's summary block was wrong.
+        prior: 0.6
+        substitutions: {"check:loss_run_totals": "resolved"}
+      - option_id: summary_correct_missing_claim
+        description: The summary is right; a claim line is missing and is added.
+        prior: 0.4
+        substitutions: {"check:loss_run_totals": "resolved", "+loss_runs.years[{year_index}].claims": "{missing_claim}"}
+  paid_reserve_mismatch:
+    options:
+      - option_id: incurred_correct
+        description: Incurred is right; paid and reserve are corrected to add up to it.
+        prior: 0.5
+        substitutions: {"{claim_path}.reserve": "{reserve_if_incurred_correct}"}
+      - option_id: paid_reserve_correct
+        description: Paid and reserve are right; incurred is corrected to their sum.
+        prior: 0.5
+        substitutions: {"{claim_path}.incurred": "{paid_plus_reserve}"}
+  tiv_mismatch:
+    options:
+      - option_id: schedule_correct
+        description: The signed schedule is current; the application TIV was out of date.
+        prior: 0.6
+        substitutions: {stated_tiv: "{schedule_tiv}"}
+      - option_id: application_correct
+        description: The application TIV is right; the schedule understates values and is corrected.
+        prior: 0.2
+        substitutions: {"@schedule_tiv": "{stated_tiv}"}
+      - option_id: midpoint
+        description: Both are partly out of date; both move to the midpoint.
+        prior: 0.2
+        substitutions: {stated_tiv: "{midpoint}", "@schedule_tiv": "{midpoint}"}
+  claims_history_mismatch:
+    options:
+      - option_id: loss_runs_correct
+        description: The carrier loss runs are right; the application's loss history is corrected to them.
+        prior: 0.7
+        substitutions: {stated_claim_count: "{loss_run_count}", stated_total_incurred: "{loss_run_incurred}"}
+      - option_id: application_correct
+        description: The application is right; claims missing from the loss runs are added.
+        prior: 0.3
+        substitutions: {"+loss_runs.current_term_claims": "{claims_missing_from_loss_runs}"}
+  prompt_injection:
+    # Embedded instructions are an integrity indicator (NBC-9.2, HM-11.2). Only Fraud Operations / the SIU can clear
+    # them. The request routes the document to them; it is not something the applicant can fix.
+    options:
+      - option_id: cleared
+        description: Fraud Operations / SIU review the document and clear it in writing.
+        prior: 0.3
+        substitutions: {"check:embedded_instructions": "resolved"}
+      - option_id: confirmed
+        description: The review confirms an attempt to manipulate the review; the referral stands.
+        prior: 0.7
+        substitutions: {"check:embedded_instructions": "confirmed"}
