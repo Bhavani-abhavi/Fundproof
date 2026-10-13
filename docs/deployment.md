@@ -1,6 +1,7 @@
 # Deployment: one container, a Hugging Face Docker Space
 
-> **Status: not deployed yet: waiting for the `HF_TOKEN` and `HF_SPACE_ID` repository secrets.**
+> **Status: not deployed yet.** The owners created the Space `astra6/FundProof` and added the `HF_TOKEN` repository
+> secret on 2026-10-13; the first deploy runs once CI is green.
 > There is no public URL. This page gets the URL only after a real deploy has run.
 
 Fundproof (working name; rename in `src/uwcopilot/web/settings.py` and `frontend/lib/config.ts`) is deployed as a
@@ -37,9 +38,11 @@ The deploy pipeline (`.github/workflows/deploy-space.yml`):
    '-- job verify: ruff, pytest (offline suite), frontend lint + typecheck + contrast + build,
    |              docker build of ./Dockerfile, run it, scripts/smoke_deploy.py --target local-container
    '-- job deploy (only if verify passed):
-          secrets HF_TOKEN and HF_SPACE_ID both set?  no -> a notice "Deploy skipped", nothing is pushed
+          secret HF_TOKEN set?  no -> a notice "Deploy skipped", nothing is pushed (Space id: secret or variable
+          HF_SPACE_ID, else the default astra6/FundProof)
           yes -> scripts/deploy_space.py bundle   copy the allow-listed files, stamp the commit into the Dockerfile
-              -> scripts/deploy_space.py push     create_repo(space, docker, exist_ok, public) + upload_folder
+              -> scripts/deploy_space.py push     create_repo(space, docker, exist_ok, public), set a fresh
+                                                  UWC_SESSION_SECRET Space secret, upload_folder
               -> (the Space builds the same Dockerfile itself)
               -> scripts/deploy_space.py wait     until https://<host>/api/health names this commit
               -> scripts/smoke_deploy.py --target hf-space   results kept as the workflow artifact "space-smoke"
@@ -107,16 +110,16 @@ document intelligence, Studio) will import more. Making the image smaller needs 
 
 One-time setup (an owner does this; nothing here can do it for you):
 
-1. **Create the Space first, with its secrets** (recommended order). On huggingface.co: New Space, SDK "Docker",
-   blank template, under the account that will own it. In the Space's Settings -> Variables and secrets add at least
-   `UWC_SESSION_SECRET` (section 6). If you skip this step, the first workflow run creates the Space, but the app
-   refuses to start without `UWC_SESSION_SECRET` (a runtime error, by design), the `wait` step fails, and you add
-   the secret and restart the Space by hand. Note: `create_repo(private=False)` does not change an existing Space,
-   so a Space you created as private stays private.
+1. **Create the Space** (done by the owners: `astra6/FundProof`, Docker SDK). On huggingface.co: New Space, SDK
+   "Docker", blank template, under the account that will own it. The app refuses to start in a Space without
+   `UWC_SESSION_SECRET`; `scripts/deploy_space.py push` sets that Space secret to a fresh random value on every
+   deploy (so each deploy signs everyone out; pass `--keep-session-secret` if the owners manage it themselves).
+   Note: `create_repo(private=False)` does not change an existing Space, so a private Space stays private.
 2. **Create a Hugging Face access token** with write access that can update that Space (a fine-grained token
    limited to it is the safest choice).
-3. **Add two GitHub repository secrets** (GitHub: Settings -> Secrets and variables -> Actions):
-   `HF_TOKEN` (the token) and `HF_SPACE_ID` (`owner/name`, for example `astra6/fundproof`).
+3. **Add the GitHub repository secret** `HF_TOKEN` (GitHub: Settings -> Secrets and variables -> Actions); done
+   by the owners on 2026-10-13. The Space id defaults to `astra6/FundProof`; set a repository secret or variable
+   `HF_SPACE_ID` (`owner/name`) only to deploy somewhere else.
 4. **Run the workflow**: Actions -> "Deploy to Hugging Face Space" -> Run workflow (pick a branch or tag), or push a
    tag: `git tag v0.2.0 && git push origin v0.2.0`.
 
@@ -125,14 +128,15 @@ and the Space rebuilds the Dockerfile. To roll back, run the workflow from an ol
 
 ## 6. Secrets and settings
 
-Space secrets are set by an owner in the Space settings, never by the workflow. The full list with comments is at
+Space secrets are set by an owner in the Space settings; the only one the workflow sets is `UWC_SESSION_SECRET`
+(a fresh random value per deploy, never printed). The full list with comments is at
 the end of `.env.example`; the meaning of each is in `src/uwcopilot/web/settings.py`.
 
 | Name | Where | Required? | Purpose |
 |---|---|---|---|
 | `HF_TOKEN` | GitHub repository secret | to deploy | write token used by the deploy job |
-| `HF_SPACE_ID` | GitHub repository secret | to deploy | `owner/name` of the Space |
-| `UWC_SESSION_SECRET` | Space secret | **yes** (startup refuses without it in a Space) | signs session cookies; 32+ characters |
+| `HF_SPACE_ID` | GitHub repository secret or variable | no (default `astra6/FundProof`) | `owner/name` of the Space |
+| `UWC_SESSION_SECRET` | Space secret | **yes** (startup refuses without it in a Space); set by the deploy job | signs session cookies; 32+ characters |
 | `UWC_ROLE_ALLOWLIST` | Space secret or variable | for lender/admin roles | `hfuser@<id>:role,...` (pin each entry to the account id, `subject` in `/api/me`; see `docs/web/auth.md`, Roles); everyone else is a founder |
 | `UWC_RETENTION_DAYS`, `UWC_PURGE_EVERY_S` | Space variables | no | how long stored objects live (default 30 days) and how often expired ones are deleted (default 3600 s, plus once at startup) |
 | `UWC_STORE=hf_dataset`, `UWC_HF_DATASET_REPO` | Space variables | for data that survives restarts | private dataset repo, created private if missing |
@@ -209,8 +213,8 @@ None of these can be checked without a real Space:
 
 | Symptom | Likely cause |
 |---|---|
-| Deploy job ends with "Deploy skipped" | `HF_TOKEN` or `HF_SPACE_ID` repository secret missing |
-| Space shows "Runtime error", log says `UWC_SESSION_SECRET is required in a Space` | add the Space secret, then restart the Space |
+| Deploy job ends with "Deploy skipped" | `HF_TOKEN` repository secret missing |
+| Space shows "Runtime error", log says `UWC_SESSION_SECRET is required in a Space` | the push ran with `--keep-session-secret` and the secret is missing: add it, then restart the Space |
 | Space log says `UWC_DEV_AUTH=1 is refused inside a Hugging Face Space` | remove `UWC_DEV_AUTH` from the Space settings |
 | Space log says `UWC_STORE=hf_dataset needs ...` | add `UWC_HF_DATASET_REPO`, `HF_TOKEN` and `UWC_FERNET_KEY` |
 | `wait` step times out | the Space build takes longer than 30 minutes or is queued; see the Space's build log |

@@ -8,9 +8,12 @@ bundle: copies an explicit allow-list into an EMPTY folder: Dockerfile, .dockeri
     src/, config/, corpus/ and the frontend SOURCE (no node_modules, .next or out: the Space builds them), plus
     deploy/space/README.md as README.md (the Space card). The commit hash is written into the bundle's Dockerfile
     line `ARG UWC_GIT_SHA=`, so GET /api/health on the Space names the commit it runs.
-push: create_repo(repo_type="space", space_sdk="docker", exist_ok=True, private=False), then upload_folder with
-    delete_patterns="*": the Space ends up with exactly the bundle's files (the Hub always keeps .gitattributes).
-    Space SECRETS are never set here; the owner sets them in the Space settings (docs/deployment.md).
+push: create_repo(repo_type="space", space_sdk="docker", exist_ok=True, private=False), then sets the Space secret
+    UWC_SESSION_SECRET to a fresh random value (the app refuses to start in a Space without it; a new value on each
+    deploy signs everyone out, which is acceptable for this prototype; --keep-session-secret skips this when the
+    owners manage the secret themselves), then upload_folder with delete_patterns="*": the Space ends up with exactly
+    the bundle's files (the Hub always keeps .gitattributes). No other Space secret is ever set here; the owners set
+    the rest in the Space settings (docs/deployment.md). The generated value is never printed or written anywhere.
 wait: polls the Space's runtime stage and https://<space host>/api/health until the health answer names the pushed
     commit. Fails early on a build/runtime error stage (after a grace period, because right after a push the Hub can
     still report the previous version's stage). Prints space_host=<host> for the smoke test.
@@ -22,6 +25,7 @@ HF_TOKEN and HF_SPACE_ID come from the environment and are never printed. Exit c
 import argparse
 import os
 import re
+import secrets
 import shutil
 import sys
 import time
@@ -79,6 +83,9 @@ class HubApi(Protocol):
 
     def upload_folder(self, **kwargs: Any) -> Any:
         """Upload a folder in one commit."""
+
+    def add_space_secret(self, repo_id: str, key: str, value: str, **kwargs: Any) -> Any:
+        """Create or overwrite one Space secret."""
 
     def get_space_runtime(self, repo_id: str) -> Any:
         """The Space's runtime (stage, hardware, ...)."""
@@ -182,13 +189,31 @@ def check_space_id(space_id: str) -> str:
     return space_id
 
 
-def push_bundle(api: HubApi, space_id: str, bundle: Path, git_sha: str | None) -> str:
-    """Create the Space if needed and replace its files with the bundle. Returns the Space page URL."""
+SESSION_SECRET_NAME = "UWC_SESSION_SECRET"
+SESSION_SECRET_BYTES = 48  # secrets.token_urlsafe(48) gives 64 characters; the app needs at least 32
+
+
+def set_session_secret(api: HubApi, space_id: str, make_secret: Callable[[int], str] = secrets.token_urlsafe) -> None:
+    """Give the Space a fresh random UWC_SESSION_SECRET (the value is never printed or stored anywhere else)."""
+    api.add_space_secret(
+        space_id,
+        SESSION_SECRET_NAME,
+        make_secret(SESSION_SECRET_BYTES),
+        description="Signs session cookies. Set by scripts/deploy_space.py on each deploy (new value = sign-out).",
+    )
+
+
+def push_bundle(
+    api: HubApi, space_id: str, bundle: Path, git_sha: str | None, rotate_session_secret: bool = True
+) -> str:
+    """Create the Space if needed, set its session secret, and replace its files with the bundle. Returns the URL."""
     if not (bundle / "README.md").is_file() or not (bundle / "Dockerfile").is_file():
         raise DeployInputError(f"{bundle} does not look like a bundle (README.md and Dockerfile are required).")
     if git_sha is not None and not GIT_SHA_PATTERN.match(git_sha):
         raise DeployInputError(f"--git-sha must be 7 to 40 lowercase hex characters (got {git_sha!r}).")
     api.create_repo(space_id, repo_type="space", space_sdk="docker", exist_ok=True, private=False)
+    if rotate_session_secret:
+        set_session_secret(api, space_id)
     message = f"Deploy {git_sha[:12]}" if git_sha else "Deploy"
     api.upload_folder(
         repo_id=space_id, repo_type="space", folder_path=str(bundle), delete_patterns="*", commit_message=message
@@ -267,6 +292,11 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     push = commands.add_parser("push", help="create the Space if needed and upload the bundle")
     push.add_argument("--bundle", type=Path, required=True)
     push.add_argument("--git-sha", default=None, help="only used in the commit message")
+    push.add_argument(
+        "--keep-session-secret",
+        action="store_true",
+        help="do not set UWC_SESSION_SECRET (use when the owners manage that Space secret themselves)",
+    )
     wait = commands.add_parser("wait", help="wait until the Space serves this commit")
     wait.add_argument("--git-sha", required=True)
     wait.add_argument("--timeout-s", type=float, default=DEFAULT_WAIT_TIMEOUT_S)
@@ -292,7 +322,7 @@ def main(
         space_id = check_space_id(require_env("HF_SPACE_ID", env))
         api = api_factory(token)
         if args.command == "push":
-            url = push_bundle(api, space_id, args.bundle, args.git_sha)
+            url = push_bundle(api, space_id, args.bundle, args.git_sha, not args.keep_session_secret)
             print(f"Uploaded the bundle to {url}")
             return 0
         with httpx.Client(timeout=30.0, follow_redirects=False) as client:

@@ -78,6 +78,9 @@ class FakeHub:
     def upload_folder(self, **kwargs: Any) -> None:
         self.calls.append(("upload_folder", (), kwargs))
 
+    def add_space_secret(self, repo_id: str, key: str, value: str, **kwargs: Any) -> None:
+        self.calls.append(("add_space_secret", (repo_id, key, value), kwargs))
+
     def get_space_runtime(self, repo_id: str) -> Any:
         stage = self.stages.pop(0) if len(self.stages) > 1 else self.stages[0]
         return type("Runtime", (), {"stage": stage})()
@@ -181,8 +184,12 @@ def test_push_creates_a_public_docker_space_and_replaces_its_files(fake_repo: Pa
     url = push_bundle(hub, SPACE_ID, out, GIT_SHA)
 
     assert url == "https://huggingface.co/spaces/owner/fundproof"
-    (create_name, create_args, create_kwargs), (upload_name, _, upload_kwargs) = hub.calls
+    create_call, secret_call, upload_call = hub.calls
+    (create_name, create_args, create_kwargs), (secret_name, secret_args, _) = create_call, secret_call
+    upload_name, _, upload_kwargs = upload_call
     assert create_name == "create_repo" and create_args == (SPACE_ID,)
+    assert secret_name == "add_space_secret" and secret_args[:2] == (SPACE_ID, "UWC_SESSION_SECRET")
+    assert len(secret_args[2]) >= 32
     assert create_kwargs == {"repo_type": "space", "space_sdk": "docker", "exist_ok": True, "private": False}
     assert upload_name == "upload_folder"
     assert upload_kwargs["repo_id"] == SPACE_ID and upload_kwargs["repo_type"] == "space"
@@ -273,3 +280,34 @@ def test_dockerignore_starts_from_nothing_and_never_lets_secrets_or_data_back_in
     allowed = {rule[1:].rstrip("/") for rule in rules if rule.startswith("!")}
     assert allowed == {"pyproject.toml", "uv.lock", "README.md", "src", "config", "corpus", "frontend"}
     assert {"**/.env", "frontend/node_modules", "frontend/out"} <= set(rules)
+
+
+def test_push_sets_a_fresh_session_secret_each_time_and_never_prints_it(
+    fake_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "bundle"
+    build_bundle(fake_repo, out, GIT_SHA)
+    hub = FakeHub()
+    environ = {"HF_TOKEN": "hf_secret_value_123", "HF_SPACE_ID": SPACE_ID}
+
+    assert deploy_space.main(["push", "--bundle", str(out)], api_factory=lambda token: hub, environ=environ) == 0
+    assert deploy_space.main(["push", "--bundle", str(out)], api_factory=lambda token: hub, environ=environ) == 0
+
+    values = [args[2] for name, args, _ in hub.calls if name == "add_space_secret"]
+    assert len(values) == 2 and values[0] != values[1]
+    printed = capsys.readouterr()
+    assert all(value not in printed.out + printed.err for value in values)
+
+
+def test_keep_session_secret_skips_the_secret(fake_repo: Path, tmp_path: Path) -> None:
+    out = tmp_path / "bundle"
+    build_bundle(fake_repo, out, GIT_SHA)
+    hub = FakeHub()
+    environ = {"HF_TOKEN": "hf_secret_value_123", "HF_SPACE_ID": SPACE_ID}
+
+    code = deploy_space.main(
+        ["push", "--bundle", str(out), "--keep-session-secret"], api_factory=lambda token: hub, environ=environ
+    )
+
+    assert code == 0
+    assert [name for name, _, _ in hub.calls] == ["create_repo", "upload_folder"]

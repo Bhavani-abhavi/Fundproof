@@ -5,12 +5,14 @@ name: Deploy to Hugging Face Space
 #
 # verify: the CI checks (ruff, the offline pytest suite), the frontend checks and build, then the same Dockerfile the
 #         Space builds, run as a container and smoke-tested (scripts/smoke_deploy.py).
-# deploy: only after verify passed, and only when the repository secrets HF_TOKEN and HF_SPACE_ID exist (otherwise
-#         it ends with a notice and pushes nothing). It uploads a bundle of the repo (scripts/deploy_space.py),
-#         waits until the Space serves this commit, and smoke-tests the Space.
+# deploy: only after verify passed, and only when the repository secret HF_TOKEN exists (otherwise it ends with a
+#         notice and pushes nothing). The Space id comes from a secret or variable HF_SPACE_ID, else
+#         astra6/FundProof. It uploads a bundle of the repo (scripts/deploy_space.py), waits until the Space serves
+#         this commit, and smoke-tests the Space.
 #
-# Secrets are passed to steps as environment variables and never echoed. Space secrets (UWC_SESSION_SECRET, ...)
-# are set by the owner in the Space settings, never by this workflow. See docs/deployment.md.
+# Secrets are passed to steps as environment variables and never echoed. The deploy sets ONE Space secret,
+# UWC_SESSION_SECRET, to a fresh random value on each push (never printed); the owners set every other Space secret
+# in the Space settings. See docs/deployment.md.
 #
 # Supply chain: every action is pinned to a full commit SHA (a tag can be moved; a commit cannot), with the
 # release it was resolved from in a comment (resolved with `git ls-remote --tags` on 2026-10-13). uv is pinned to
@@ -113,10 +115,10 @@ jobs:
         id: secrets
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID || vars.HF_SPACE_ID || 'astra6/FundProof' }}
         run: |
-          if [ -z "${HF_TOKEN}" ] || [ -z "${HF_SPACE_ID}" ]; then
-            echo "::notice title=Deploy skipped::The repository secrets HF_TOKEN and HF_SPACE_ID are not both set, so nothing was pushed. See docs/deployment.md."
+          if [ -z "${HF_TOKEN}" ]; then
+            echo "::notice title=Deploy skipped::The repository secret HF_TOKEN is not set, so nothing was pushed. See docs/deployment.md."
             echo "ready=false" >> "${GITHUB_OUTPUT}"
           else
             echo "ready=true" >> "${GITHUB_OUTPUT}"
@@ -147,7 +149,7 @@ jobs:
         if: steps.secrets.outputs.ready == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID || vars.HF_SPACE_ID || 'astra6/FundProof' }}
         run: uv run --no-dev python scripts/deploy_space.py push --bundle "${RUNNER_TEMP}/space" --git-sha "${GITHUB_SHA}"
 
       - name: Wait until the Space serves this commit
@@ -155,7 +157,7 @@ jobs:
         if: steps.secrets.outputs.ready == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID || vars.HF_SPACE_ID || 'astra6/FundProof' }}
         run: uv run --no-dev python scripts/deploy_space.py wait --git-sha "${GITHUB_SHA}" --timeout-s 1800
 
       - name: Smoke-test the Space
