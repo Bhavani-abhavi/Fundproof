@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import eval_studio_siteiq as script
-from uwcopilot.studio.data.fabric import SnapshotFabric
+from uwcopilot.studio.data.fabric import Snapshot, SnapshotFabric
 from uwcopilot.studio.metros import list_metros, load_metro
 from uwcopilot.studio.profiles import load_all_profiles
 from uwcopilot.studio.siteiq import validation
@@ -19,6 +19,7 @@ from uwcopilot.studio.siteiq.validation import (
     real_metro_sanity,
     rho,
     spearman,
+    steps_not_ok,
     summarize_profile,
     top_k_hits,
     two_level_bootstrap,
@@ -81,8 +82,23 @@ def test_real_metro_table_without_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(validation, "get_fabric", no_snapshot_fabric)
     table = real_metro_sanity("chicago_il_in", PROFILES)
     assert table["mode"] == "limited" and table["snapshot_date"] is None and table["tracts_in_snapshot"] == 0
+    assert table["snapshot_steps_not_ok"] == {}
     for row in table["by_business_type"].values():
         assert row["status"].startswith("not measured") and row["coverage_share"] == 0.0
+
+
+def test_failed_snapshot_steps_are_copied_from_the_manifest(tmp_path) -> None:
+    steps = [
+        {"name": "tract_geography", "status": "ok", "detail": "fine"},
+        {"name": "acs_tracts", "status": "failed", "detail": "api.census.gov answered with an HTML page"},
+        {"name": "enhancement:str_comps:x", "status": "not_available", "detail": "not verified"},
+    ]
+    snapshot = Snapshot(folder=tmp_path, manifest={"snapshot_date": "2026-10-13", "steps": steps}, tracts={})
+    assert steps_not_ok(snapshot) == {
+        "acs_tracts": "failed: api.census.gov answered with an HTML page",
+        "enhancement:str_comps:x": "not_available: not verified",
+    }
+    assert steps_not_ok(None) == {}
 
 
 def test_script_writes_metrics_with_provenance(tmp_path, monkeypatch, capsys) -> None:
@@ -91,6 +107,11 @@ def test_script_writes_metrics_with_provenance(tmp_path, monkeypatch, capsys) ->
     assert script.main(["--cities", "1", "--n-tracts", "40", "--resamples", "20", "--output", str(output)]) == 0
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["provenance"]["generated_by"] == "scripts/eval_studio_siteiq.py"
+    recorded = report["provenance"]["eval_sets"]
+    assert "config/studio/metros/synthetic_metro.yaml" in recorded
+    assert {path for path in recorded if "business_types" in path} == {
+        f"config/studio/business_types/{profile_id}.yaml" for profile_id in PROFILES
+    }
     assert report["data_label"] == "SYNTHETIC" and "same project author" in report["statement"]
     assert "Not financial" in report["disclaimer"]
     assert report["method"]["city_seeds"] == [load_metro("synthetic_metro").synthetic.seed + 1]

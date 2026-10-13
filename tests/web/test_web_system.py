@@ -5,7 +5,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-from uwcopilot.web.app import create_app
+from uwcopilot.web.app import SWAGGER_CSS_SRI, SWAGGER_CSS_URL, SWAGGER_JS_SRI, SWAGGER_JS_URL, create_app
 from uwcopilot.web.routers.system import BUSINESS_TYPES_NOT_AVAILABLE, METROS_NOT_AVAILABLE
 from uwcopilot.web.settings import DISCLAIMER
 
@@ -77,5 +77,16 @@ def test_docs_page_has_its_own_csp(client: TestClient) -> None:
     response = client.get("/api/docs")
     assert response.status_code == 200 and "swagger" in response.text.lower()
     csp = response.headers["content-security-policy"]
-    assert "https://cdn.jsdelivr.net" in csp and "'sha256-" in csp
-    assert "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+    script_src = csp.split("script-src")[1].split(";")[0]
+    assert "'sha256-" in script_src and "'unsafe-inline'" not in script_src
+    # Only the two pinned files are allowed, never the whole CDN host.
+    assert SWAGGER_JS_URL in script_src and "https://cdn.jsdelivr.net " not in csp + " "
+    assert SWAGGER_CSS_URL in csp.split("style-src")[1].split(";")[0]
+
+
+def test_docs_page_pins_swagger_ui_with_subresource_integrity(client: TestClient) -> None:
+    html = client.get("/api/docs").text
+    assert f'src="{SWAGGER_JS_URL}" integrity="{SWAGGER_JS_SRI}" crossorigin="anonymous"' in html
+    assert f'href="{SWAGGER_CSS_URL}" integrity="{SWAGGER_CSS_SRI}" crossorigin="anonymous"' in html
+    assert "@5/" not in html  # no floating major version
+    assert "fastapi.tiangolo.com" not in html  # no third-party favicon

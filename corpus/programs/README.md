@@ -21,13 +21,15 @@
   evaluation stay exactly as committed, and the Qdrant index is not rebuilt. The agent cites program sections
   directly by id (`src/uwcopilot/agent/policy_startup.py`); their text reaches the evidence registry, the claim
   checker and the SIG validator through `uwcopilot.agent.programs.load_program_chunks`, and the SIG numeric checker
-  through `uwcopilot.provenance.reference.citable_section_texts()`. The MCP server's `get_guideline_section` still
-  serves `corpus/guidelines/` only.
+  through `uwcopilot.provenance.reference.citable_section_texts()`. The MCP server started by its CLI also serves
+  them (`GuidelineStore(programs_dir=...)`, resources `guidelines://NSP/...`); its default store for tests still
+  reads `corpus/guidelines/` only.
 - **Revised after review (same day, version unchanged because nothing had been released).** The review pass added:
   the half-up rounding convention; other debt (loans and seller notes) in the sources and in the debt service;
   evidence that counts only when its document is in the file; the stricter of business type and industry code;
-  required tornado ranks 1 to 3; a note that the revenue stress is the binding test; and the approval limits of a
-  Senior Underwriter for files that need a higher authority or several exceptions.
+  required tornado ranks 1 to 3; a note that the revenue stress is the binding test (made exact about rounding in a
+  second review pass); and the approval limits of a Senior Underwriter for files that need a higher authority or
+  several exceptions.
 
 ## Rules for using this folder
 

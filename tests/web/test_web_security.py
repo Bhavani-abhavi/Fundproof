@@ -9,6 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from web_helpers import csrf_headers, dev_login
 
+from uwcopilot.observability.redaction import PiiRedactor
+from uwcopilot.web.access_log import escape_unprintable, redacted_target
 from uwcopilot.web.app import create_app
 from uwcopilot.web.security import RateLimiter, build_csp, client_ip, inline_script_hashes
 
@@ -108,6 +110,23 @@ def test_client_ip_uses_only_trusted_forwarded_entries(forwarded: str, hops: int
     assert client_ip(scope, hops) == expected
 
 
+def test_client_ip_reads_every_forwarded_header_line() -> None:
+    # A proxy that adds its own header line instead of extending the client's: the client line comes first.
+    headers = [(b"x-forwarded-for", b"7.7.7.1"), (b"x-forwarded-for", b"203.0.113.9")]
+    scope = {"type": "http", "headers": headers, "client": ("10.9.9.9", 5000)}
+    assert client_ip(scope, 1) == "203.0.113.9"
+
+
+def test_a_second_forwarded_header_line_cannot_pick_a_fresh_bucket(make_settings) -> None:
+    settings = make_settings(UWC_TRUSTED_PROXY_HOPS="1", UWC_RATE_LIMIT_IP_BURST="3", UWC_RATE_LIMIT_IP_PER_MIN="1")
+    with TestClient(create_app(settings)) as test_client:
+        statuses = []
+        for index in range(5):
+            headers = [("X-Forwarded-For", f"7.7.7.{index}"), ("X-Forwarded-For", "6.6.6.6")]
+            statuses.append(test_client.get("/api/me", headers=headers).status_code)
+        assert statuses == [200, 200, 200, 429, 429]
+
+
 # ---- body size ----
 
 
@@ -170,3 +189,25 @@ def test_access_log_masks_personal_data(client: TestClient, caplog: pytest.LogCa
     assert lines[-2].startswith("GET /api/me?email=*&ssn=* 200 ")  # query values are never logged
     assert lines[-1].startswith("GET /lookup/[EMAIL]/[SSN] 404 ")  # identifiers in paths are masked
     assert not any("jane.doe" in line or "123-45-6789" in line for line in lines)
+
+
+def test_access_log_lines_cannot_be_forged(client: TestClient, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="uwcopilot.web.access"):
+        client.get("/studio/%0D%0AFAKE%20line")  # a CR LF in the decoded path
+        client.get("/api/me?a%0AFORGED%20LINE=2")  # a line break in a query parameter name
+    lines = [record.getMessage() for record in caplog.records if record.name == "uwcopilot.web.access"]
+    assert len(lines) == 2
+    assert not any(char in line for line in lines for char in "\r\n")
+    assert lines[0].startswith("GET /studio/\\r\\nFAKE line 404 ")
+    assert lines[1].startswith("GET /api/me?a\\nFORGED LINE=* 200 ")
+
+
+def test_the_path_is_not_decoded_a_second_time() -> None:
+    # uvicorn decodes "%250A" once, to the three characters "%0A"; the log must keep them as they are.
+    scope = {"type": "http", "path": "/studio/%0AFAKE INFO line", "query_string": b""}
+    assert redacted_target(scope, PiiRedactor()) == "/studio/%0AFAKE INFO line"
+
+
+def test_escape_unprintable() -> None:
+    assert escape_unprintable("plain /path?x") == "plain /path?x"
+    assert escape_unprintable("a\nb\rc\td\x1be\x7ff\u2028g") == "a\\nb\\rc\\td\\x1be\\x7ff\\u2028g"

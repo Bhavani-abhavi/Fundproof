@@ -84,6 +84,11 @@ def test_from_factor_value() -> None:
     )
     item = from_factor_value("hourly_wage", "Wage", wage)
     assert (item.low, item.mode, item.high, item.status) == (15.0, 20.0, 30.0, "SYNTHETIC")
+    assert "derived with" not in item.source
+    derived = wage.model_copy(update={"status": "DATA", "assumptions": ["hours per week 25-40 (ASSUMPTION)"]})
+    assert from_factor_value("hourly_wage", "Wage", derived).source.endswith(
+        "derived with: hours per week 25-40 (ASSUMPTION)"
+    )
     prime = FactorValue(factor="prime_rate", value=7.0, unit="percent", status="DATA", reason="FRED")
     assert from_factor_value("p", "d", prime).kind == "fixed"
     unknown = FactorValue(factor="local_wages", unit="USD/hour", status="UNKNOWN", reason="no QCEW wage")

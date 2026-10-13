@@ -11,7 +11,9 @@ The generator decides a packet's problems FIRST (choose_problems), then builds t
 
 Problem rates are TARGETS from the Phase 2 spec. Each problem type is drawn independently, so about a quarter to
 a third of packets are clean and several problems may co-occur; a few combinations that would hide each other are
-not drawn together (see choose_problems).
+not drawn together (see choose_problems). One problem is not drawn but follows from the case: a loan request above
+$500,000 always lacks the CPA-reviewed financial statements (no packet document type carries them), recorded as an
+extra missing_document problem (credit_generate.add_cpa_financials_problem).
 """
 
 import random
@@ -124,10 +126,20 @@ def find_plan(plans: list[ProblemPlan], problem_type: str) -> ProblemPlan | None
 
 
 def scenario_name(plans: list[ProblemPlan]) -> str:
-    """'clean', or the problem types joined with '+' in a fixed order."""
+    """'clean', or the problem types joined with '+' in a fixed order (each type once)."""
     if not plans:
         return "clean"
-    return "+".join(plan.problem_type for plan in plans)
+    types: list[str] = []
+    for plan in plans:
+        if plan.problem_type not in types:
+            types.append(plan.problem_type)
+    return "+".join(types)
+
+
+def is_structural(plan: ProblemPlan) -> bool:
+    """True for a problem that follows from the case instead of being drawn (CPA-reviewed financials above
+    $500,000, see credit_generate.add_cpa_financials_problem). Problem rates count drawn problems only."""
+    return bool(plan.details.get("structural", False))
 
 
 # --------------------------------------------------------------------------------------------------------------

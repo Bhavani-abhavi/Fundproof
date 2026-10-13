@@ -2,7 +2,7 @@
  * Product-wide constants for the frontend.
  *
  * Rename the product HERE (and in src/uwcopilot/web/settings.py PRODUCT_NAME on the server).
- * At runtime the server's /api/config wins for PRODUCT_NAME and DISCLAIMER (see lib/session.tsx);
+ * At runtime the server's /api/config wins for PRODUCT_NAME and DISCLAIMER (see lib/auth.tsx);
  * these values are the fallback used for the static build and when the API is unreachable.
  */
 

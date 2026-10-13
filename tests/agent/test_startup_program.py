@@ -7,12 +7,18 @@ citable by the agent (evidence registry, claim checker, SIG validator) without e
 import re
 from pathlib import Path
 
+import pytest
+
 from uwcopilot.agent import policy_startup
 from uwcopilot.agent.claim_checker import numbers_in
 from uwcopilot.agent.evaluation import corpus_trigger_ids
 from uwcopilot.agent.evidence import citable_section_ids, guideline_sections
 from uwcopilot.agent.programs import PROGRAMS_DIR, STARTUP_PROGRAM_DOC_ID, load_program_chunks
+from uwcopilot.mcp_server import cli
+from uwcopilot.mcp_server.guideline_store import GuidelineStore, UnknownSectionError
 from uwcopilot.provenance.memo_grammar import validate
+from uwcopilot.provenance.numeric_check import check_numbers
+from uwcopilot.provenance.reference import citable_section_texts, section_texts
 from uwcopilot.rag.corpus import load_corpus
 from uwcopilot.rag.guidelines import load_guideline_chunks
 
@@ -124,3 +130,47 @@ def test_sig_validator_accepts_program_citations_from_the_citable_set() -> None:
     assert validate("The plan meets the program {{assert:R-NSP-06}} [NSP-4.1].", set(), {"R-NSP-06"}, [], allowed) == []
     violations = validate("See the program [NSP-99.1].", set(), set(), [], allowed)
     assert [violation.code for violation in violations] == ["V9_UNKNOWN_CITATION"]
+
+
+def test_sig_numeric_check_finds_program_numbers_in_the_citable_sources() -> None:
+    sentence = "The projected DSCR must be at least 1.25 [NSP-4.1]."
+    [guideline_only] = check_numbers(sentence, section_texts()).mentions
+    assert guideline_only.status == "untraceable"  # the mutation-test sources stay guideline-only on purpose
+    [mention] = check_numbers(sentence, citable_section_texts()).mentions
+    assert mention.matched_source == "NSP-4.1" and mention.status != "untraceable"
+    assert set(citable_section_texts()) == citable_section_ids()
+
+
+def test_mcp_guideline_store_serves_program_sections_when_asked() -> None:
+    default = GuidelineStore()
+    assert sorted(default.documents) == ["HM", "NBC"]  # the Phase 3 default is unchanged
+    with pytest.raises(UnknownSectionError):
+        default.get_section("NSP-4.1")
+    store = GuidelineStore(programs_dir=PROGRAMS_DIR)
+    assert sorted(store.documents) == ["HM", "NBC", "NSP"]
+    section = store.get_section("nsp-4.1")
+    assert section.section_id == "NSP-4.1" and section.citation == "[NSP-4.1]"
+    assert section.source_file == "corpus/programs/northwind_startup_program.md" and section.synthetic
+    assert section.resource_uri == "guidelines://NSP/NSP-4.1"
+    assert [item for item in store.section_ids() if item.startswith("NSP-")] == EXPECTED_SECTIONS
+    assert "SYNTHETIC" in store.section_markdown("NSP-9.1")
+
+
+def test_the_mcp_cli_serves_the_programs(monkeypatch: pytest.MonkeyPatch) -> None:
+    built = {}
+
+    class StopServer(Exception):
+        """Raised by the fake server so main() returns before serving."""
+
+    class FakeServer:
+        def run(self, *args: object, **kwargs: object) -> None:
+            raise StopServer
+
+    def fake_build_server(dependencies: object, log_level: str = "WARNING") -> FakeServer:
+        built["store"] = dependencies.guideline_store  # type: ignore[attr-defined]
+        return FakeServer()
+
+    monkeypatch.setattr(cli, "build_server", fake_build_server)
+    with pytest.raises(StopServer):
+        cli.main([])
+    assert "NSP" in built["store"].documents and "NBC" in built["store"].documents

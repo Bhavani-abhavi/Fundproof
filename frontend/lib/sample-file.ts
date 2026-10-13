@@ -59,8 +59,9 @@ export const SAMPLE_FIGURES: readonly SampleFigure[] = [
     label: "First-year revenue, middle case",
     value: usd.format(486_000),
     status: "MODEL_ESTIMATE",
-    note: "Simulated, based on stated assumptions",
-    source: "A simulation over the stated assumptions. It shows a possible range, not a prediction.",
+    note: "Example of a simulated value (typed for this page)",
+    source:
+      "Typed for this page to show how a simulated value is labeled. In a real file this figure would come from a simulation over the stated assumptions (simulated, based on stated assumptions): a possible range, not a prediction.",
   },
   {
     id: "annual-revenue",

@@ -2,14 +2,17 @@
 
 The line holds the method, the path, the NAMES of the query parameters (their values are replaced by "*"), the
 status code and the time taken. It never holds cookies, headers, bodies, query values, IP addresses or usernames.
-The path is URL-decoded and goes through the same PiiRedactor that cleans traces
-(uwcopilot.observability.redaction), so an e-mail address, phone number or SSN-shaped number in a URL path is
-masked before it reaches the log.
+The path goes through the same PiiRedactor that cleans traces (uwcopilot.observability.redaction), so an e-mail
+address, phone number or SSN-shaped number in a URL path is masked before it reaches the log.
+
+The path is used as the server already decoded it (uvicorn percent-decodes it once); it is NOT decoded a second
+time. Every character that is not printable (CR, LF, tab, other control characters, Unicode line separators) is
+written as an escape such as \\n or \\x1b, so a request can never start a new, forged log line.
 """
 
 import logging
 import time
-from urllib.parse import parse_qsl, unquote
+from urllib.parse import parse_qsl
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -19,11 +22,25 @@ logger = logging.getLogger("uwcopilot.web.access")
 MAX_LOGGED_PATH_CHARS = 300
 
 
+def escape_unprintable(text: str) -> str:
+    """text with every non-printable character written as a Python escape ("\\n", "\\x1b", "\\u2028")."""
+    pieces = []
+    for char in text:
+        if char.isprintable():
+            pieces.append(char)
+        else:
+            pieces.append(char.encode("unicode_escape").decode("ascii"))
+    return "".join(pieces)
+
+
 def redacted_target(scope: Scope, redactor: PiiRedactor) -> str:
-    """The path with identifiers masked, plus the query parameter names only ("?id=*&q=*"), length capped."""
-    path = redactor.redact_text(unquote(scope.get("path", "")))
+    """The path with identifiers masked, plus the query parameter names only ("?id=*&q=*"), length capped.
+
+    scope["path"] is already percent-decoded by the server. The raw query string is decoded once by parse_qsl.
+    """
+    path = escape_unprintable(redactor.redact_text(scope.get("path", "")))
     query = scope.get("query_string", b"").decode("latin-1")
-    names = [redactor.redact_text(name) for name, _ in parse_qsl(query, keep_blank_values=True)]
+    names = [escape_unprintable(redactor.redact_text(name)) for name, _ in parse_qsl(query, keep_blank_values=True)]
     target = path + ("?" + "&".join(f"{name}=*" for name in names) if names else "")
     return target[:MAX_LOGGED_PATH_CHARS]
 

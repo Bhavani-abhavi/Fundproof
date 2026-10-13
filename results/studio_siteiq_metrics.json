@@ -30,7 +30,7 @@
       "seed": 42,
       "ci": "95% percentile"
     },
-    "elapsed_seconds_synthetic_part": 115.4,
+    "elapsed_seconds_synthetic_part": 108.6,
     "elapsed_note": "wall-clock time on a shared machine (several agents run at once); not a benchmark"
   },
   "by_business_type": {
@@ -1203,7 +1203,15 @@
       "mode": "limited",
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 2292,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_steps_not_ok": {
+        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
+        "enhancement:traffic_state:IL": "not_available: no documented IL DOT traffic-count dataset recorded yet",
+        "enhancement:traffic_state:IN": "not_available: no documented IN DOT traffic-count dataset recorded yet",
+        "enhancement:str_comps:chicago": "not_available: Inside Airbnb coverage for 'chicago' not verified"
+      },
       "by_business_type": {
         "car_wash": {
           "status": "not measured: no tract could be ranked (required data UNKNOWN)",
@@ -1255,7 +1263,15 @@
       "mode": "limited",
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 1704,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_steps_not_ok": {
+        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
+        "enhancement:traffic_state:TX": "not_available: no documented TX DOT traffic-count dataset recorded yet",
+        "enhancement:city_open_data:dallas": "not_available: no documented open-data license dataset recorded for 'dallas'",
+        "enhancement:str_comps:dallas": "not_available: Inside Airbnb coverage for 'dallas' not verified"
+      },
       "by_business_type": {
         "car_wash": {
           "status": "not measured: no tract could be ranked (required data UNKNOWN)",
@@ -1307,7 +1323,15 @@
       "mode": "limited",
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 1615,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_steps_not_ok": {
+        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
+        "enhancement:traffic_state:TX": "not_available: no documented TX DOT traffic-count dataset recorded yet",
+        "enhancement:city_open_data:houston": "not_available: no documented open-data license dataset recorded for 'houston'",
+        "enhancement:str_comps:houston": "not_available: Inside Airbnb coverage for 'houston' not verified"
+      },
       "by_business_type": {
         "car_wash": {
           "status": "not measured: no tract could be ranked (required data UNKNOWN)",
@@ -1359,7 +1383,15 @@
       "mode": "limited",
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 3112,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_steps_not_ok": {
+        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
+        "enhancement:traffic_state:CA": "not_available: no documented CA DOT traffic-count dataset recorded yet",
+        "enhancement:city_open_data:los_angeles": "not_available: no documented open-data license dataset recorded for 'los_angeles'",
+        "enhancement:str_comps:los_angeles": "not_available: Inside Airbnb coverage for 'los_angeles' not verified"
+      },
       "by_business_type": {
         "car_wash": {
           "status": "not measured: no tract could be ranked (required data UNKNOWN)",
@@ -1411,7 +1443,15 @@
       "mode": "limited",
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 4928,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_steps_not_ok": {
+        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
+        "enhancement:traffic_state:NY": "not_available: no documented NY DOT traffic-count dataset recorded yet",
+        "enhancement:traffic_state:NJ": "not_available: no documented NJ DOT traffic-count dataset recorded yet",
+        "enhancement:str_comps:new_york_city": "not_available: Inside Airbnb coverage for 'new_york_city' not verified"
+      },
       "by_business_type": {
         "car_wash": {
           "status": "not measured: no tract could be ranked (required data UNKNOWN)",
@@ -1459,13 +1499,21 @@
     }
   },
   "provenance": {
-    "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+    "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-12T20:19:47+00:00",
+    "generated_at_utc": "2026-10-13T03:03:41+00:00",
     "generated_by": "scripts/eval_studio_siteiq.py",
     "prompts": {},
     "corpus_checksum": "not applicable (no retrieval corpus is used)",
-    "eval_sets": {},
+    "eval_sets": {
+      "config/studio/metros/synthetic_metro.yaml": "48a8e7953dc02e13e6ed89fe6f8eeaba24ec97514333dc37ef8855135c7ab726",
+      "config/studio/business_types/car_wash.yaml": "596f184aedac158cfa41ed4ec167c4e015b8622f3bb36fff2ef9763ac5bbebe7",
+      "config/studio/business_types/laundromat.yaml": "79a30a214a519697c8967f95cf3bca7c4209dc8aebddb53e64b0da6444595cf5",
+      "config/studio/business_types/motel.yaml": "8754df0ec807d43f46424c725f2377bd478e16ff576f389377e4fd33729e94a6",
+      "config/studio/business_types/restaurant_cafe.yaml": "b9f915afde3448b639f95f5654e433302797d90ddfc1c73228f5f8bac314abc9",
+      "config/studio/business_types/retail_storefront.yaml": "1ffc5407fd94a44820d061d0066c61b4988bc70470a3414ae773b95445f22b8b",
+      "config/studio/business_types/short_term_rental.yaml": "c4dc285fbce935b65908467dbc975c2a58486261f03749fa114907b1ce487cb6"
+    },
     "models": [],
     "data_snapshots": {
       "synthetic_city_seeds": [
@@ -1481,11 +1529,11 @@
         20261022
       ],
       "studio_snapshots": {
-        "chicago_il_in": "2026-10-12",
-        "dallas_fort_worth_tx": "2026-10-12",
-        "houston_tx": "2026-10-12",
-        "los_angeles_ca": "2026-10-12",
-        "new_york_ny_nj_pa": "2026-10-12"
+        "chicago_il_in": "2026-10-13",
+        "dallas_fort_worth_tx": "2026-10-13",
+        "houston_tx": "2026-10-13",
+        "los_angeles_ca": "2026-10-13",
+        "new_york_ny_nj_pa": "2026-10-13"
       }
     },
     "packages": {
@@ -1506,14 +1554,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        3.78,
-        3.29,
-        4.12
+        3.8,
+        4.22,
+        2.9
       ],
       "load_average_end": [
-        4.99,
-        3.99,
-        4.27
+        6.46,
+        4.79,
+        3.26
       ]
     }
   }

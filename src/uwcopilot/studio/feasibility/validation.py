@@ -19,6 +19,14 @@ Scores per world:
 - the same Brier scores for two baselines: a single forecast (every input at its most likely value, no shocks, no
   noise: the plan a spreadsheet shows, read as yes = 1 / no = 0) and the base rate (the share of worlds with the
   outcome, computed in-sample on the same worlds).
+
+One true future per world is what a founder lives through, so the headline uses it. Because the months of one true
+path move together (a strong site is above the median every month), one path per world gives a noisy coverage
+estimate. A diagnostic therefore also draws EXTRA_TRUTHS more true futures per world (an independent stream) and
+reports (1) the expected band coverage, which separates "the code is calibrated" from "the one future drawn for
+each world was unlucky", and (2) the true probability of each outcome (its share among those futures) next to the
+forecast probability (mean absolute gap).
+
 Validation on worlds whose generator the same author wrote shows the simulator is internally consistent and how it
 degrades when its assumptions are wrong; it says nothing about real-world accuracy.
 """
@@ -55,8 +63,9 @@ DOWNTURN_MONTHS = 6
 DOWNTURN_DEPTH = (0.2, 0.5)
 VALIDATION_YEAR = 2
 RELIABILITY_BINS: tuple[float, ...] = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
-# Stream ids keep the world, truth and forecast random numbers independent of each other.
-WORLD_STREAM, TRUTH_STREAM, FORECAST_STREAM = 0, 1, 2
+EXTRA_TRUTHS = 100  # extra true futures per world for the expected-coverage diagnostic
+# Stream ids keep the world, truth, forecast and extra-truth random numbers independent of each other.
+WORLD_STREAM, TRUTH_STREAM, FORECAST_STREAM, EXTRA_TRUTH_STREAM = 0, 1, 2, 3
 
 
 @dataclass(frozen=True)
@@ -65,6 +74,7 @@ class WorldScore:
 
     world_id: int
     anchored: bool
+    anchored_by: str
     coverage_revenue: float
     coverage_net_income: float
     p_dscr: float
@@ -73,6 +83,10 @@ class WorldScore:
     p_cash_negative: float
     outcome_cash_negative: bool
     single_point_cash_negative: bool
+    expected_coverage_revenue: float  # over EXTRA_TRUTHS true futures (diagnostic)
+    expected_coverage_net_income: float
+    true_p_dscr: float  # share of the EXTRA_TRUTHS true futures with year-2 DSCR >= target
+    true_p_cash_negative: float
 
 
 def stream_seed(base_seed: int, profile_index: int, world_id: int, stream: int, condition_index: int = 0) -> int:
@@ -81,52 +95,68 @@ def stream_seed(base_seed: int, profile_index: int, world_id: int, stream: int, 
     return int(sequence.generate_state(1)[0])
 
 
-def true_draws(setup: SimulationSetup, rng: np.random.Generator, condition: Condition) -> Draws:
-    """The random numbers of the hidden truth (one path)."""
-    truth = draw(setup, 1, rng)
+def true_draws(setup: SimulationSetup, rng: np.random.Generator, condition: Condition, n_paths: int = 1) -> Draws:
+    """The random numbers of n_paths hidden true futures (each misspecified future gets its own extra effects)."""
+    truth = draw(setup, n_paths, rng)
     if condition == "well_specified":
         return truth
     scale = np.sqrt(MISSPEC_T_DF / (MISSPEC_T_DF - 2.0))
-    noise = rng.standard_t(MISSPEC_T_DF, size=(1, setup.months)) / scale
-    level = np.exp(rng.normal(-0.5 * MISSPEC_LEVEL_SD**2, MISSPEC_LEVEL_SD))
-    extra = np.full((1, setup.months), level)
-    downturn = rng.uniform() < DOWNTURN_PROBABILITY
-    start = int(rng.integers(0, setup.months - DOWNTURN_MONTHS + 1))
-    depth = float(rng.uniform(*DOWNTURN_DEPTH))
-    if downturn:
-        extra[0, start : start + DOWNTURN_MONTHS] *= 1.0 - depth
+    noise = rng.standard_t(MISSPEC_T_DF, size=(n_paths, setup.months)) / scale
+    level = np.exp(rng.normal(-0.5 * MISSPEC_LEVEL_SD**2, MISSPEC_LEVEL_SD, size=n_paths))
+    downturn = rng.uniform(size=n_paths) < DOWNTURN_PROBABILITY
+    start = rng.integers(0, setup.months - DOWNTURN_MONTHS + 1, size=n_paths)
+    depth = rng.uniform(DOWNTURN_DEPTH[0], DOWNTURN_DEPTH[1], size=n_paths)
+    months = np.arange(setup.months)[None, :]
+    in_downturn = downturn[:, None] & (months >= start[:, None]) & (months < start[:, None] + DOWNTURN_MONTHS)
+    extra = level[:, None] * np.where(in_downturn, 1.0 - depth[:, None], 1.0)
     return replace(truth, noise_z=noise, extra_demand_multiplier=extra)
 
 
-def true_path(setup: SimulationSetup, seed: int, condition: Condition) -> PathResults:
-    """Draw and run the hidden true future of a world."""
-    draws = true_draws(setup, np.random.default_rng(seed), condition)
+def true_path(setup: SimulationSetup, seed: int, condition: Condition, n_paths: int = 1) -> PathResults:
+    """Draw and run hidden true futures of a world (one by default)."""
+    draws = true_draws(setup, np.random.default_rng(seed), condition, n_paths)
     return run_paths(setup, input_values(setup, draws), draws)
 
 
 def band_coverage(forecast: np.ndarray, truth: np.ndarray) -> float:
-    """Share of months where the true value lies within the forecast's P10-P90 (inclusive)."""
+    """Share of (true path, month) pairs where the true value lies within the forecast's P10-P90 (inclusive)."""
     p10, _, p90 = bands(forecast)
-    inside = (truth[0] >= p10) & (truth[0] <= p90)
+    inside = (truth >= p10[None, :]) & (truth <= p90[None, :])
     return float(np.mean(inside))
 
 
+def dscr_met(paths: PathResults, target: float) -> np.ndarray:
+    """Per path, True when the validation year's DSCR is at least the target (no debt service counts as not met)."""
+    return np.nan_to_num(dscr_by_year(paths, VALIDATION_YEAR), nan=-np.inf) >= target
+
+
 def score_world(
-    world: World, setup: SimulationSetup, forecast: PathResults, truth: PathResults, target: float
+    world: World,
+    setup: SimulationSetup,
+    forecast: PathResults,
+    truth: PathResults,
+    target: float,
+    extra_truths: PathResults | None = None,
 ) -> WorldScore:
-    """Compare one forecast with one true future."""
+    """Compare one forecast with one true future (and with the extra true futures, when given)."""
     baseline = single_point_run(setup)
+    many = extra_truths if extra_truths is not None else truth
     return WorldScore(
         world_id=world.world_id,
         anchored=world.anchored,
+        anchored_by=world.anchored_by,
         coverage_revenue=band_coverage(forecast.revenue, truth.revenue),
         coverage_net_income=band_coverage(forecast.net_income, truth.net_income),
-        p_dscr=float(np.mean(np.nan_to_num(dscr_by_year(forecast, VALIDATION_YEAR), nan=-np.inf) >= target)),
-        outcome_dscr=bool(dscr_by_year(truth, VALIDATION_YEAR)[0] >= target),
-        single_point_dscr=bool(dscr_by_year(baseline, VALIDATION_YEAR)[0] >= target),
+        p_dscr=float(np.mean(dscr_met(forecast, target))),
+        outcome_dscr=bool(dscr_met(truth, target)[0]),
+        single_point_dscr=bool(dscr_met(baseline, target)[0]),
         p_cash_negative=float(np.mean(cash_negative_within(forecast))),
         outcome_cash_negative=bool(cash_negative_within(truth)[0]),
         single_point_cash_negative=bool(cash_negative_within(baseline)[0]),
+        expected_coverage_revenue=band_coverage(forecast.revenue, many.revenue),
+        expected_coverage_net_income=band_coverage(forecast.net_income, many.net_income),
+        true_p_dscr=float(np.mean(dscr_met(many, target))),
+        true_p_cash_negative=float(np.mean(cash_negative_within(many))),
     )
 
 
@@ -140,6 +170,7 @@ def validate_profile(
     months: int,
     base_seed: int,
     target: float,
+    extra_truths: int = EXTRA_TRUTHS,
 ) -> dict[Condition, list[WorldScore]]:
     """Score n_worlds SYNTHETIC worlds of one business type under both conditions (same worlds, same forecasts)."""
     scores: dict[Condition, list[WorldScore]] = {condition: [] for condition in CONDITIONS}
@@ -163,7 +194,9 @@ def validate_profile(
         for condition_index, condition in enumerate(CONDITIONS):
             seed = stream_seed(base_seed, profile_index, world_id, TRUTH_STREAM, condition_index)
             truth = true_path(setup, seed, condition)
-            scores[condition].append(score_world(world, setup, forecast, truth, target))
+            extra_seed = stream_seed(base_seed, profile_index, world_id, EXTRA_TRUTH_STREAM, condition_index)
+            many = true_path(setup, extra_seed, condition, extra_truths) if extra_truths > 0 else None
+            scores[condition].append(score_world(world, setup, forecast, truth, target, many))
     return scores
 
 
@@ -194,6 +227,7 @@ def probability_block(
     return {
         "outcome_rate": round(float(np.mean(outcome)), 4),
         "mean_forecast": round(float(np.mean(forecast)), 4),
+        "single_forecast_yes_rate": round(float(np.mean(single)), 4),
         "brier_simulator": rounded(bootstrap_ci(brier_of, outcome, forecast, n_resamples=n_resamples, seed=seed)),
         "brier_single_forecast": rounded(bootstrap_ci(brier_of, outcome, single, n_resamples=n_resamples, seed=seed)),
         "brier_base_rate_in_sample": rounded(
@@ -215,13 +249,35 @@ def column(scores: list[WorldScore], name: str) -> np.ndarray:
     return np.array([getattr(item, name) for item in scores], dtype=float)
 
 
+def anchoring_counts(scores: list[WorldScore]) -> dict[str, int]:
+    """How many worlds were anchored by each lever (worlds.py); 'none' = not anchored."""
+    levers = [item.anchored_by for item in scores]
+    return {lever: levers.count(lever) for lever in ("demand", "rent_quote", "none")}
+
+
+def probability_gap(scores: list[WorldScore], forecast: str, truth: str, n_resamples: int, seed: int) -> dict[str, Any]:
+    """Mean |forecast probability - true probability| over worlds, with a bootstrap CI (diagnostic)."""
+    gaps = np.abs(column(scores, forecast) - column(scores, truth))
+    return {
+        "mean_true_probability": round(float(np.mean(column(scores, truth))), 4),
+        "mean_abs_gap": mean_ci(gaps, n_resamples, seed),
+    }
+
+
 def summarize(scores: list[WorldScore], n_resamples: int, seed: int) -> dict[str, Any]:
     """Coverage and Brier scores with bootstrap CIs for one group of worlds."""
     return {
         "n_worlds": len(scores),
         "n_worlds_not_anchored": int(len(scores) - np.sum(column(scores, "anchored"))),
+        "anchored_by": anchoring_counts(scores),
         "band_coverage_revenue": mean_ci(column(scores, "coverage_revenue"), n_resamples, seed),
         "band_coverage_net_income": mean_ci(column(scores, "coverage_net_income"), n_resamples, seed),
+        "expected_band_coverage_revenue": mean_ci(column(scores, "expected_coverage_revenue"), n_resamples, seed),
+        "expected_band_coverage_net_income": mean_ci(column(scores, "expected_coverage_net_income"), n_resamples, seed),
+        "probability_gap_dscr_year2": probability_gap(scores, "p_dscr", "true_p_dscr", n_resamples, seed),
+        "probability_gap_cash_negative_24m": probability_gap(
+            scores, "p_cash_negative", "true_p_cash_negative", n_resamples, seed
+        ),
         "dscr_year2": probability_block(
             column(scores, "p_dscr"),
             column(scores, "outcome_dscr"),

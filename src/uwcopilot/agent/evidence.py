@@ -402,23 +402,32 @@ def injection_check_text(application: AnyApplication, hits: list[InjectionHit]) 
     return f"Injection screen checked {checked}: instruction-like text found in {found}."
 
 
-def evidence_id_for_code_field(field: str) -> str | None:
-    """The APP-* fact that shows a startup code field (None for free text, which never enters the evidence)."""
-    if field == "applicant.metro_id":
-        return "APP-metro_id"
-    if field.startswith("material_assumptions[") and field.endswith((".name", ".unit")):
-        return "APP-material_assumptions"
+# The evidence items whose text shows the simulator version (the APP fact and the two NSP-4.4 calculations).
+SIMULATOR_VERSION_EVIDENCE: tuple[str, ...] = (
+    "APP-simulation",
+    "CALC-startup_p_dscr_ge_target_year2",
+    "CALC-startup_p_cash_negative_24m",
+)
+
+
+def evidence_ids_for_code_field(field: str) -> tuple[str, ...]:
+    """The evidence items that show a startup code field (none for free text, which never enters the evidence)."""
+    if field.startswith("material_assumptions.") and field.endswith((".name", ".unit")):
+        return ("APP-material_assumptions",)
     if field == "projections.simulation.simulator_version":
-        return "APP-simulation"
-    return None
+        return SIMULATOR_VERSION_EVIDENCE
+    return ()
 
 
-def flagged_facts(hits: list[InjectionHit]) -> dict[str, list[str]]:
-    """{APP-* id: pattern names} for facts that show a code field the injection screen flagged (a prompt warning)."""
+def flagged_evidence(hits: list[InjectionHit]) -> dict[str, list[str]]:
+    """{evidence id: pattern names} for items that show a code field the injection screen flagged.
+
+    The flags become a warning attribute on the item in the memo prompt. Credit and insurance applications have no
+    code fields, so for them this is always empty.
+    """
     flags: dict[str, set[str]] = {}
     for hit in hits:
-        evidence_id = evidence_id_for_code_field(hit.field)
-        if evidence_id is not None:
+        for evidence_id in evidence_ids_for_code_field(hit.field):
             flags.setdefault(evidence_id, set()).update(hit.patterns)
     return {evidence_id: sorted(names) for evidence_id, names in flags.items()}
 
@@ -465,6 +474,7 @@ def build_evidence(
         title, text = sections.get(section_id) or retrieved_text.get(section_id, (section_id, ""))
         if text:
             add(section_id, "guideline", title, text, detect_instruction_like_text(text))
+    code_flags = flagged_evidence(injection_hits)
     for calculation in policy.calculations:
         inputs = ", ".join(f"{name}={value}" for name, value in calculation.inputs.items())
         value = "not computable" if calculation.value is None else f"{calculation.value}"
@@ -473,11 +483,11 @@ def build_evidence(
             "calculation",
             calculation.label,
             f"{calculation.label} = {value}; inputs: {inputs or 'none'}",
+            code_flags.get(calculation.calc_id),
         )
     for result in tool_results:
         add(result.result_id, "tool_result", f"{result.tool} result", tool_result_text(result))
-    fact_flags = flagged_facts(injection_hits)
     for evidence_id, (title, text) in application_facts(application).items():
-        add(evidence_id, "application_fact", title, text, fact_flags.get(evidence_id))
+        add(evidence_id, "application_fact", title, text, code_flags.get(evidence_id))
     add(INJECTION_EVIDENCE_ID, "check", "Injection screen", injection_check_text(application, injection_hits))
     return items

@@ -37,12 +37,14 @@ from uwcopilot.studio.siteiq.models import (
     SiteInputs,
     SiteScore,
 )
-from uwcopilot.studio.siteiq.reference import MetroReference, reference_for
+from uwcopilot.studio.siteiq.reference import MIN_REFERENCE_VALUES, MetroReference, reference_for
 from uwcopilot.studio.siteiq.trade_area import Area, scaled_rings
 
 # A design choice: below this share of the profile's weight, there is no overall score.
 MIN_SCORED_WEIGHT = 0.5
 WEIGHT_TOLERANCE = 1e-9
+# Every normalization text of a factor without a score starts with this.
+NOT_NORMALIZED = "not normalized: "
 
 
 def resolve(
@@ -70,10 +72,14 @@ def normalize(
         return normalize_rent(weight, raw)
     size = reference.size(name)
     if raw.value is None:
-        return None, None, "not normalized: the value is UNKNOWN", size
+        return None, None, NOT_NORMALIZED + "the value is UNKNOWN", size
     percentile = reference.percentile(name, raw.value)
     if percentile is None:
-        return None, None, f"not normalized: only {size} metro locations have a value (a percentile needs more)", size
+        method = (
+            f"{NOT_NORMALIZED}only {size} metro locations have a value (a percentile needs at least "
+            f"{MIN_REFERENCE_VALUES}; reference: {reference.points_note})"
+        )
+        return None, None, method, size
     method = f"percentile rank among {size} tract-centroid locations in this metro (mid-rank for ties)"
     if weight.direction == "lower_is_better":
         return round(100 - percentile, 2), round(percentile, 2), method + "; lower is better: 100 - percentile", size
@@ -84,9 +90,9 @@ def normalize_rent(weight: FactorWeight, raw: RawFactor) -> tuple[float | None, 
     """A founder's quote is placed within the metro rent range; without a quote rent cannot rank sites."""
     low, high = raw.details.get("metro_low"), raw.details.get("metro_high")
     if raw.status != "FOUNDER_INPUT" or raw.value is None:
-        return None, None, "not normalized: one metro-wide value, the same for every site (enter a rent quote)", 0
+        return None, None, NOT_NORMALIZED + "one metro-wide value, the same for every site (enter a rent quote)", 0
     if low is None or high is None or high <= low:
-        return None, None, "not normalized: the metro has no rent range to compare the quote with", 0
+        return None, None, NOT_NORMALIZED + "the metro has no rent range to compare the quote with", 0
     position = min(max((raw.value - low) / (high - low), 0.0), 1.0)
     score = 100 * (1 - position) if weight.direction == "lower_is_better" else 100 * position
     method = (
@@ -96,14 +102,25 @@ def normalize_rent(weight: FactorWeight, raw: RawFactor) -> tuple[float | None, 
     return round(score, 2), None, method, 0
 
 
+def unscored_why(method: str) -> str:
+    """Why a factor with a value has no score, from its normalization text ('not normalized: <why>')."""
+    return method.removeprefix(NOT_NORMALIZED)
+
+
 def factor_reason(
-    raw: RawFactor, weight: FactorWeight, score: float | None, percentile: float | None, size: int, extra: str
+    raw: RawFactor,
+    weight: FactorWeight,
+    score: float | None,
+    percentile: float | None,
+    size: int,
+    extra: str,
+    method: str,
 ) -> str:
     """One plain-language sentence or two: what was measured, and how it compares within the metro."""
     if raw.value is None:
         return f"UNKNOWN: {raw.reason}. Left out of the overall score (never filled in)."
     if score is None:
-        return f"{raw.reason}. Not scored: it does not vary between sites without a site-specific value."
+        return f"{raw.reason}. Not scored: {unscored_why(method)}; left out of the overall score."
     if percentile is None:
         return f"{raw.reason}. Scores {score:.0f} of 100 against the metro range."
     better = "fewer is better" if weight.direction == "lower_is_better" else "more is better"
@@ -139,7 +156,7 @@ def score_factor(name: str, weight: FactorWeight, raw: RawFactor, reference: Met
         weight=weight.weight,
         direction=weight.direction,
         used_in_overall=score is not None and raw.status in COVERED_STATUSES,
-        reason=factor_reason(raw, weight, score, percentile, size, extra),
+        reason=factor_reason(raw, weight, score, percentile, size, extra, method),
         details=raw.details,
     )
 
@@ -211,7 +228,7 @@ def build_notes(
         if item.status == "UNKNOWN":
             notes.append(f"{item.factor} is UNKNOWN: left out of the overall score.")
         elif not item.used_in_overall and item.normalized_score is None:
-            notes.append(f"{item.factor} is {item.status} and not site-specific: {item.normalization}.")
+            notes.append(f"{item.factor} is {item.status} but not scored: {unscored_why(item.normalization)}.")
     if overall is None:
         notes.append(
             f"No overall score: factors with data carry {share:.0%} of the weight; at least "

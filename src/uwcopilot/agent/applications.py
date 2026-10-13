@@ -392,6 +392,16 @@ STARTUP_INDUSTRIES: dict[str, str] = {
     "retail_storefront": "small retail storefront",
 }
 STARTUP_BUSINESS_TYPES: tuple[str, ...] = tuple(STARTUP_INDUSTRIES)
+# Metro ids of the Studio metro registry (config/studio/metros/<id>.yaml; a test keeps the two lists equal). A closed
+# list, so the metro field can only name a known metro and can never carry the applicant's own words.
+STARTUP_METRO_IDS: tuple[str, ...] = (
+    "chicago_il_in",
+    "dallas_fort_worth_tx",
+    "houston_tx",
+    "los_angeles_ca",
+    "new_york_ny_nj_pa",
+    "synthetic_metro",
+)
 STARTUP_DOCUMENTS: tuple[str, ...] = (
     "signed_application",
     "business_plan",
@@ -412,6 +422,7 @@ STARTUP_SCHEMA_VERSION = "startup-application-v1"
 STARTUP_APPLICATION_ID_PATTERN = r"^APP-S-\d{3,8}$"
 SIMULATION_LABEL = "simulated, based on stated assumptions"
 StartupBusinessType = Literal[STARTUP_BUSINESS_TYPES]  # type: ignore[valid-type]
+StartupMetro = Literal[STARTUP_METRO_IDS]  # type: ignore[valid-type]
 StartupIndustry = Literal[tuple({**CREDIT_INDUSTRIES, **STARTUP_INDUSTRIES})]  # type: ignore[valid-type]
 StartupDocument = Literal[STARTUP_DOCUMENTS]  # type: ignore[valid-type]
 StartupPurpose = Literal[
@@ -430,7 +441,7 @@ class StartupApplicant(Strict):
     state: str = Field(pattern=r"^[A-Z]{2}$")
     formation_date: date | None = None  # None: the entity is not formed yet (NSP-2.4)
     planned_opening_date: date  # planned, or actual when the business has already opened (NSP-1.2)
-    metro_id: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
+    metro_id: StartupMetro
     site_description: str = Field(default="", max_length=500)
 
     @model_validator(mode="after")
@@ -442,7 +453,8 @@ class StartupApplicant(Strict):
         """
         if self.industry in STARTUP_INDUSTRIES and self.industry != self.business_type:
             raise ValueError(
-                f"industry code {self.industry} belongs to business type {self.industry}, not {self.business_type}"
+                f"industry code {self.industry} is the code of business type {self.industry}, not of business type "
+                f"{self.business_type}"
             )
         return self
 

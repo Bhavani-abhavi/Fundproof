@@ -1,6 +1,6 @@
 "use client";
 
-import { LogIn, LogOut, WifiOff } from "lucide-react";
+import { AlertTriangle, LogIn, LogOut, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -9,15 +9,29 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth";
+import { useCurrentPath } from "@/lib/location";
 import { primaryRole } from "@/lib/roles";
+import { signInPageHref } from "@/lib/sign-in";
 import { cn } from "@/lib/utils";
+
+/** The dashed "DEV" mark for a session made with DEV LOGIN (never possible in a Space). */
+function DevBadge() {
+  return (
+    <Badge variant="outline" className="border-dashed font-semibold tracking-wide">
+      DEV
+      <span className="sr-only"> login (local development only)</span>
+    </Badge>
+  );
+}
 
 /**
  * Sign-in state for the header and the mobile menu: a skeleton while loading, an "Offline preview" badge when the
- * API is unreachable, a Sign in button when signed out, and name + role badge + Sign out when signed in.
+ * API is unreachable, a "Server busy" / "Server error" badge when it answered with an error and nobody is known to
+ * be signed in, a Sign in button when signed out, and name + role badge (+ DEV for a dev login) + Sign out when
+ * signed in (also kept through a server error).
  *
- * layout: "inline" (desktop header), "stacked" (mobile menu), "compact" (phone header bar: status only; the full
- * controls are in the menu).
+ * layout: "inline" (desktop header), "stacked" (mobile menu), "compact" (phone header bar: role and DEV only; the
+ * full controls are in the menu).
  */
 export function SessionControls({
   layout = "inline",
@@ -26,7 +40,8 @@ export function SessionControls({
   layout?: "inline" | "stacked" | "compact";
   onNavigate?: () => void;
 }) {
-  const { status, me, signOut } = useSession();
+  const { status, me, error, signOut } = useSession();
+  const currentPath = useCurrentPath();
   const [signingOut, setSigningOut] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
   const stacked = layout === "stacked";
@@ -59,10 +74,20 @@ export function SessionControls({
     );
   }
 
+  if (status === "error" && !me.signed_in) {
+    const label = error?.status === 429 ? "Server busy" : "Server error";
+    return (
+      <Badge variant="muted" className="h-8 gap-1.5 rounded-md px-2.5">
+        <AlertTriangle aria-hidden="true" />
+        {label}
+      </Badge>
+    );
+  }
+
   if (!me.signed_in) {
     return (
       <Button asChild size="sm" variant={stacked ? "default" : "outline"} className={cn(stacked && "w-full")}>
-        <Link href="/signin" onClick={onNavigate}>
+        <Link href={signInPageHref(currentPath)} onClick={onNavigate}>
           <LogIn aria-hidden="true" />
           Sign in
         </Link>
@@ -74,7 +99,12 @@ export function SessionControls({
   const name = me.display_name || me.username || "Signed in";
 
   if (compact) {
-    return role ? <RoleBadge role={role} /> : null;
+    return (
+      <div className="flex items-center gap-1.5">
+        {role ? <RoleBadge role={role} /> : null}
+        {me.auth_mode === "dev" ? <DevBadge /> : null}
+      </div>
+    );
   }
 
   return (
@@ -84,11 +114,7 @@ export function SessionControls({
           {name}
         </span>
         {role ? <RoleBadge role={role} /> : null}
-        {me.auth_mode === "dev" ? (
-          <Badge variant="outline" className="border-dashed font-semibold tracking-wide">
-            DEV
-          </Badge>
-        ) : null}
+        {me.auth_mode === "dev" ? <DevBadge /> : null}
       </div>
       <Button
         type="button"

@@ -58,6 +58,7 @@ def test_me_signed_out(client: TestClient) -> None:
         "signed_in": False,
         "username": None,
         "display_name": None,
+        "subject": None,
         "roles": [],
         "auth_mode": "none",
     }
@@ -147,6 +148,14 @@ def test_effective_roles() -> None:
     assert effective_roles("bob", allowlist) == ("founder", "admin")  # admin is not a credit role
     assert effective_roles("carol", allowlist) == ("founder",)
     assert effective_roles("carol", allowlist, extra_role="lender_reviewer") == ("founder", "lender_reviewer")
+
+
+def test_effective_roles_with_entries_pinned_to_an_account_id() -> None:
+    allowlist = {"alice@id-1": ("lender_senior",), "bob": ("admin",)}
+    assert effective_roles("Alice", allowlist, subject="id-1") == ("founder", "lender_reviewer", "lender_senior")
+    assert effective_roles("alice", allowlist, subject="id-2") == ("founder",)  # someone else now named alice
+    assert effective_roles("alice", allowlist) == ("founder",)  # no subject known: a pinned entry never matches
+    assert effective_roles("bob", allowlist, subject="any") == ("founder", "admin")  # unpinned entries still work
 
 
 def test_require_role_rejects_unknown_roles() -> None:
@@ -279,6 +288,7 @@ def test_oauth_full_flow(make_settings) -> None:
             "signed_in": True,
             "username": "astra6",
             "display_name": "Rahul V",
+            "subject": "6123abc",
             "roles": ["founder", "admin"],
             "auth_mode": "hf_oauth",
         }
@@ -290,6 +300,22 @@ def test_oauth_full_flow(make_settings) -> None:
     assert challenge == query["code_challenge"][0]  # PKCE: the verifier matches the challenge sent at login
     expected_basic = base64.b64encode(b"test-client:test-client-secret").decode()
     assert token_request.headers["authorization"] == f"Basic {expected_basic}"
+
+
+@pytest.mark.parametrize(
+    ("allowlist", "expected_roles"),
+    [
+        ("astra6@6123abc:admin", ["founder", "admin"]),  # pinned to this account id
+        ("astra6@0ther1d:admin", ["founder"]),  # same username, other account: a renamed name was re-registered
+    ],
+)
+def test_oauth_roles_from_an_entry_pinned_to_the_account_id(
+    make_settings, allowlist: str, expected_roles: list[str]
+) -> None:
+    with space_client(make_settings, FakeProvider(), UWC_ROLE_ALLOWLIST=allowlist) as test_client:
+        query = start_login(test_client)
+        test_client.get("/api/auth/callback", params={"code": "the-code", "state": query["state"][0]})
+        assert test_client.get("/api/me").json()["roles"] == expected_roles
 
 
 def test_oauth_state_mismatch_is_refused(make_settings) -> None:

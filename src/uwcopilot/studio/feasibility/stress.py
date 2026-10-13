@@ -10,8 +10,10 @@ startup loans by NSP-4.2 of the SYNTHETIC startup program), never retyped:
 Each test is reported two ways:
 1. simulated: the share of paths whose year-2 DSCR meets the stress threshold with the lever applied to every
    month of every path (same draws as the base run);
-2. the lender's way: the NSP-4.2 formula on the year-2 P50 (base case), exactly as agent/policy_startup.py computes
-   it from the projection, so the founder's number and the lender's number agree.
+2. the lender's way: the NSP-4.2 formula on the year-2 P50 (base case), computed with the startup program's own
+   arithmetic (policy_startup.program_ratio and revenue_stressed_noi: exact decimals, rounded half up), so the
+   founder's number and the lender's number agree to the cent. The simulator has no other debt (seller notes), so
+   the projected annual debt service is the startup loan's alone.
 Studio explains these tests; it never approves or declines (Studio rule C).
 """
 
@@ -19,13 +21,13 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from uwcopilot.agent.credit_calculations import coverage_ratio
 from uwcopilot.agent.policy_credit import (
     RATE_STRESS_ADD_PCT,
     RATE_STRESS_MIN_DSCR,
     REVENUE_STRESS_MIN_DSCR,
     REVENUE_STRESS_SHARE,
 )
+from uwcopilot.agent.policy_startup import program_ratio, revenue_stressed_noi
 from uwcopilot.studio.feasibility.loan import annual_debt_service
 from uwcopilot.studio.feasibility.metrics import dscr_by_year, share_at_least
 from uwcopilot.studio.feasibility.model import Draws, StressLevers, run_paths
@@ -75,16 +77,16 @@ def lender_annual_debt_service(setup: SimulationSetup, rate_add_pct: float = 0.0
 
 
 def projected_dscr(setup: SimulationSetup, year: YearBand) -> float | None:
-    """NSP-4.1: year-2 P50 NOI / projected annual debt service."""
-    return coverage_ratio(year.noi_p50, lender_annual_debt_service(setup))
+    """NSP-4.1: year-2 P50 NOI / projected annual debt service (the program's half-up rounding)."""
+    return program_ratio(year.noi_p50, lender_annual_debt_service(setup))
 
 
 def base_case_stressed_dscr(test: StressTest, setup: SimulationSetup, year: YearBand) -> float | None:
-    """The NSP-4.2 formula on the year-2 P50, the way the lender computes it."""
+    """The NSP-4.2 formula on the year-2 P50, the way the lender computes it (policy_startup.py)."""
     if test.levers.revenue_drop_share:
-        stressed_noi = round(year.noi_p50 - test.levers.revenue_drop_share * year.revenue_p50, 2)
-        return coverage_ratio(stressed_noi, lender_annual_debt_service(setup))
-    return coverage_ratio(year.noi_p50, lender_annual_debt_service(setup, test.levers.rate_add_pct))
+        stressed_noi = revenue_stressed_noi(year.noi_p50, year.revenue_p50)
+        return program_ratio(stressed_noi, lender_annual_debt_service(setup))
+    return program_ratio(year.noi_p50, lender_annual_debt_service(setup, test.levers.rate_add_pct))
 
 
 def run_stress_test(

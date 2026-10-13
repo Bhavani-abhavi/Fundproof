@@ -1,7 +1,7 @@
-"""Harborline (insurance) document checks over an InsuranceSubmission: documents, identity and TIV.
+"""Harborline (insurance) document checks over an InsuranceSubmission: required documents and identity.
 
 Thresholds come from agent/policy_insurance.py and formulas from agent/insurance_calculations.py. The loss-run
-checks are in checks_loss_runs.py.
+checks are in checks_loss_runs.py and checks_loss_run_coverage.py.
 
 - required_documents (HM-3.1): the checklist codes the packet holds (documents_provided below) against the
   required list, built like policy_insurance.required_documents: signed_application, property_schedule,
@@ -13,27 +13,24 @@ checks are in checks_loss_runs.py.
   application's prior-carriers table; revenue_and_payroll <- annual revenue and payroll on the application;
   beneficial_ownership_statement <- the ownership statement; inspection_report <- a report for every location
   above $5,000,000, dated no more than 12 months before the proposed effective date when its date is known.
+  HM-5.1: the property schedule must be signed no more than 12 months before the proposed effective date; a
+  schedule signed earlier is listed in values["stale_documents"] and does not count. "12 months" is the same
+  calendar day one year earlier. The evidence also cites the values that make a conditional document required
+  (the requested coverage, the TIV of each location above $5,000,000).
 - name_consistency (HM-3.1, 8.1): the named insured on the application, every loss run, the property schedule and
   the ownership statement. fein_consistency: only the application carries a FEIN in the extraction schema, so it
   is normally not evaluated (fewer than two documents).
 - owner_consistency (HM-3.1 item 6, 8.1): application owners vs the ownership statement, which lists only owners
   of 25% or more, so an application owner below 25% may be absent from it.
-- tiv_consistency (HM-5.2, HM-11.1): the application TIV against the schedule TIV (the sum of each location's
-  TIV; a location without a printed TIV uses building + contents + business income). Difference bands (percent of
-  the schedule TIV): 5.0% or less passes (use the schedule TIV); more than 5.0% fails (request a corrected
-  application or schedule); more than 15.0% fails (refer). Inside the schedule, each location's printed TIV must
-  equal building + contents + business income and the printed total must equal the sum of the locations, both
-  within $1.00; a difference there is an integrity indicator and makes the check high severity.
+
+The property schedule and TIV helpers and the tiv_consistency check are in checks_property.py.
 """
 
-from datetime import timedelta
+from datetime import date
 
-from uwcopilot.agent.applications import Location
-from uwcopilot.agent.insurance_calculations import RECONCILIATION_TOLERANCE_USD, location_tiv, tiv_difference_pct
-from uwcopilot.agent.policy_insurance import INSPECTION_REPORT_ABOVE_TIV, TIV_CORRECTION_PCT, TIV_REFER_PCT
+from uwcopilot.agent.policy_insurance import INSPECTION_REPORT_ABOVE_TIV
 from uwcopilot.docintel.check_models import (
     INSURANCE_REFS,
-    CheckIssue,
     CheckResult,
     Evidence,
     cite,
@@ -42,11 +39,13 @@ from uwcopilot.docintel.check_models import (
     make_result,
 )
 from uwcopilot.docintel.checks_identity import owner_consistency, value_consistency
+from uwcopilot.docintel.checks_loss_runs import years_before
+from uwcopilot.docintel.checks_property import location_evidence, location_id_of, location_value
 from uwcopilot.docintel.normalize import canonical_fein, canonical_name
-from uwcopilot.docintel.schemas import InsuranceSubmission, ScheduleLocation, casefold_key
+from uwcopilot.docintel.schemas import InsuranceSubmission, casefold_key
 
 OWNERSHIP_STATEMENT_MIN_PCT = 25.0  # HM-3.1 item 6: the statement lists every individual owning 25% or more
-INSPECTION_MAX_AGE_DAYS = 365  # HM-3.1: an inspection report dated within 12 months
+DOCUMENT_MAX_AGE_YEARS = 1  # HM-3.1 inspection report and HM-5.1 schedule signature: within 12 months
 NOT_DETERMINABLE = ("elevation_certificate",)
 
 
@@ -57,34 +56,6 @@ def requests_gl(submission: InsuranceSubmission) -> bool:
         return True
     words = canonical_name(application.coverage.value).split()
     return "package" in words or "liability" in words or "gl" in words
-
-
-def location_id_of(location: ScheduleLocation) -> str | None:
-    """The location id as printed, stripped (None when missing)."""
-    return None if not location.location_id.found else str(location.location_id.value).strip()
-
-
-def parts_total(location: ScheduleLocation) -> float | None:
-    """Building + contents + business income with insurance_calculations.location_tiv (None if a part is missing).
-
-    location_tiv reads only those three values, so the other Location fields are not needed.
-    """
-    parts = (location.building_value, location.contents_value, location.business_income_value)
-    if any(not part.found for part in parts):
-        return None
-    values = Location.model_construct(
-        building_value=float(parts[0].value),
-        contents_value=float(parts[1].value),
-        business_income_value=float(parts[2].value),
-    )
-    return round(location_tiv(values), 2)
-
-
-def location_value(location: ScheduleLocation) -> float | None:
-    """A location's TIV: the printed TIV, else building + contents + business income."""
-    if location.tiv.found:
-        return float(location.tiv.value)
-    return parts_total(location)
 
 
 def large_location_ids(submission: InsuranceSubmission) -> list[str]:
@@ -100,20 +71,37 @@ def large_location_ids(submission: InsuranceSubmission) -> list[str]:
     return result
 
 
+def oldest_allowed_date(submission: InsuranceSubmission) -> date | None:
+    """12 months before the proposed effective date (None when the effective date is unknown)."""
+    application = submission.application
+    if application is None or application.proposed_effective_date.value is None:
+        return None
+    return years_before(application.proposed_effective_date.value, DOCUMENT_MAX_AGE_YEARS)
+
+
 def current_inspections(submission: InsuranceSubmission) -> list[str]:
     """Location ids with an inspection report that is not known to be older than 12 months before the effective date."""
-    application = submission.application
-    effective = None if application is None else application.proposed_effective_date.value
+    oldest = oldest_allowed_date(submission)
     result = []
     for report in submission.inspection_reports:
         if not report.location_id.found:
             continue
         inspected = report.inspection_date.value
-        if effective is not None and inspected is not None:
-            if inspected < effective - timedelta(days=INSPECTION_MAX_AGE_DAYS):
-                continue
+        if oldest is not None and inspected is not None and inspected < oldest:
+            continue
         result.append(str(report.location_id.value).strip())
     return result
+
+
+def stale_schedule(submission: InsuranceSubmission) -> list[Evidence]:
+    """Evidence of a property schedule signed more than 12 months before the effective date (HM-5.1)."""
+    schedule = submission.property_schedule
+    oldest = oldest_allowed_date(submission)
+    if schedule is None or oldest is None or schedule.signed_date.value is None:
+        return []
+    if schedule.signed_date.value >= oldest:
+        return []
+    return found_only([cite(schedule.signed_date, "property_schedule.signed_date", None, schedule.doc_id)])
 
 
 def documents_provided(submission: InsuranceSubmission) -> dict[str, list[Evidence]]:
@@ -133,7 +121,7 @@ def documents_provided(submission: InsuranceSubmission) -> dict[str, list[Eviden
         payroll = cite(application.annual_payroll, "application.annual_payroll", None, application.doc_id)
         if revenue is not None and payroll is not None:
             provided["revenue_and_payroll"] = [revenue, payroll]
-    if submission.property_schedule is not None:
+    if submission.property_schedule is not None and not stale_schedule(submission):
         provided["property_schedule"] = [
             document_evidence(submission.property_schedule, "document", "property_schedule")
         ]
@@ -169,22 +157,48 @@ def required_documents_list(submission: InsuranceSubmission) -> list[str]:
     return required
 
 
+def requirement_triggers(submission: InsuranceSubmission, required: list[str]) -> list[Evidence]:
+    """The values that make conditional documents required: the coverage, and each large location's TIV."""
+    items = []
+    application = submission.application
+    if "revenue_and_payroll" in required and application is not None:
+        items.append(cite(application.coverage, "application.coverage", None, application.doc_id))
+    schedule = submission.property_schedule
+    if "inspection_report" in required and schedule is not None:
+        for location in schedule.locations:
+            value = location_value(location)
+            if value is not None and value > INSPECTION_REPORT_ABOVE_TIV:
+                items.extend(location_evidence(location, schedule.doc_id)[:1])
+    return found_only(items)
+
+
 def check_required_documents(submission: InsuranceSubmission) -> CheckResult:
     """HM-3.1 required documents."""
     refs = INSURANCE_REFS["required_documents"]
     provided = documents_provided(submission)
     required = required_documents_list(submission)
     missing = [code for code in required if code not in provided]
+    stale = stale_schedule(submission)
     values = {
         "required": required,
         "provided": sorted(provided),
         "missing": missing,
         "not_determinable": list(NOT_DETERMINABLE),
         "locations_needing_inspection": large_location_ids(submission),
+        "stale_documents": [item.field for item in stale],
     }
     evidence = [item for items in provided.values() for item in items]
+    evidence += requirement_triggers(submission, required) + stale
+    application = submission.application
+    if stale and application is not None:
+        effective = cite(
+            application.proposed_effective_date, "application.proposed_effective_date", None, application.doc_id
+        )
+        evidence += found_only([effective])
     if missing:
         message = f"Required documents are missing: {', '.join(missing)}."
+        if stale:
+            message += " The property schedule was signed more than 12 months before the effective date."
         return make_result("required_documents", refs, "fail", message, values, evidence)
     message = f"All {len(required)} required documents are in the packet."
     return make_result("required_documents", refs, "pass", message, values, evidence)
@@ -238,137 +252,3 @@ def check_owners(submission: InsuranceSubmission) -> CheckResult:
         "ownership_statement.owners",
         OWNERSHIP_STATEMENT_MIN_PCT,
     )
-
-
-def location_evidence(location: ScheduleLocation, doc_id: str) -> list[Evidence]:
-    """Evidence for a location's TIV and its three parts (key = location id)."""
-    key = location_id_of(location)
-    names = ("tiv", "building_value", "contents_value", "business_income_value")
-    return found_only(
-        [cite(getattr(location, name), f"property_schedule.locations.{name}", key, doc_id) for name in names]
-    )
-
-
-def location_arithmetic_issue(location: ScheduleLocation, doc_id: str) -> CheckIssue | None:
-    """A location whose printed TIV is not building + contents + business income (within $1.00)."""
-    expected = parts_total(location)
-    if expected is None or not location.tiv.found:
-        return None
-    printed = float(location.tiv.value)
-    if abs(printed - expected) <= RECONCILIATION_TOLERANCE_USD:
-        return None
-    key = location_id_of(location)
-    evidence = location_evidence(location, doc_id)
-    return CheckIssue(
-        issue="location_tiv_arithmetic",
-        entity=f"location:{key or 'unknown'}",
-        fields=["property_schedule.locations.tiv", "property_schedule.locations.building_value"],
-        side_a=evidence[:1],
-        side_b=evidence[1:],
-        data={"location_id": key, "printed_tiv": printed, "parts_total": expected},
-        message=f"Location {key} shows TIV ${printed:,.2f} but its building, contents and business income add up "
-        f"to ${expected:,.2f}.",
-    )
-
-
-def schedule_total_issue(submission: InsuranceSubmission, schedule_total: float) -> CheckIssue | None:
-    """The printed schedule total vs the sum of the location TIVs (within $1.00)."""
-    schedule = submission.property_schedule
-    if schedule is None or not schedule.total_tiv.found or not schedule.locations:
-        return None
-    printed = float(schedule.total_tiv.value)
-    if abs(printed - schedule_total) <= RECONCILIATION_TOLERANCE_USD:
-        return None
-    side_b = []
-    for location in schedule.locations:
-        side_b.extend(location_evidence(location, schedule.doc_id)[:1])
-    return CheckIssue(
-        issue="schedule_total_arithmetic",
-        entity="business",
-        fields=["property_schedule.total_tiv", "property_schedule.locations.tiv"],
-        side_a=found_only([cite(schedule.total_tiv, "property_schedule.total_tiv", None, schedule.doc_id)]),
-        side_b=side_b,
-        data={"printed_total": printed, "sum_of_locations": schedule_total},
-        message=f"The schedule's printed total TIV ${printed:,.2f} differs from the sum of its locations "
-        f"(${schedule_total:,.2f}).",
-    )
-
-
-def schedule_tiv(submission: InsuranceSubmission) -> tuple[float | None, list[Evidence]]:
-    """The schedule TIV (sum of locations, or the printed total without locations) and its evidence."""
-    schedule = submission.property_schedule
-    if schedule is None:
-        return None, []
-    if not schedule.locations:
-        total = cite(schedule.total_tiv, "property_schedule.total_tiv", None, schedule.doc_id)
-        return (None, []) if total is None else (float(schedule.total_tiv.value), [total])
-    values = [location_value(location) for location in schedule.locations]
-    if any(value is None for value in values):
-        return None, []
-    evidence = []
-    for location in schedule.locations:
-        evidence.extend(location_evidence(location, schedule.doc_id)[:1])
-    return round(sum(value for value in values if value is not None), 2), evidence
-
-
-def tiv_band(difference_pct: float) -> str:
-    """HM-5.2 treatment band for a TIV difference."""
-    if difference_pct <= TIV_CORRECTION_PCT:
-        return "use_schedule_tiv"
-    if difference_pct <= TIV_REFER_PCT:
-        return "request_correction"
-    return "refer"
-
-
-def check_tiv(submission: InsuranceSubmission) -> CheckResult:
-    """HM-5.2 application TIV vs the property schedule, and the schedule's own arithmetic (module docstring)."""
-    refs = INSURANCE_REFS["tiv_consistency"]
-    application = submission.application
-    schedule = submission.property_schedule
-    total, schedule_evidence = schedule_tiv(submission)
-    if schedule is None or total is None or total <= 0:
-        message = "The property schedule TIV could not be determined."
-        return make_result("tiv_consistency", refs, "not_evaluated", message, {}, schedule_evidence)
-    issues = []
-    for location in schedule.locations:
-        issue = location_arithmetic_issue(location, schedule.doc_id)
-        if issue is not None:
-            issues.append(issue)
-    total_issue = schedule_total_issue(submission, total)
-    if total_issue is not None:
-        issues.append(total_issue)
-    values: dict = {"schedule_tiv": total, "tolerance_usd": RECONCILIATION_TOLERANCE_USD}
-    stated = (
-        None
-        if application is None
-        else cite(application.stated_tiv, "application.stated_tiv", None, application.doc_id)
-    )
-    if stated is not None:
-        stated_value = float(application.stated_tiv.value)
-        difference = tiv_difference_pct(stated_value, total)
-        values.update({"stated_tiv": stated_value, "difference_pct": difference, "band": tiv_band(difference)})
-        if difference > TIV_CORRECTION_PCT:
-            issues.append(
-                CheckIssue(
-                    issue="tiv_differs",
-                    entity="business",
-                    fields=["application.stated_tiv", "property_schedule.locations.tiv"],
-                    side_a=[stated],
-                    side_b=schedule_evidence,
-                    data=dict(values),
-                    message=f"The application TIV ${stated_value:,.2f} differs from the schedule TIV ${total:,.2f} "
-                    f"by {difference:.1f}% (HM-5.2 band: {values['band']}).",
-                )
-            )
-    evidence = ([stated] if stated is not None else []) + schedule_evidence
-    values["issue_codes"] = [issue.issue for issue in issues]
-    if issues:
-        integrity = any(issue.issue.endswith("_arithmetic") for issue in issues)
-        message = " ".join(issue.message for issue in issues)
-        severity = "high" if integrity else "medium"
-        return make_result("tiv_consistency", refs, "fail", message, values, evidence, issues, severity)
-    if stated is None:
-        message = "The application TIV was not found; the schedule's own totals add up."
-        return make_result("tiv_consistency", refs, "not_evaluated", message, values, evidence)
-    message = f"The application TIV is within {values['difference_pct']:.1f}% of the schedule TIV ${total:,.2f}."
-    return make_result("tiv_consistency", refs, "pass", message, values, evidence)

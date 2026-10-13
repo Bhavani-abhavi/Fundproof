@@ -58,6 +58,13 @@ class ObjectNotFound(LookupError):
     """No such object (or it has expired)."""
 
 
+class DeletionPending(RuntimeError):
+    """The local copy is deleted, but the remote copy (Hugging Face dataset) could not be deleted yet.
+
+    The deletion is recorded and retried; the caller must not tell the user that the data is gone.
+    """
+
+
 def utc_now() -> datetime:
     """The current time in UTC."""
     return datetime.now(UTC)
@@ -139,11 +146,11 @@ class Store(Protocol):
         ...
 
     def delete(self, owner: str, namespace: str, key: str) -> bool:
-        """Delete one object; False if it did not exist."""
+        """Delete one object; False if it did not exist. DeletionPending if a remote copy could not be deleted."""
         ...
 
     def delete_owner(self, owner: str) -> int:
-        """Delete everything an owner stored; returns the number of objects deleted."""
+        """Delete everything an owner stored; returns the number of objects deleted. DeletionPending as above."""
         ...
 
     def purge_expired(self) -> list[ObjectMeta]:

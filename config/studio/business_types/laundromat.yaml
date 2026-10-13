@@ -230,7 +230,7 @@ ramp_up:
 
 design:
   status: DESIGN_CHOICE
-  note: Scoring-method choices by the project author, not facts. Lower income counts as better here because the author assumes lower-income renters more often lack in-unit laundry. Weights are tuned in S2 on the SYNTHETIC metro only.
+  note: Scoring-method choices by the project author, not facts. Lower income counts as better here because the author assumes lower-income renters more often lack in-unit laundry. Weights are not tuned; S2 decided against fitting them to the SYNTHETIC metro (docs/studio/walkthrough_s2.md).
   trade_area_rings_miles: [0.5, 1, 2]
   location_weights:
     renter_households: {weight: 0.35, direction: higher_is_better}

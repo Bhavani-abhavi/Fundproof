@@ -214,9 +214,11 @@ is triggered.
 How the revenue stress relates to NSP-4.1: because the lost revenue is removed from NOI dollar for dollar (every
 cost is treated as fixed, the most conservative reading), a plan passes the revenue stress only when year-2
 base-case NOI is at least the annual debt service plus 20% of year-2 base-case revenue. NOI can never be above
-revenue (NSP-1.2), so a plan that passes the revenue stress also has a projected DSCR of about 1.25 or more. In
-practice the revenue stress, not the NSP-4.1 minimum, is the binding test, and a file in the NSP-4.1 exception
-band (1.10 to 1.25) also fails the revenue stress. This is an illustrative program choice.
+revenue (NSP-1.2), so a plan that passes the revenue stress also has a projected DSCR of at least 1.24 after
+rounding (1.24 only when operating expenses are almost zero; 1.25 or more otherwise). The revenue stress, not the
+NSP-4.1 minimum, is therefore the binding test: a file with a projected DSCR from 1.10 to 1.23 always fails the
+revenue stress too, and a plan with a low NOI margin needs a projected DSCR well above 1.25 to pass it. This is an
+illustrative program choice, not an industry standard.
 
 ## NSP-4.3 Projection assumptions
 

@@ -4,16 +4,22 @@ A world is what a founder would bring to the simulator. validation.py then draws
 world and checks the simulator's bands and probabilities against it. Nothing here describes a real business: every
 constant below is a generator parameter chosen by the project author. They are not benchmarks.
 
-Why the site demand is "anchored": with the profiles' ASSUMPTION ranges, a demand drawn at random would make most
+Why each world is "anchored": with the profiles' ASSUMPTION ranges, a demand drawn at random would make most
 worlds hopeless (or trivially safe), and a probability that is always about 0 is easy to score well on. So each
 world first draws its plan and loan and a target DSCR for its one-forecast case (TARGET_SINGLE_POINT_DSCR), then
-finds by bisection the most likely site demand that gives that DSCR when every input is at its mode. When even the
-capacity mode cannot reach the target (a plan that loses money at full capacity under the profile's modes), the
-demand is set to the capacity mode and the world is marked `anchored=False`; such worlds are kept and counted.
+anchors that DSCR with one of two levers (bisection; the one-forecast case has every input at its mode):
+
+1. "demand": the most likely site demand that gives the target DSCR;
+2. "rent_quote": when even the capacity mode cannot reach the target (a plan that does not cover its costs at full
+   capacity under the profile's modes), the demand is set to the capacity mode and the founder is given a rent
+   quote, between 0 and the world's rent, that reaches the target (a negotiated lease or an owned building);
+3. "none": when even a zero rent cannot reach the target, the world keeps the capacity mode and its rent. Such
+   worlds are kept and counted (n_worlds_not_anchored), never dropped.
 """
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Literal
 
 import numpy as np
 
@@ -45,6 +51,9 @@ WORLD_SOURCE = "SYNTHETIC validation world (src/uwcopilot/studio/feasibility/wor
 METRO_ID = "synthetic_metro"
 
 
+AnchorLever = Literal["demand", "rent_quote", "none"]
+
+
 @dataclass(frozen=True)
 class World:
     """One SYNTHETIC founder scenario."""
@@ -55,7 +64,12 @@ class World:
     plan: Plan
     loan: Loan
     target_single_point_dscr: float
-    anchored: bool
+    anchored_by: AnchorLever
+
+    @property
+    def anchored(self) -> bool:
+        """True when the one-forecast DSCR of the world equals its target."""
+        return self.anchored_by != "none"
 
 
 def uniform(rng: np.random.Generator, bounds: tuple[float, float]) -> float:
@@ -63,10 +77,15 @@ def uniform(rng: np.random.Generator, bounds: tuple[float, float]) -> float:
     return float(rng.uniform(bounds[0], bounds[1]))
 
 
-def single_point_dscr(setup: SimulationSetup, demand: float) -> float:
-    """Year-2 DSCR (unrounded) of the one-forecast case with the site's most likely demand set to `demand`."""
+def single_point_dscr(setup: SimulationSetup, demand: float, rent: float | None = None) -> float:
+    """Year-2 DSCR (unrounded) of the one-forecast case with the site's most likely demand set to `demand`.
+
+    rent, when given, replaces the most likely monthly rent (the rent-quote lever).
+    """
     values = single_point_values(setup)
     values["mature_demand"] = np.array([demand])
+    if rent is not None:
+        values["monthly_rent"] = np.array([rent])
     paths = single_point_run(setup, values)
     return float(annual_total(paths.noi, ANCHOR_YEAR)[0] / annual_total(paths.debt_service, ANCHOR_YEAR)[0])
 
@@ -87,6 +106,24 @@ def anchor_demand(setup: SimulationSetup, target: float, ceiling: float) -> tupl
         else:
             high = middle
     return high, True
+
+
+def anchor_rent(setup: SimulationSetup, target: float, demand: float, ceiling: float) -> tuple[float, bool]:
+    """(rent, reached): the monthly rent in [0, ceiling] whose one-forecast DSCR at `demand` equals target.
+
+    The one-forecast DSCR falls as rent rises (rent is a fixed cost), so bisection works. When even a zero rent
+    cannot reach the target, return (ceiling, False).
+    """
+    if single_point_dscr(setup, demand, rent=0.0) < target:
+        return ceiling, False
+    low, high = 0.0, ceiling
+    for _ in range(BISECTION_STEPS):
+        middle = (low + high) / 2.0
+        if single_point_dscr(setup, demand, rent=middle) >= target:
+            low = middle
+        else:
+            high = middle
+    return low, True
 
 
 def draw_plan(profile: Profile, metro_inputs: dict[str, FactorValue], rng: np.random.Generator) -> tuple[Plan, Loan]:
@@ -119,7 +156,7 @@ def generate_world(
     rng: np.random.Generator,
     months: int = 36,
 ) -> World:
-    """Draw one world and anchor its site demand (see the module docstring)."""
+    """Draw one world and anchor its one-forecast DSCR to a drawn target (see the module docstring)."""
     plan, loan = draw_plan(profile, metro_inputs, rng)
     target = uniform(rng, TARGET_SINGLE_POINT_DSCR)
     low_factor, high_factor = uniform(rng, DEMAND_LOW_FACTOR), uniform(rng, DEMAND_HIGH_FACTOR)
@@ -127,7 +164,13 @@ def generate_world(
     ceiling = profile.capacity.max_demand.point()
     placeholder = SiteDemand(low=ceiling, mode=ceiling, high=ceiling, unit=profile.demand_unit, status="SYNTHETIC")
     setup = build_setup(profile, METRO_ID, "SYNTHETIC", metro_inputs, placeholder, plan, loan, assumptions, months)
-    demand, anchored = anchor_demand(setup, target, ceiling)
+    demand, reached = anchor_demand(setup, target, ceiling)
+    anchored_by: AnchorLever = "demand"
+    if not reached:
+        rent, reached = anchor_rent(setup, target, demand, setup.distributions["monthly_rent"].mode)
+        anchored_by = "rent_quote" if reached else "none"
+        if reached:
+            plan = Plan.model_validate({**plan.model_dump(), "monthly_rent": round(rent, 2)})
     site = SiteDemand(
         low=demand * low_factor,
         mode=demand,
@@ -137,4 +180,4 @@ def generate_world(
         source=f"{WORLD_SOURCE}, world {world_id}",
         competition_percentile=competition,
     )
-    return World(world_id, profile.id, site, plan, loan, target, anchored)
+    return World(world_id, profile.id, site, plan, loan, target, anchored_by)

@@ -10,8 +10,14 @@ loss history (true_history), so application_latent never carries a reconciliatio
 
 from datetime import date, timedelta
 
+from uwcopilot.docintel.levers import SCHEDULE_TIV_LEVER, apply_substitutions, location_total
 from uwcopilot.docintel.synthetic.common import money
-from uwcopilot.docintel.synthetic.insurance_application import claim_dict, next_year, year_dicts
+from uwcopilot.docintel.synthetic.insurance_application import (
+    INSPECTION_ABOVE_TIV,
+    claim_dict,
+    next_year,
+    year_dicts,
+)
 from uwcopilot.docintel.synthetic.insurance_case import CarrierRun, ClaimData, InsuranceCase
 from uwcopilot.docintel.synthetic.problems import ProblemPlan, ProblemRecord, nearest_option
 
@@ -129,8 +135,24 @@ def paid_reserve(case: InsuranceCase, plan: ProblemPlan, app: dict, doc_ids: dic
     )
 
 
+def newly_inspected(app: dict, target_tiv: float) -> bool:
+    """True when scaling the schedule to target_tiv (the "@schedule_tiv" lever) puts a location above $5,000,000
+    and the as-documented checklist does not list inspection_report yet. The packet holds the report of every such
+    location (insurance_generate.inspected_locations).
+    """
+    if "inspection_report" in app["documents_provided"]:
+        return False
+    scaled = apply_substitutions(app, {SCHEDULE_TIV_LEVER: target_tiv})
+    return any(location_total(location) > INSPECTION_ABOVE_TIV for location in scaled["locations"])
+
+
 def tiv(case: InsuranceCase, plan: ProblemPlan, app: dict, doc_ids: dict[str, str]) -> ProblemRecord:
-    """Application TIV vs the property schedule total (HM-5.2)."""
+    """Application TIV vs the property schedule total (HM-5.2).
+
+    When the latent schedule is scaled up so far that a location passes $5,000,000, the latent world also lists
+    the inspection_report checklist code (the report is in the packet). Every option may list it too: it has no
+    effect on the policy when no location needs an inspection.
+    """
     schedule = case.schedule_tiv()
     stated = case.stated_tiv
     midpoint = round((schedule + stated) / 2, 2)
@@ -139,6 +161,11 @@ def tiv(case: InsuranceCase, plan: ProblemPlan, app: dict, doc_ids: dict[str, st
         "application_correct": {"@schedule_tiv": stated},
         "midpoint": {"stated_tiv": midpoint, "@schedule_tiv": midpoint},
     }[plan.details["latent"]]
+    extra = {}
+    if newly_inspected(app, latent.get(SCHEDULE_TIV_LEVER, schedule)):
+        latent = {**latent, "documents_provided+": "inspection_report"}
+    if newly_inspected(app, max(stated, schedule)):
+        extra = {"documents_provided+": "inspection_report"}
     values = {doc_ids["insurance_application"]: stated, doc_ids["property_schedule"]: schedule}
     return ProblemRecord(
         doc_ids=list(values),
@@ -149,6 +176,7 @@ def tiv(case: InsuranceCase, plan: ProblemPlan, app: dict, doc_ids: dict[str, st
         params={"schedule_tiv": schedule, "stated_tiv": stated, "midpoint": midpoint},
         latent_option_id=plan.details["latent"],
         latent_substitutions=latent,
+        extra_option_substitutions=extra,
     )
 
 

@@ -11,9 +11,11 @@ builder (contradictions.py) use them. Where each check lives:
 - credit: checks_credit.py (required_documents, name/fein/owner consistency, tax_return_vs_pnl),
   checks_statements.py (statement_months_complete, balance_continuity, account_conduct) and checks_revenue.py
   (revenue_vs_deposits, debt_payment_consistency);
-- insurance: checks_insurance.py (required_documents, name/fein/owner consistency, tiv_consistency),
-  checks_loss_runs.py (loss_run_line_balance, loss_run_totals, claims_history_consistency) and
+- insurance: checks_insurance.py (required_documents, name/fein/owner consistency), checks_property.py
+  (tiv_consistency), checks_loss_runs.py (loss_run_line_balance, loss_run_totals, claims_history_consistency) and
   checks_loss_run_coverage.py (loss_run_coverage, loss_run_valuation_age);
+- shared: check_models.py (CheckResult, Evidence, CheckIssue, guideline references, titles and severities) and
+  checks_identity.py (the name, FEIN and owner comparisons used by both lines);
 - both: embedded_instructions, below.
 
 embedded_instructions (NBC-9.2, HM-11.2): instruction-like text inside a document is an integrity indicator. The
@@ -30,6 +32,7 @@ from uwcopilot.docintel import (
     checks_insurance,
     checks_loss_run_coverage,
     checks_loss_runs,
+    checks_property,
     checks_revenue,
     checks_statements,
 )
@@ -71,7 +74,7 @@ INSURANCE_CHECKS: tuple[tuple[str, Callable[[InsuranceSubmission], CheckResult]]
     ("loss_run_line_balance", checks_loss_runs.check_line_balance),
     ("loss_run_totals", checks_loss_runs.check_totals),
     ("claims_history_consistency", checks_loss_runs.check_claims_history),
-    ("tiv_consistency", checks_insurance.check_tiv),
+    ("tiv_consistency", checks_property.check_tiv),
     ("loss_run_coverage", checks_loss_run_coverage.check_coverage),
     ("loss_run_valuation_age", checks_loss_run_coverage.check_valuation_age),
 )

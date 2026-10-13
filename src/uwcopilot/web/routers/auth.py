@@ -1,11 +1,12 @@
 """Sign-in endpoints. JSON shapes (the frontend builds against these):
 
 GET /api/me -> 200
-    {"signed_in": false, "username": null, "display_name": null, "roles": [], "auth_mode": "none"}
-    {"signed_in": true, "username": "astra6", "display_name": "Rahul", "roles": ["founder", "admin"],
-     "auth_mode": "hf_oauth" | "dev"}
+    {"signed_in": false, "username": null, "display_name": null, "subject": null, "roles": [], "auth_mode": "none"}
+    {"signed_in": true, "username": "astra6", "display_name": "Rahul", "subject": "6123abc...",
+     "roles": ["founder", "admin"], "auth_mode": "hf_oauth" | "dev"}
     auth_mode says how THIS session signed in ("none" when signed out). Which sign-in methods the server offers is
-    in GET /api/config -> hf_oauth and dev_auth.
+    in GET /api/config -> hf_oauth and dev_auth. `subject` is the user's own stable account id (Hugging Face "sub";
+    the username for a dev session); an owner pins an allowlist entry to it (UWC_ROLE_ALLOWLIST "hfuser@id:role").
 
 GET /api/auth/csrf -> 200 {"token": "<43 URL-safe characters>"}
     Also sets cookie uwc_csrf (not HttpOnly). Send the token back in the X-CSRF-Token header on every POST, PUT,
@@ -78,6 +79,7 @@ class MeResponse(BaseModel):
     signed_in: bool
     username: str | None
     display_name: str | None
+    subject: str | None
     roles: list[str]
     auth_mode: Literal["hf_oauth", "dev", "none"]
 
@@ -104,11 +106,12 @@ class DevLoginRequest(BaseModel):
 def me_body(principal: Principal | None) -> MeResponse:
     """The /api/me body for a principal (or for nobody)."""
     if principal is None:
-        return MeResponse(signed_in=False, username=None, display_name=None, roles=[], auth_mode="none")
+        return MeResponse(signed_in=False, username=None, display_name=None, subject=None, roles=[], auth_mode="none")
     return MeResponse(
         signed_in=True,
         username=principal.username,
         display_name=principal.display_name,
+        subject=principal.subject,
         roles=list(principal.roles),
         auth_mode=principal.auth_mode,
     )

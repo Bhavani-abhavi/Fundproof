@@ -191,3 +191,58 @@ def test_page_text_hits_are_merged_into_embedded_instructions() -> None:
     assert result.evidence[0].field == "page_text"
     clean = check_embedded_instructions(packet, [])
     assert clean.status == "pass" and clean.values["page_text_scanned"] is True
+
+
+def test_application_ownership_must_add_up_to_100_percent() -> None:
+    data = credit_packet_data()
+    for owners in (data["application"]["owners"], data["formation"]["members"]):
+        set_value(owners[1]["ownership_pct"], 30.0)  # 60 + 30 = 90 on both documents
+    result = checks_of(data)["owner_consistency"]
+    assert result.status == "fail"
+    assert result.values["application_total_pct"] == 90.0
+    assert result.issues == []  # one document's arithmetic, not a disagreement between documents
+    rounded = credit_packet_data()
+    for owners in (rounded["application"]["owners"], rounded["formation"]["members"]):
+        set_value(owners[0]["ownership_pct"], 59.7)  # 99.7%: printed rounding is tolerated
+    assert checks_of(rounded)["owner_consistency"].status == "pass"
+    alone = credit_packet_data()
+    alone["formation"] = None
+    set_value(alone["application"]["owners"][1]["ownership_pct"], 30.0)
+    assert checks_of(alone)["owner_consistency"].status == "fail"  # the total rule needs no second document
+
+
+def test_stale_pnl_does_not_satisfy_nbc_3_1_item_4() -> None:
+    data = credit_packet_data()
+    set_value(data["profit_and_loss"]["period_end"], date(2026, 5, 31))  # 93 days before 2026-09-01
+    result = checks_of(data)["required_documents"]
+    assert result.values["missing"] == ["ytd_pnl_and_balance_sheet"]
+    assert result.values["stale_documents"] == ["profit_and_loss.period_end"]
+    fields = {item.field for item in result.evidence}
+    assert {"profit_and_loss.period_end", "application.application_date"} <= fields
+    recent = credit_packet_data()
+    set_value(recent["profit_and_loss"]["period_end"], date(2026, 6, 3))  # 90 days: still accepted
+    assert checks_of(recent)["required_documents"].status == "pass"
+
+
+def test_conditional_requirements_cite_the_value_that_triggers_them() -> None:
+    data = credit_packet_data()
+    set_value(data["application"]["requested_amount"], 600_000.0)
+    set_value(data["application"]["purpose"], "Refinance existing equipment debt")
+    result = checks_of(data)["required_documents"]
+    assert result.values["missing"] == ["cpa_reviewed_financials", "collateral_documents", "payoff_letters"]
+    fields = {item.field for item in result.evidence}
+    assert {"application.requested_amount", "application.purpose"} <= fields
+
+
+def test_account_conduct_flags_three_negative_months_and_a_low_average_balance() -> None:
+    data = credit_packet_data()
+    for index in (2, 5, 9):
+        set_value(data["statements"][index]["closing_balance"], -100.0)
+    result = checks_of(data)["account_conduct"]
+    assert result.status == "fail" and result.severity == "low"
+    assert result.values["negative_balance_months_last_12"] == 3
+    low = credit_packet_data()
+    set_value(low["application"]["requested_amount"], 5_000_000.0)  # 5% of the debt service exceeds the balances
+    low_result = checks_of(low)["account_conduct"]
+    assert low_result.status == "fail"
+    assert low_result.values["average_daily_balance_last_3_months"] < low_result.values["average_balance_floor"]

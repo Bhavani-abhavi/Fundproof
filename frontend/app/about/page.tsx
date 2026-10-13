@@ -8,7 +8,7 @@ import { DISCLAIMER, OWNERS, PRODUCT_NAME, REPO_URL } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "What Fundproof is, the data it uses and its licenses, its limits, and who builds it.",
+  description: `What ${PRODUCT_NAME} is, the data it uses and its licenses, its limits, and who builds it.`,
 };
 
 /**

@@ -20,10 +20,11 @@ import { SampleFileCard } from "@/components/landing/sample-file-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PRODUCT_NAME } from "@/lib/config";
 import type { EvidenceStatus } from "@/lib/evidence";
 
 /**
- * Landing page: what Fundproof does for each side, how it works, the evidence-chip idea, and honest limits.
+ * Landing page: what the product does for each side, how it works, the evidence-chip idea, and honest limits.
  * Everything here is static text; the only example numbers are the SYNTHETIC sample file (lib/sample-file.ts).
  */
 
@@ -125,7 +126,7 @@ const LIMITS: Limit[] = [
   {
     icon: Scale,
     title: "Not advice, no decisions",
-    body: "Fundproof never approves, declines, promises approval or recommends a lender. Lenders make their own decisions.",
+    body: `${PRODUCT_NAME} never approves, declines, promises approval or recommends a lender. Lenders make their own decisions.`,
   },
   {
     icon: Ban,
@@ -163,7 +164,7 @@ export default function LandingPage() {
               A loan file where every number shows its evidence.
             </h1>
             <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Fundproof is one workspace for both sides of a small-business loan. Founders prepare a plan a lender can
+              {PRODUCT_NAME} is one workspace for both sides of a small-business loan. Founders prepare a plan a lender can
               check. Lenders review it with each figure marked as verified, stated, assumed, estimated, conflicting or
               unknown. The software prepares and explains. People decide.
             </p>
@@ -277,7 +278,7 @@ export default function LandingPage() {
       {/* Honest limits */}
       <section aria-labelledby="limits-title" className="border-t border-border bg-paper-sunken">
         <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-          <SectionHeading id="limits-title" eyebrow="Honest limits" title="What Fundproof is not." />
+          <SectionHeading id="limits-title" eyebrow="Honest limits" title={`What ${PRODUCT_NAME} is not.`} />
           <ul className="mt-10 grid gap-x-8 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
             {LIMITS.map((limit) => (
               <li key={limit.title} className="flex gap-3">

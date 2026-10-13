@@ -5,7 +5,9 @@ build_contradictions(extraction, checks) turns every issue of a failing check in
 - type: the problem type the check detects (CONTRADICTION_TYPE_BY_CHECK). The names are the problem types of
   docintel/truth.py except the missing_* ones (copied here as CONTRADICTION_TYPES, because the pipeline must
   never import truth.py). Checks about missing documents or pages, account conduct, loss-run coverage and
-  valuation age find gaps, not disagreements, so they create no contradiction.
+  valuation age find gaps, not disagreements, so they create no contradiction. A failing check without issues
+  creates none either (for example application ownership percentages that do not add up to 100%: a problem
+  inside one document, not a disagreement between two).
 - sides: the cited values on both sides (sides[:side_a_count] is the first side: the application, the majority
   of documents, or the printed total; the rest is the other side). One-sided issues (an owner missing from one
   document, embedded instructions) have an empty second side. supporting holds evidence that is on neither side

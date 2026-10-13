@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { EvidenceChip } from "@/components/evidence/evidence-chip";
 import { Figure } from "@/components/evidence/figure";
@@ -10,12 +10,27 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { EVIDENCE_STATUS_INFO } from "@/lib/evidence";
 import { SAMPLE_FIGURES, SAMPLE_FILE_TITLE, SAMPLE_LOAN_REQUEST, type SampleFigure } from "@/lib/sample-file";
 
+/** What the SYNTHETIC labels on this card say (the card and its drawer use the same words). */
+const SYNTHETIC_NOTE = "Illustrative values typed for this page. Not a real business and not model output.";
+
 /**
  * The landing page's SYNTHETIC sample loan file: six figures, one per evidence status, as ledger rows.
  * "Source" opens a preview of the evidence drawer for that figure (the real drawer comes with the file view).
+ *
+ * Focus: the drawer has no SheetTrigger (one drawer serves every row), so the Source button that opened it is
+ * kept in a ref and gets keyboard focus back when the drawer closes. `selected` stays set after closing, so the
+ * panel keeps its content while it closes; reuse this pattern for the real evidence drawer.
  */
 export function SampleFileCard() {
+  const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<SampleFigure | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  function showSource(figure: SampleFigure, trigger: HTMLButtonElement) {
+    triggerRef.current = trigger;
+    setSelected(figure);
+    setOpen(true);
+  }
 
   return (
     <section
@@ -46,17 +61,23 @@ export function SampleFileCard() {
             value={figure.value}
             status={figure.status}
             note={figure.note}
-            onShowSource={() => setSelected(figure)}
+            onShowSource={(trigger) => showSource(figure, trigger)}
           />
         ))}
       </div>
 
       <div className="px-4 pb-4 pt-1 sm:px-5 sm:pb-5">
-        <SyntheticBanner>Illustrative values typed for this page. Not a real business and not model output.</SyntheticBanner>
+        <SyntheticBanner>{SYNTHETIC_NOTE}</SyntheticBanner>
       </div>
 
-      <Sheet open={selected !== null} onOpenChange={(open) => (open ? null : setSelected(null))}>
-        <SheetContent side="right">
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="right"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            triggerRef.current?.focus();
+          }}
+        >
           {selected ? (
             <>
               <SheetHeader>
@@ -76,7 +97,7 @@ export function SampleFileCard() {
                 In the file view, this drawer is planned to show the document page or the public-data request behind the
                 figure, with its date.
               </p>
-              <SyntheticBanner />
+              <SyntheticBanner>{SYNTHETIC_NOTE}</SyntheticBanner>
             </>
           ) : null}
         </SheetContent>

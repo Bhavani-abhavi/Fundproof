@@ -10,7 +10,7 @@ Method, for every input that is a range (fixed values cannot swing):
 
 The probability of a shock is swung like any other input; holding the shock's own uniform fixed, a higher
 probability can only make the shock happen sooner (distributions.event_month). One-at-a-time swings ignore
-interactions between inputs; that limit is stated in the walkthrough.
+interactions between inputs; that limit is stated in the method text of every result and in the walkthrough.
 """
 
 import numpy as np
@@ -23,7 +23,7 @@ from uwcopilot.studio.feasibility.setup import SimulationSetup
 TORNADO_METRIC = "year-2 net income (NOI minus debt service), P50 across paths, USD"
 TORNADO_METHOD = (
     "one input at a time set to its P10 and then its P90 on every path, all other draws held fixed (same seed); "
-    "swing = |metric at P90 - metric at P10|; ranked by swing"
+    "swing = |metric at P90 - metric at P10|; ranked by swing; one-at-a-time swings ignore interactions between inputs"
 )
 LOW_SHARE = 0.10
 HIGH_SHARE = 0.90

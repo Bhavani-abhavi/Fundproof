@@ -10,20 +10,30 @@ from uwcopilot.docintel.synthetic import build_packet
 from uwcopilot.docintel.synthetic.common import packet_seed
 from uwcopilot.docintel.synthetic.injections import CREDIT_INJECTIONS, INSURANCE_INJECTIONS
 from uwcopilot.docintel.synthetic.problems import CREDIT_RATES, INSURANCE_RATES
+from uwcopilot.docintel.truth import PacketTruth
 
 PACKETS = 100
 SEED = 7
 
 
+def drawn_types(truth: PacketTruth) -> set[str]:
+    """Problem types drawn for a packet (the CPA-financials missing_document problem follows from the amount)."""
+    return {
+        problem.problem_type
+        for problem in truth.problems
+        if problem.resolving_request_params.get("document") != "cpa_reviewed_financials"
+    }
+
+
 def observed(line: str) -> tuple[Counter, int]:
-    """Problem-type counts and the number of clean packets over PACKETS JSON-only packets."""
+    """Drawn problem-type counts and the number of packets without drawn problems over PACKETS JSON-only packets."""
     letter = "C" if line == "credit" else "I"
     counts: Counter = Counter()
     clean = 0
     for number in range(1, PACKETS + 1):
         packet_id = f"PKT-{letter}-{number:03d}"
         _, truth = build_packet(packet_id, line, packet_seed(SEED, packet_id), "dev", draw=False)
-        types = {problem.problem_type for problem in truth.problems}
+        types = drawn_types(truth)
         counts.update(types)
         clean += not types
     return counts, clean

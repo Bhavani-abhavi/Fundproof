@@ -25,9 +25,9 @@ from uwcopilot.common.paths import RESULTS_DIR
 from uwcopilot.governance.provenance import RunProvenance, display_path
 from uwcopilot.studio import DISCLAIMER, SYNTHETIC_LABEL
 from uwcopilot.studio.data.cache import write_atomic
-from uwcopilot.studio.metros.loader import list_metros, load_metro
+from uwcopilot.studio.metros.loader import METROS_DIR, list_metros, load_metro
 from uwcopilot.studio.metros.models import MetroConfig
-from uwcopilot.studio.profiles.loader import load_all_profiles
+from uwcopilot.studio.profiles.loader import PROFILES_DIR, load_all_profiles
 from uwcopilot.studio.siteiq.models import SCORING_METHOD
 from uwcopilot.studio.siteiq.reference import MIN_REFERENCE_VALUES
 from uwcopilot.studio.siteiq.scoring import MIN_SCORED_WEIGHT
@@ -127,6 +127,11 @@ def build_report(n_cities: int = N_CITIES, n_tracts: int | None = None, n_resamp
     }
 
 
+def config_inputs() -> list[Path]:
+    """The config files the validation reads (SYNTHETIC metro, six profiles); provenance stores their SHA-256."""
+    return [METROS_DIR / f"{SYNTHETIC_METRO}.yaml", *sorted(PROFILES_DIR.glob("*.yaml"))]
+
+
 def headline_lines(report: dict) -> list[str]:
     """One printed line per business type, copied from the report."""
 
@@ -160,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     snapshots = {metro_id: block["snapshot_date"] for metro_id, block in report["real_metro_sanity"].items()}
     report["provenance"] = run.finish(
         corpus_checksum="not applicable (no retrieval corpus is used)",
+        eval_sets=config_inputs(),
         data_snapshots={"synthetic_city_seeds": report["method"]["city_seeds"], "studio_snapshots": snapshots},
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -2,7 +2,9 @@
 
 Page order: insurance application (2 pages); one loss run per prior carrier in the packet (oldest policy years
 first); property schedule (landscape); broker cover email; ownership statement; one inspection report per location
-with TIV above $5,000,000. A missing carrier loss run or a missing ownership statement is left out.
+with TIV above $5,000,000 (also for a location that passes $5,000,000 only if a tiv_mismatch is resolved in favor
+of the application's higher TIV; see insurance_generate.inspected_locations). A missing carrier loss run or a
+missing ownership statement is left out.
 """
 
 from uwcopilot.docintel.schemas import DocumentInfo, InsuranceSubmission

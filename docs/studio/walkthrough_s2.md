@@ -1,6 +1,7 @@
 # Walkthrough: Studio S2, SiteIQ location scoring and "suggest a better area"
 
-Written on 2026-10-12 so that both Rahul Vajja and Bhavani Adula can explain this phase in their own words.
+Written on 2026-10-12 and updated on 2026-10-13 (API keys became visible), so that both Rahul Vajja and Bhavani
+Adula can explain this phase in their own words.
 
 **What S2 is.** SiteIQ answers two questions for a founder: "how good is this address for my kind of business, in
 this metro?" (`score_site`) and "which parts of the metro look better?" (`suggest_areas`). It reads everything
@@ -14,14 +15,21 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
   optional OpenRouteService drive-time areas (used only when `ORS_API_KEY` is set and a live client is passed);
   city-license context for Chicago and NYC; a validation on 10 SYNTHETIC cities against hidden true demand with
   bootstrap intervals and two baselines; a sanity table for the five real metros; tests with fixtures only.
-- Not done: no real metro can be scored yet. Their snapshots have no ACS tract data (the Census key was not visible to
-  this session) and no POI layer (overpass-api.de reset every connection), and the road layer is looked up live per
-  site, so there is no metro-wide reference to rank against. The real-metro table therefore says "not measured".
-- No request with an OpenRouteService key has been made: `ORS_API_KEY` was not set. The drive-time code is tested
-  with a hand-written fixture whose field names were checked against the openrouteservice source code.
-- The profile weights were **not tuned**. The profile YAML notes say "Weights are tuned in S2 on the SYNTHETIC metro
+- Not done: no real metro can be scored yet. In the 2026-10-13 snapshots (made with every key set) the ACS and County
+  Business Patterns steps failed with "api.census.gov answered: answered with an HTML page instead of data (is
+  CENSUS_API_KEY valid?)", the POI step failed (overpass-api.de reset every connection), and the road layer is looked
+  up live per site, so there is no metro-wide reference to rank against. The real-metro table therefore says "not
+  measured" and copies each failed snapshot step (`snapshot_steps_not_ok`).
+- OpenRouteService with a key: one answer was recorded on 2026-10-13 as a test fixture
+  (`tests/studio/fixtures/ors/isochrones_houston_recorded.json`, around the Census Geocoder's point for Houston City
+  Hall, a public building). Its shape matched the parser, so the drive-time code is now tested against a real answer
+  as well as the hand-written one. A one-off live run of `score_site` (car wash, Houston, same point, live client) used
+  the 10-minute drive-time area for its demand estimate and a live HPMS road lookup, and had no overall score (limited
+  mode); its output was not saved to `results/`, so no number from it is quoted here.
+- The profile weights were **not tuned**. The S1 profile notes planned "Weights are tuned in S2 on the SYNTHETIC metro
   only"; S2 decided against it, because tuning on a world the same author generated would only fit the author's own
-  assumptions. The validation reports the weights as they are.
+  assumptions. The validation reports the weights as they are, and the six profile YAML notes now say "Weights are not
+  tuned; S2 decided against fitting them to the SYNTHETIC metro".
 
 ## 1. Files
 
@@ -32,7 +40,7 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
 | `__init__.py` | Exports `score_site`, `suggest_areas`, the models and `MetroContext`. | One import line for the web app and S3. |
 | `models.py` | Pydantic models: `SiteInputs`, `Budget`, `TradeAreaInfo`, `FactorScore`, `DemandInput`, `DemandEstimate`, `ContextItem`, `SiteScore`, `SuggestedArea`, `Exclusion`, `BudgetCheck`, `Suggestions`. Adds the status `FOUNDER_INPUT` for values the founder types in. | Frozen models with `extra="forbid"`: a result cannot be changed after it is built and a typo in a field name fails. Every result carries the disclaimer and the scoring-method name. |
 | `trade_area.py` | Rings = profile rings x metro `ring_multiplier`. The first ring is the NEAR ring (counts of places), the middle ring is the MARKET ring (population sums, income, tourism). `Area.contains()` for rings and drive-time polygons (ray casting), circles for GeoJSON. | Two rings per site keep the factors explainable: each reason says what was counted and within which ring. |
-| `isochrones.py` | OpenRouteService v2 isochrones: builds the POST body, sends the key only in the `Authorization` header through the S1 `PoliteClient`, parses the GeoJSON polygons, returns a `SourceRecord`. | The key never enters the cache key, the stored request, a log or a `SourceRecord`; a test checks the cache files. |
+| `isochrones.py` | OpenRouteService v2 isochrones: builds the POST body, sends the key only in the `Authorization` header through the S1 `PoliteClient`, parses the GeoJSON polygons, returns a `SourceRecord` whose `license_note` carries the attribution string the answer asks for and whose `vintage` carries the routing data dates the answer reports. | The key never enters the cache key, the stored request, a log or a `SourceRecord`; a test checks the cache files. Attribution and data dates are copied from each answer, not typed in. |
 | `context.py` | `MetroContext`: the metro's fabric plus caches (tract arrays, road lookups per position, reference distributions per profile, the metro mode). `metro_context(metro_id)` keeps one per metro. `SiteOutsideMetro` error. | Ranking a site needs every tract of the metro measured once; doing that per request would be slow. |
 | `factors.py` | Measures the raw value of every factor the profile needs at one location, with status, plain reason, sources and details (count, nearest distance, saturation, median nightly price, road name). | Kept separate from scoring so the same code measures the founder's site and every reference tract: the comparison is like for like. |
 | `reference.py` | Measures the profile's site factors at every tract centroid of the metro and computes mid-rank percentiles. Needs at least 20 values (`MIN_REFERENCE_VALUES`, a design choice) to rank. | "Normalized within the metro" means a score of 80 is "better than most locations here", in any metro. |
@@ -46,14 +54,16 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
 
 | File | What it does |
 |---|---|
-| `scripts/eval_studio_siteiq.py` | Writes `results/studio_siteiq_metrics.json` with a `uwcopilot.governance.provenance` block. Offline: configs, snapshots on disk and generated cities only. `make studio-siteiq`. |
-| `tests/studio/test_siteiq_trade_area.py` | Rings, polygon membership, isochrone request and parsing, the key kept out of the cache and the record, the ring fallbacks, the license context. |
-| `tests/studio/test_siteiq_scoring.py` | Every weighted factor scored or explained, the overall equals the weighted mean, lower-is-better scoring, rent with and without a quote, a missing tract never counted as zero, determinism, sites outside the metro, drive time used only for demand. |
+| `scripts/eval_studio_siteiq.py` | Writes `results/studio_siteiq_metrics.json` with a `uwcopilot.governance.provenance` block (git commit, packages, the city seeds, the snapshot dates, and the SHA-256 of the SYNTHETIC metro config and the six profile YAMLs in `eval_sets`). Offline: configs, snapshots on disk and generated cities only. `make studio-siteiq`. |
+| `tests/studio/test_siteiq_trade_area.py` | Rings, polygon membership, isochrone request and parsing (hand-written and recorded answers), attribution and data dates copied into the record, the key kept out of the cache and the record, the ring fallbacks, the license context. |
+| `tests/studio/test_siteiq_scoring.py` | Every weighted factor scored or explained, the overall equals the weighted mean, lower-is-better scoring, rent with and without a quote, a value without enough reference values shown but not scored, a missing tract never counted as zero, determinism, sites outside the metro, drive time used only for demand. |
 | `tests/studio/test_siteiq_demand.py` | Formula terms match the S1 vocabulary; hand-worked car-wash and restaurant examples; a missing term is left out, never filled. |
 | `tests/studio/test_siteiq_suggest.py` | Ranking, exclusion counts, consistency with `score_site`, GeoJSON, budget notes, a real metro with no snapshot. |
-| `tests/studio/test_siteiq_validation.py` | Metric helpers, bootstrap determinism, a small SYNTHETIC city end to end, the real-metro table, the script's output and provenance. |
-| `tests/studio/fixtures/ors/isochrones_handwritten.json` | Hand-written OpenRouteService answer (SYNTHETIC squares in open ocean), labeled "hand-written from documentation, NOT recorded". |
-| `Makefile` | `studio-siteiq` (the validation) and `studio-siteiq-test` (SiteIQ tests only). |
+| `tests/studio/test_siteiq_validation.py` | Metric helpers, bootstrap determinism, a small SYNTHETIC city end to end, the real-metro table (including failed snapshot steps copied from the manifest), the script's output and provenance. |
+| `tests/studio/fixtures/ors/isochrones_handwritten.json` | Hand-written OpenRouteService answer (SYNTHETIC squares in open ocean), labeled "hand-written from documentation, NOT recorded". Kept because the scoring tests need polygons around the SYNTHETIC metro. |
+| `tests/studio/fixtures/ors/isochrones_houston_recorded.json` | One live answer recorded on 2026-10-13 (5, 10 and 15 minutes around the Census Geocoder's point for Houston City Hall), with its SHA-256; the key is not in it. |
+| `tests/studio/fixtures/ors/record_isochrones.py` | Re-records that fixture by hand (`ORS_API_KEY` set; never in CI). Reads the point from the recorded geocoder fixture and builds the body with the project's own `isochrone_payload`. |
+| `Makefile` | `studio-siteiq` (the validation), `studio-siteiq-test` (SiteIQ tests only) and `studio-siteiq-fixtures` (re-records the OpenRouteService fixture; needs `ORS_API_KEY`, never run in CI). |
 
 ## 2. How a site is scored
 
@@ -76,8 +86,10 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
 6. **Demand** (demand.py). For a car wash, `cars/day = AADT x capture_rate`; low uses the low end of the capture-rate
    ASSUMPTION range, mode the mode, high the high end. Motel and short-term rental formulas have no data term, so
    their estimate is "ASSUMPTION rates only" and does not change from site to site.
-7. **Notes.** One note per UNKNOWN factor, per ASSUMPTION that cannot rank sites (rent without a quote), for limited
-   mode, for a missing overall score, for an incomplete demand estimate, plus the SYNTHETIC label where it applies.
+7. **Notes.** One note per UNKNOWN factor, per factor that has a value but no score (rent without a quote; a value
+   with too few metro reference values, such as a live road lookup in a real metro), for limited mode, for a missing
+   overall score, for an incomplete demand estimate, plus the SYNTHETIC label where it applies. The factor's own
+   reason says the same thing in its words ("Not scored: ...; left out of the overall score").
 
 `suggest_areas` scores every tract the same way, excludes tracts where a weighted site factor is UNKNOWN (counting
 each reason), ranks the rest, and re-scores the top five with `score_site` to get their reasons: the three factors
@@ -163,13 +175,16 @@ so a negative value means the factor points the wrong way in this world):
 Diagnostic (`diagnostics` in the file): in all 10 cities the share of tract centroids whose nearest road is the
 generator's own local street is 1.0.
 
-Real metros (`real_metro_sanity`): all five are in limited mode ("data coverage 0.00 is below the threshold 0.80").
-For every business type the status is "not measured": for car wash and motel every tract is excluded with "required
-data UNKNOWN: traffic_aadt", for retail with "required data UNKNOWN: resident_population", and restaurant/cafe,
-laundromat and short-term rental have coverage 0.0 (no ACS estimate; OpenStreetMap unreachable).
+Real metros (`real_metro_sanity`, snapshots dated 2026-10-13): all five are in limited mode ("data coverage 0.00 is
+below the threshold 0.80"). For every business type the status is "not measured": for car wash and motel every tract
+is excluded with "required data UNKNOWN: traffic_aadt", for retail with "required data UNKNOWN: resident_population",
+and restaurant/cafe, laundromat and short-term rental have coverage 0.0 (no ACS estimate; OpenStreetMap unreachable).
+In every metro `snapshot_steps_not_ok` lists `acs_tracts`, `business_patterns` and `osm_pois` as failed, plus the
+enhancements that are not available yet.
 
-The synthetic part took 115.4 s of wall-clock time on a shared 4-CPU machine with other agents running (from
-`method.elapsed_seconds_synthetic_part`); it is not a benchmark.
+The synthetic part took 108.6 s of wall-clock time on a shared 4-CPU machine with other agents running (from
+`method.elapsed_seconds_synthetic_part`); it is not a benchmark. Re-running the script on 2026-10-13 gave the same
+`by_business_type` block value for value as the 2026-10-12 run (fixed seeds).
 
 ## 6. What the results say
 
@@ -178,7 +193,8 @@ The synthetic part took 115.4 s of wall-clock time on a shared 4-CPU machine wit
 - **SiteIQ does not beat the simplest baseline** except for short-term rental (+0.085, interval above zero). For
   laundromat, restaurant/cafe, car wash and motel the difference interval includes zero. For retail it is clearly
   worse (-0.195, interval below zero). Its top-5 hit rate is higher than the baseline's for laundromat, motel,
-  restaurant and short-term rental, but the intervals overlap.
+  restaurant and short-term rental; the intervals overlap except for short-term rental (0.140 [0.060, 0.220] against
+  0.000 [0.000, 0.000]).
 - **Why retail loses:** the factor table shows income and competition pointing the wrong way in this world
   (-0.455 and -0.415). In the generator, lower-income renter tracts sit in the dense core where walk-in demand is,
   and competitors cluster where demand is, as they do in real cities. A "fewer competitors is better" weight then
@@ -192,18 +208,23 @@ The synthetic part took 115.4 s of wall-clock time on a shared 4-CPU machine wit
 
 ## 7. Limitations and open issues
 
-- Real metros cannot be scored until a snapshot holds ACS tract data (needs `CENSUS_API_KEY` in a new session), a POI
-  layer (overpass-api.de unreachable here) and a per-tract road layer (a new snapshot step: sample tract centroids
-  and store their nearest-road AADT and place counts).
+- Real metros cannot be scored until a snapshot holds ACS tract data (the 2026-10-13 snapshot's ACS step got an HTML
+  page instead of data although `CENSUS_API_KEY` was set, and a direct request on 2026-10-13 was redirected to the
+  Census `invalid_key.html` page, so the key needs checking), a POI layer (overpass-api.de unreachable here) and a
+  per-tract road layer (a new snapshot step: sample tract centroids and store their nearest-road AADT and place
+  counts).
 - Drive-by businesses need a "busiest road within a frontage distance" measure for area suggestions; the fabric only
-  offers the nearest road. This needs a small S1 fabric extension (all segments within a radius).
+  offers the nearest road. This needs a small S1 fabric extension (all segments within a radius). Caution: the
+  generator's car-wash truth already uses "the highest AADT within 0.3 miles", so after such a change the synthetic
+  validation would partly measure SiteIQ against its own definition, and the report must say so.
 - The competition factor's direction is a prior that the synthetic world contradicts; real outcome data (S9) is the
   right place to calibrate weights, not the synthetic city.
 - Daytime workers have no real source yet (S1 open issue), so restaurant and retail will lack that factor even with a
   Census key.
-- OpenRouteService has not been called with a key; terms and attribution are to verify on openrouteservice.org.
+- OpenRouteService: the attribution string is copied from each answer into the record, but the terms of use are still
+  to verify on openrouteservice.org, and the web app (S7) must show that attribution wherever a drive-time area is
+  drawn.
 - Census tract boundaries are not loaded, so the GeoJSON layer shows centroids and approximate rings, not tracts.
-- The profile YAML notes still say weights are tuned in S2; S2 did not tune them (S1 owns those files).
 
 ## 8. Likely interview questions
 

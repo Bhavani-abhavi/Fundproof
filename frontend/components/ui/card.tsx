@@ -17,8 +17,14 @@ function CardHeader({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="card-header" className={cn("flex flex-col gap-1.5 p-5 sm:p-6", className)} {...props} />;
 }
 
-function CardTitle({ className, ...props }: ComponentProps<"h3">) {
-  return <h3 data-slot="card-title" className={cn("text-lg font-semibold leading-snug", className)} {...props} />;
+type CardTitleLevel = "h1" | "h2" | "h3" | "h4";
+
+/**
+ * The card's heading. `as` picks the level so the page outline stays in order: h1 when the card is the page's main
+ * content (the sign-in page), h2 for a card directly under the page's h1, h3 (default) inside a titled section.
+ */
+function CardTitle({ as: Heading = "h3", className, ...props }: ComponentProps<"h3"> & { as?: CardTitleLevel }) {
+  return <Heading data-slot="card-title" className={cn("text-lg font-semibold leading-snug", className)} {...props} />;
 }
 
 function CardDescription({ className, ...props }: ComponentProps<"p">) {

@@ -10,6 +10,8 @@
  *   a friendly offline state instead of crashing.
  */
 
+import { PRODUCT_NAME } from "@/lib/config";
+
 /** Roles the server can grant. Every signed-in user is a founder; lender roles come from the owners' allowlist. */
 export type Role = "founder" | "lender_reviewer" | "lender_senior" | "admin";
 
@@ -50,6 +52,8 @@ export interface MeResponse {
   signed_in: boolean;
   username: string | null;
   display_name: string | null;
+  /** The user's own stable account id (Hugging Face "sub"); owners pin role allowlist entries to it. */
+  subject?: string | null;
   roles: string[];
   auth_mode: AuthMode;
 }
@@ -70,19 +74,40 @@ export const SIGNED_OUT: MeResponse = {
 
 export type ApiErrorKind = "offline" | "http";
 
-/** An API failure. `status` is 0 when the request never reached a server. */
+/**
+ * An API failure. `status` is 0 when the request never reached a server. `retryAfterS` is the server's
+ * Retry-After header in seconds (sent with 429 "rate limit exceeded"), or null.
+ */
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status: number;
   readonly detail: unknown;
+  readonly retryAfterS: number | null;
 
-  constructor(kind: ApiErrorKind, status: number, message: string, detail: unknown = null) {
+  constructor(kind: ApiErrorKind, status: number, message: string, detail: unknown = null, retryAfterS: number | null = null) {
     super(message);
     this.name = "ApiError";
     this.kind = kind;
     this.status = status;
     this.detail = detail;
+    this.retryAfterS = retryAfterS;
   }
+}
+
+/** Retry-After as seconds: either a number of seconds or an HTTP date. Null when absent or unreadable. */
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+  const date = Date.parse(trimmed);
+  if (Number.isNaN(date)) {
+    return null;
+  }
+  return Math.max(0, Math.ceil((date - Date.now()) / 1000));
 }
 
 /** True when a request was cancelled with an AbortController (for example because a page unmounted). */
@@ -106,7 +131,7 @@ interface RequestOptions {
   expect?: "json" | "any";
 }
 
-const OFFLINE_MESSAGE = "The Fundproof server could not be reached.";
+const OFFLINE_MESSAGE = `The ${PRODUCT_NAME} server could not be reached.`;
 
 let cachedCsrfToken: string | null = null;
 
@@ -186,7 +211,8 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
       return request<T>(path, options, true);
     }
     const message = messageFromBody(payload) ?? `Request failed with status ${response.status}.`;
-    throw new ApiError("http", response.status, message, payload);
+    const retryAfterS = parseRetryAfter(response.headers.get("retry-after"));
+    throw new ApiError("http", response.status, message, payload, retryAfterS);
   }
 
   return payload as T;

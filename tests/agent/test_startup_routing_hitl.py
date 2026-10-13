@@ -5,13 +5,15 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from agent_helpers import APPLICATIONS_DIR
 
-from uwcopilot.agent.applications import parse_application, screened_parties
+from uwcopilot.agent.applications import load_application, parse_application, screened_parties
 from uwcopilot.agent.hitl import (
     APPROVAL_LIMITS,
     allowed_actions,
     authority_exposure,
     build_review_request,
+    higher_authority_reasons,
     validate_decision,
 )
 from uwcopilot.agent.policy import (
@@ -120,7 +122,10 @@ def test_an_underwriter_cannot_decline_a_startup_file() -> None:
 
 @pytest.mark.parametrize(("amount", "allowed"), [(500_000, True), (500_000.01, False)])
 def test_senior_approval_authority_is_inclusive_at_500000(amount: float, allowed: bool) -> None:
-    application, result = evaluated(startup(amount=amount))
+    data = startup(amount=amount)
+    data["collateral"] = [{"collateral_type": "owner_occupied_cre", "value": 700_000.0}]  # coverage 1.05
+    data["documents_provided"].append("collateral_documents")
+    application, result = evaluated(data)
     decision, errors = validate_decision({**SENIOR, "action": "approve"}, result, application)
     if allowed:
         assert result.recommendation == "approve" and errors == [] and decision is not None
@@ -142,6 +147,61 @@ def test_approving_against_a_refer_needs_an_override_reason() -> None:
         {**SENIOR, "action": "approve", "override_reason": "policy_exception_approved"}, result, application
     )
     assert errors == [] and accepted is not None
+
+
+SENIOR_EXCEPTION = {**SENIOR, "action": "approve", "override_reason": "policy_exception_approved"}
+
+
+def three_exceptions() -> dict[str, Any]:
+    """The clean example with three exception-only near misses: experience, credit score and equity."""
+    return startup(experience_years=(1.5, 1.0), credit_scores=(742, 665), equity_pct=17.5)
+
+
+@pytest.mark.parametrize(
+    ("label", "data_factory", "reserved_to"),
+    [
+        ("dscr below 1.10", lambda: startup("projected_dscr_below_floor_retail"), "Credit Committee"),
+        ("coverage below 0.80", lambda: startup("collateral_far_short_motel"), "Credit Committee"),
+        ("outside product limits", lambda: startup("term_outside_limits_laundromat"), "Chief Credit Officer"),
+    ],
+)
+def test_a_senior_cannot_approve_a_file_reserved_to_a_higher_authority(
+    label: str, data_factory: Any, reserved_to: str
+) -> None:
+    # NSP-9.1 / NBC-7.2: the Credit Committee or the Chief Credit Officer decides these files, not the checkpoint.
+    application, result = evaluated(data_factory())
+    assert reserved_to in result.referral_targets, label
+    decision, errors = validate_decision(SENIOR_EXCEPTION, result, application)
+    assert decision is None
+    assert any(f"reserved to the {reserved_to}" in error for error in errors), errors
+    assert "approve" not in allowed_actions(result)
+    referred, errors = validate_decision({**SENIOR, "action": "refer"}, result, application)
+    assert errors == [] and referred is not None
+
+
+def test_two_or_more_policy_exceptions_cannot_be_approved_by_a_senior() -> None:
+    application, result = evaluated(three_exceptions())
+    rules = set(result.rule_codes())
+    assert {"experience_near_miss", "credit_score_near_miss", "equity_injection_near_miss"} <= rules
+    assert result.referral_targets == [SENIOR_UNDERWRITER]
+    decision, errors = validate_decision(SENIOR_EXCEPTION, result, application)
+    assert decision is None and any("needs 3 policy exceptions" in error for error in errors)
+    assert "approve" not in allowed_actions(result)
+
+
+def test_one_policy_exception_can_still_be_approved_by_a_senior() -> None:
+    application, result = evaluated(startup(credit_scores=(742, 665)))
+    assert result.rule_codes() == ["credit_score_near_miss"]
+    decision, errors = validate_decision(SENIOR_EXCEPTION, result, application)
+    assert errors == [] and decision is not None
+    assert "approve" in allowed_actions(result)
+
+
+def test_higher_authority_limits_do_not_change_the_credit_line() -> None:
+    # The credit line keeps its Phase 5 behaviour (documented as a remaining limitation in hitl.py).
+    credit = load_application(APPLICATIONS_DIR / "APP-C-001.json")
+    _application, result = evaluated(credit.model_dump(mode="json"))
+    assert result.line == "credit" and higher_authority_reasons(result) == []
 
 
 # --------------------------------------------------------------------------------------------------------------

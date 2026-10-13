@@ -8,13 +8,20 @@ valuation age are in checks_loss_run_coverage.py.
 - loss_run_totals (HM-11.1): each loss run's printed summary must equal its claim lines: the claim count exactly,
   and total paid, reserve and incurred within $1.00. A loss run whose summary is not found is skipped.
 - claims_history_consistency (HM-3.3): the claim count and total incurred stated on the application against the
-  loss runs. A loss run contributes its claim lines, or its printed summary when no claim line was found. Any
-  difference in claim count, or a total incurred difference above 10.0% of the loss-run total
-  (insurance_calculations.incurred_difference_pct), fails. The values also count the current-term claims (date
-  of loss on or after the current-term start) for the explanation rules. As in the agent's SYNTHETIC
-  submissions, the current term starts one year before the proposed effective date.
+  loss runs. The loss runs are read two ways (LossHistory): by their claim lines ("claim_lines": every claim
+  line of every loss run), and by their printed summaries ("printed_summaries": each loss run's summary block,
+  or its claim lines when it has no summary). The two readings differ only when a summary does not equal its
+  lines, which loss_run_totals already reports as an integrity indicator; so the application matches when it
+  agrees with EITHER reading, and the same disagreement is not reported twice (for example a summary that
+  counts a claim with no claim line, or claim lines the extractor did not read). The application agrees with a
+  reading when the claim count is equal and the total incurred differs by 10.0% or less of the loss-run total
+  (insurance_calculations.incurred_difference_pct). Otherwise the check fails, compared with the claim lines
+  (or with the summaries when no claim line was found at all). The values also count the current-term claims
+  (claim lines with a date of loss on or after the current-term start) for the explanation rules. As in the
+  agent's SYNTHETIC submissions, the current term starts one year before the proposed effective date.
 """
 
+from dataclasses import dataclass, field
 from datetime import date
 
 from uwcopilot.agent.applications import Claim
@@ -205,32 +212,87 @@ def current_term_start(submission: InsuranceSubmission) -> date | None:
     return years_before(application.proposed_effective_date.value, 1)
 
 
-def loss_run_history(submission: InsuranceSubmission) -> tuple[int, float, int | None, list[Evidence]]:
-    """(claim count, total incurred, current-term claim count, evidence) over all loss runs (module docstring)."""
-    start = current_term_start(submission)
+@dataclass(frozen=True)
+class LossHistory:
+    """Claim count and total incurred over all loss runs, read one way (see the module docstring)."""
+
+    basis: str  # "claim_lines" or "printed_summaries"
+    claim_count: int
+    total_incurred: float
+    evidence: list[Evidence] = field(default_factory=list)
+
+
+def lines_history(submission: InsuranceSubmission) -> LossHistory:
+    """Every claim line of every loss run."""
     count = 0
     incurred = 0.0
-    current: int | None = None if start is None else 0
     evidence: list[Evidence] = []
     for loss_run in submission.loss_runs:
-        if loss_run.claims:
-            for claim in loss_run.claims:
-                count += 1
-                incurred += float(claim.incurred.value or 0.0)
-                evidence.extend(claim_evidence(claim, loss_run.doc_id, ("incurred",)))
-                loss_date = claim.date_of_loss.value
-                if current is not None and loss_date is not None and start is not None and loss_date >= start:
-                    current += 1
-            continue
+        for claim in loss_run.claims:
+            count += 1
+            incurred += float(claim.incurred.value or 0.0)
+            evidence.extend(claim_evidence(claim, loss_run.doc_id, ("incurred",)))
+    return LossHistory("claim_lines", count, round(incurred, 2), evidence)
+
+
+def summaries_history(submission: InsuranceSubmission) -> LossHistory:
+    """Each loss run's printed summary, or its claim lines when it has no summary."""
+    count = 0
+    incurred = 0.0
+    evidence: list[Evidence] = []
+    for loss_run in submission.loss_runs:
         summary = loss_run.summary
-        count += int(summary.claim_count.value or 0)
-        incurred += float(summary.total_incurred.value or 0.0)
-        evidence.extend(summary_evidence(loss_run))
-    return count, round(incurred, 2), current, evidence
+        if summary.claim_count.found or summary.total_incurred.found:
+            count += int(summary.claim_count.value or 0)
+            incurred += float(summary.total_incurred.value or 0.0)
+            evidence.extend(summary_evidence(loss_run))
+            continue
+        for claim in loss_run.claims:
+            count += 1
+            incurred += float(claim.incurred.value or 0.0)
+            evidence.extend(claim_evidence(claim, loss_run.doc_id, ("incurred",)))
+    return LossHistory("printed_summaries", count, round(incurred, 2), evidence)
+
+
+def current_term_claims(submission: InsuranceSubmission) -> int | None:
+    """Claim lines with a date of loss in the current term (None when the effective date is unknown)."""
+    start = current_term_start(submission)
+    if start is None:
+        return None
+    count = 0
+    for loss_run in submission.loss_runs:
+        for claim in loss_run.claims:
+            if claim.date_of_loss.value is not None and claim.date_of_loss.value >= start:
+                count += 1
+    return count
+
+
+def agrees(stated_count: int, stated_incurred: float, history: LossHistory) -> bool:
+    """HM-3.3: the same claim count, and total incurred within 10.0% of the loss-run total."""
+    if stated_count != history.claim_count:
+        return False
+    difference_pct = incurred_difference_pct(stated_incurred, history.total_incurred)
+    if difference_pct is None:
+        return stated_incurred <= RECONCILIATION_TOLERANCE_USD
+    return difference_pct <= MAX_INCURRED_DIFFERENCE_PCT
+
+
+def readings_differ(first: LossHistory, second: LossHistory) -> bool:
+    """True when two readings of the loss runs give a different claim count or total incurred."""
+    if first.claim_count != second.claim_count:
+        return True
+    return first.total_incurred != second.total_incurred
+
+
+def reported_reading(by_lines: LossHistory, by_summaries: LossHistory) -> LossHistory:
+    """The reading a failing check reports: the claim lines, or the summaries when no claim line was found."""
+    if by_lines.claim_count == 0 and by_summaries.claim_count > 0:
+        return by_summaries
+    return by_lines
 
 
 def check_claims_history(submission: InsuranceSubmission) -> CheckResult:
-    """HM-3.3: application claim count and total incurred vs the loss runs."""
+    """HM-3.3: application claim count and total incurred vs the loss runs (two readings; module docstring)."""
     refs = INSURANCE_REFS["claims_history_consistency"]
     application = submission.application
     if application is None or not submission.loss_runs:
@@ -242,38 +304,56 @@ def check_claims_history(submission: InsuranceSubmission) -> CheckResult:
             cite(application.stated_total_incurred, "application.stated_total_incurred", None, application.doc_id),
         ]
     )
-    count, incurred, current, run_evidence = loss_run_history(submission)
+    by_lines = lines_history(submission)
+    by_summaries = summaries_history(submission)
     if not application.stated_claim_count.found or not application.stated_total_incurred.found:
         message = "The application's claim count or total incurred was not found."
-        return make_result("claims_history_consistency", refs, "not_evaluated", message, {}, stated + run_evidence)
+        evidence = stated + by_lines.evidence
+        return make_result("claims_history_consistency", refs, "not_evaluated", message, {}, evidence)
     stated_count = int(application.stated_claim_count.value)
     stated_incurred = float(application.stated_total_incurred.value)
-    difference_pct = incurred_difference_pct(stated_incurred, incurred)
+    differ = readings_differ(by_lines, by_summaries)
+    for history in (by_lines, by_summaries):
+        if agrees(stated_count, stated_incurred, history):
+            values = {
+                "stated_claim_count": stated_count,
+                "stated_total_incurred": stated_incurred,
+                "basis": history.basis,
+                "loss_run_claim_count": history.claim_count,
+                "loss_run_total_incurred": history.total_incurred,
+                "readings_differ": differ,
+            }
+            message = (
+                f"The application's {stated_count} claim(s) and total incurred match the loss runs "
+                f"(read by their {history.basis.replace('_', ' ')})."
+            )
+            evidence = stated + history.evidence
+            return make_result("claims_history_consistency", refs, "pass", message, values, evidence)
+    compared = reported_reading(by_lines, by_summaries)
+    difference_pct = incurred_difference_pct(stated_incurred, compared.total_incurred)
     values = {
         "stated_claim_count": stated_count,
-        "loss_run_claim_count": count,
         "stated_total_incurred": stated_incurred,
-        "loss_run_total_incurred": incurred,
+        "basis": compared.basis,
+        "loss_run_claim_count": compared.claim_count,
+        "loss_run_total_incurred": compared.total_incurred,
         "incurred_difference_pct": difference_pct,
-        "current_term_claim_count": current,
+        "current_term_claim_count": current_term_claims(submission),
+        "readings_differ": differ,
+        "summary_claim_count": by_summaries.claim_count,
+        "summary_total_incurred": by_summaries.total_incurred,
     }
-    count_differs = stated_count != count
-    if difference_pct is None:
-        incurred_differs = stated_incurred > RECONCILIATION_TOLERANCE_USD
-    else:
-        incurred_differs = difference_pct > MAX_INCURRED_DIFFERENCE_PCT
-    if not count_differs and not incurred_differs:
-        message = f"The application's {stated_count} claim(s) and total incurred match the loss runs."
-        return make_result("claims_history_consistency", refs, "pass", message, values, stated + run_evidence)
     shown_pct = "n/a" if difference_pct is None else f"{difference_pct:.1f}%"
+    loss_run_fields = sorted({item.field for item in compared.evidence}) or ["loss_run.claims.incurred"]
     issue = CheckIssue(
         issue="history_differs",
         entity="business",
-        fields=["application.stated_claim_count", "application.stated_total_incurred", "loss_run.claims.incurred"],
+        fields=["application.stated_claim_count", "application.stated_total_incurred", *loss_run_fields],
         side_a=stated,
-        side_b=run_evidence,
+        side_b=compared.evidence,
         data=dict(values),
         message=f"The application states {stated_count} claim(s) and ${stated_incurred:,.2f} incurred; the loss runs "
-        f"show {count} claim(s) and ${incurred:,.2f} (incurred difference {shown_pct}).",
+        f"show {compared.claim_count} claim(s) and ${compared.total_incurred:,.2f} (incurred difference "
+        f"{shown_pct}).",
     )
     return make_result("claims_history_consistency", refs, "fail", issue.message, values, [], [issue])

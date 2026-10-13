@@ -13,9 +13,12 @@ instruct a reviewer, a system or an AI assistant ("ignore previous instructions"
 The patterns were fixed before the synthetic applications were generated and were not tuned on them. They reuse
 the retrieval-side patterns from uwcopilot.rag.prompt and add three that target decisions on an application.
 
-A startup application also has short code fields the applicant writes (the metro id, each assumption's name and
-unit, the simulator version). They appear in the evidence, so they are screened too, after separators and camelCase
-are turned into spaces: "ignore_all_previous_rules" is read as "ignore all previous rules".
+A startup application also has short code fields the applicant writes (each assumption's name and unit, the
+simulator version). They appear in the evidence, so they are screened too, after separators and camelCase are turned
+into spaces: "ignore_all_previous_rules" is read as "ignore all previous rules". A code names a quantity or a
+version, so it is also held to a stricter word list (CODE_PATTERNS): a decision or instruction word such as
+"approve", "ignore" or "assistant" has no place in a code. The metro id is not screened: it can only be one of the
+registry's metro ids (applications.STARTUP_METRO_IDS).
 """
 
 import re
@@ -54,6 +57,18 @@ AGENT_PATTERNS: tuple[InstructionPattern, ...] = (
     ),
 )
 ALL_PATTERNS: tuple[InstructionPattern, ...] = INSTRUCTION_PATTERNS + AGENT_PATTERNS
+# Code fields only (never free text, where these words are ordinary): words that steer a decision or address the
+# reader. Legitimate codes name a quantity or a version (cars_per_day, USD/month, studio-feasibility-1.0).
+CODE_PATTERNS: tuple[InstructionPattern, ...] = (
+    InstructionPattern(
+        "decision_word_in_code",
+        re.compile(
+            r"\b(?:approve[ds]?|declined?|deny|denied|ignored?|disregard|instructions?|prompts?|assistant|"
+            r"recommend(?:s|ed|ation)?|override)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
 
 
 class InjectionHit(BaseModel):
@@ -81,6 +96,12 @@ def code_as_words(code: str) -> str:
     return CODE_SEPARATORS.sub(" ", CAMEL_CASE_BOUNDARY.sub(" ", code))
 
 
+def detect_in_code(code: str) -> list[str]:
+    """Pattern names found in a code field: every free-text pattern plus CODE_PATTERNS, on the code read as words."""
+    words = code_as_words(code)
+    return detect(words) + [item.name for item in CODE_PATTERNS if item.pattern.search(words)]
+
+
 def free_text_fields(application: AnyApplication) -> dict[str, str]:
     """Every free-text field an applicant controls: the notes, the legal name and each owner's name.
 
@@ -99,21 +120,22 @@ def free_text_fields(application: AnyApplication) -> dict[str, str]:
         fields[f"owners.{owner.owner_id}.name"] = owner.name
     if isinstance(application, StartupCreditApplication):
         for index, item in enumerate(application.material_assumptions):
-            fields[f"material_assumptions[{index}].source"] = item.source or ""
+            fields[f"material_assumptions.{index}.source"] = item.source or ""
     return fields
 
 
 def code_fields(application: AnyApplication) -> dict[str, str]:
     """Short code fields an applicant writes that reach the evidence (startup applications only).
 
-    Fields are keyed by position, never by their own text, so a crafted name cannot travel inside a field key.
+    Fields are keyed by position, never by their own text, so a crafted name cannot travel inside a field key. The
+    metro id is a closed list (applications.STARTUP_METRO_IDS), so it is not an applicant-written code.
     """
     if not isinstance(application, StartupCreditApplication):
         return {}
-    fields = {"applicant.metro_id": application.applicant.metro_id}
+    fields: dict[str, str] = {}
     for index, item in enumerate(application.material_assumptions):
-        fields[f"material_assumptions[{index}].name"] = item.name
-        fields[f"material_assumptions[{index}].unit"] = item.unit
+        fields[f"material_assumptions.{index}.name"] = item.name
+        fields[f"material_assumptions.{index}.unit"] = item.unit
     simulation = application.projections.simulation
     if simulation is not None:
         fields["projections.simulation.simulator_version"] = simulation.simulator_version
@@ -128,7 +150,7 @@ def screen_application(application: AnyApplication) -> list[InjectionHit]:
         if patterns:
             hits.append(InjectionHit(field=field, patterns=patterns, excerpt=text[:MAX_EXCERPT_CHARS]))
     for field, code in code_fields(application).items():
-        patterns = detect(code_as_words(code))
+        patterns = detect_in_code(code)
         if patterns:
             hits.append(InjectionHit(field=field, patterns=patterns, excerpt=code[:MAX_EXCERPT_CHARS]))
     return hits

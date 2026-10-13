@@ -6,8 +6,14 @@
 Startup refuses unsafe settings (see settings.py): the dev login inside a Space, a Space without a session
 secret, or the dataset store without an encryption key. The store is opened in the lifespan (startup) and the
 dataset store flushes its last batch at shutdown.
+
+Retention: expired objects are deleted once at startup and then every UWC_PURGE_EVERY_S seconds (default one
+hour) by a background task, so data does not outlive UWC_RETENTION_DAYS by more than that interval while the app
+runs. (Expired objects are already hidden from get and list before they are purged.)
 """
 
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -42,9 +48,18 @@ logger = logging.getLogger(__name__)
 
 OPENAPI_URL = "/api/openapi.json"
 DOCS_URL = "/api/docs"
-# Swagger UI (FastAPI's /api/docs page) loads its script and style from this CDN; only that page allows it.
-SWAGGER_CDN = "https://cdn.jsdelivr.net"
-SWAGGER_FAVICON_HOST = "https://fastapi.tiangolo.com"
+# Swagger UI (the /api/docs page) loads ONE pinned script and ONE pinned stylesheet from the jsDelivr CDN. Each tag
+# carries a Subresource Integrity hash, so the browser refuses a file that differs from the one checked here, and
+# that page's CSP allows exactly these two URLs (not the whole CDN). The hashes are SHA-384 of the files in the npm
+# tarball swagger-ui-dist-5.33.0.tgz, which matched the CDN copies byte for byte (checked 2026-10-13). To upgrade:
+# change the version, recompute both hashes (openssl dgst -sha384 -binary FILE | openssl base64 -A) and update them.
+SWAGGER_UI_VERSION = "5.33.0"
+SWAGGER_JS_URL = f"https://cdn.jsdelivr.net/npm/swagger-ui-dist@{SWAGGER_UI_VERSION}/swagger-ui-bundle.js"
+SWAGGER_CSS_URL = f"https://cdn.jsdelivr.net/npm/swagger-ui-dist@{SWAGGER_UI_VERSION}/swagger-ui.css"
+SWAGGER_JS_SRI = "sha384-YDALVcy8kj8yltLBVi1vBiBAUqdxvus673gM8XKwiy6aDUJFXivF/KCufekjYbVf"
+SWAGGER_CSS_SRI = "sha384-Ov4/wv3j2bmct8cDc5X4ngJZohVPzEmc6uDPH8WeljUxO5vtoykvMEfbu9Vh6RaW"
+# The frontend's own icon (no third-party image).
+SWAGGER_FAVICON_URL = "/icon.svg"
 
 
 def open_store(settings: WebSettings, hub_api: HubApi | None = None) -> Store:
@@ -63,15 +78,40 @@ def open_store(settings: WebSettings, hub_api: HubApi | None = None) -> Store:
     return store
 
 
+def purge_expired_objects(store: Store) -> int:
+    """Delete every expired object once. Returns how many were deleted; a failure is logged, never raised."""
+    try:
+        purged = store.purge_expired()
+    except Exception:
+        logger.exception("retention purge failed; it runs again at the next interval")
+        return 0
+    if purged:
+        logger.info("retention purge deleted %d expired object(s)", len(purged))
+    return len(purged)
+
+
+async def purge_periodically(store: Store, every_s: float) -> None:
+    """Run the retention purge every every_s seconds until cancelled (in a worker thread: it may call the Hub)."""
+    while True:
+        await asyncio.sleep(every_s)
+        await asyncio.to_thread(purge_expired_objects, store)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Open the store at startup (unless a test injected one) and close it at shutdown."""
+    """Open the store (unless a test injected one), purge expired data now and periodically, close at shutdown."""
     opened_here = app.state.store is None
     if opened_here:
         app.state.store = open_store(app.state.settings, app.state.hub_api)
+    store: Store = app.state.store
+    purge_expired_objects(store)
+    purge_task = asyncio.create_task(purge_periodically(store, app.state.settings.purge_every_s))
     try:
         yield
     finally:
+        purge_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await purge_task
         if opened_here and isinstance(app.state.store, HFDatasetStore):
             app.state.store.close()
 
@@ -84,16 +124,32 @@ def get_store(request: Request) -> Store:
     return store
 
 
+def add_integrity(html: str, attribute: str, url: str, integrity: str) -> str:
+    """Add integrity and crossorigin attributes to the one tag whose `attribute` (src or href) is url."""
+    tag_part = f'{attribute}="{url}"'
+    if html.count(tag_part) != 1:
+        raise RuntimeError(f"the Swagger UI page does not load {url} exactly once; FastAPI's template changed")
+    return html.replace(tag_part, f'{tag_part} integrity="{integrity}" crossorigin="anonymous"')
+
+
 def swagger_page(title: str) -> HTMLResponse:
-    """FastAPI's Swagger UI page with its own CSP: its CDN plus the hash of its one inline script."""
-    page = get_swagger_ui_html(openapi_url=OPENAPI_URL, title=title)
-    page.headers["Content-Security-Policy"] = build_csp(
-        script_hashes=inline_script_hashes(bytes(page.body).decode("utf-8")),
-        extra_script_src=[SWAGGER_CDN],
-        extra_style_src=[SWAGGER_CDN],
-        extra_img_src=[SWAGGER_FAVICON_HOST],
+    """FastAPI's Swagger UI page, pinned with SRI, with its own CSP: the two pinned files and its inline script."""
+    page = get_swagger_ui_html(
+        openapi_url=OPENAPI_URL,
+        title=title,
+        swagger_js_url=SWAGGER_JS_URL,
+        swagger_css_url=SWAGGER_CSS_URL,
+        swagger_favicon_url=SWAGGER_FAVICON_URL,
     )
-    return page
+    html = bytes(page.body).decode("utf-8")
+    html = add_integrity(html, "src", SWAGGER_JS_URL, SWAGGER_JS_SRI)
+    html = add_integrity(html, "href", SWAGGER_CSS_URL, SWAGGER_CSS_SRI)
+    csp = build_csp(
+        script_hashes=inline_script_hashes(html),
+        extra_script_src=[SWAGGER_JS_URL],
+        extra_style_src=[SWAGGER_CSS_URL],
+    )
+    return HTMLResponse(html, headers={"Content-Security-Policy": csp})
 
 
 def add_middlewares(app: FastAPI, settings: WebSettings) -> None:

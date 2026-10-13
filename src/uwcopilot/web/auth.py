@@ -17,7 +17,9 @@ implements the small flow the Hugging Face docs describe (huggingface.co/docs/hu
 Roles: founder for every signed-in user; lender_reviewer, lender_senior and admin only from UWC_ROLE_ALLOWLIST.
 lender_senior also counts as lender_reviewer (a senior reviewer can do what a reviewer can). admin implies no
 lender role: operating the app is not a credit role. Roles are recomputed from the allowlist on every request, so
-removing someone from the allowlist takes effect at once. There is no src/uwcopilot/security/rbac.py in the repo
+removing someone from the allowlist takes effect at once. An allowlist entry pinned to an account id
+("hfuser@id:role") matches only a session whose subject is that id, so a renamed and re-registered username does
+not inherit the role (settings.parse_role_allowlist). There is no src/uwcopilot/security/rbac.py in the repo
 yet, so the role logic lives here behind require_role(); move it there if the Phase 5 RBAC module appears.
 """
 
@@ -34,7 +36,7 @@ from fastapi import HTTPException, Request, status
 
 from uwcopilot.common.settings import is_http_url
 from uwcopilot.web.cookies import SESSION_COOKIE, SignedSerializer
-from uwcopilot.web.settings import ROLES, USERNAME_PATTERN, OAuthSettings, WebSettings
+from uwcopilot.web.settings import ROLES, USERNAME_PATTERN, OAuthSettings, WebSettings, allowlist_key
 
 AuthMode = Literal["hf_oauth", "dev"]
 # A role on the left also grants the roles on the right.
@@ -67,10 +69,16 @@ class Principal:
 
 
 def effective_roles(
-    username: str, allowlist: dict[str, tuple[str, ...]], extra_role: str | None = None
+    username: str, allowlist: dict[str, tuple[str, ...]], extra_role: str | None = None, subject: str | None = None
 ) -> tuple[str, ...]:
-    """founder + allowlisted roles + extra_role (dev login) + implied roles, in the canonical order of ROLES."""
-    granted = {"founder", *allowlist.get(username.casefold(), ())}
+    """founder + allowlisted roles + extra_role (dev login) + implied roles, in the canonical order of ROLES.
+
+    Allowlisted roles come from the username-only entry and, when subject is known, from the entry pinned to
+    username AND subject (an entry pinned to another id does not match).
+    """
+    granted = {"founder", *allowlist.get(allowlist_key(username), ())}
+    if subject:
+        granted.update(allowlist.get(allowlist_key(username, subject), ()))
     if extra_role:
         granted.add(extra_role)
     for role in list(granted):
@@ -119,7 +127,7 @@ def principal_from_payload(payload: dict[str, Any] | None, settings: WebSettings
         username=username,
         display_name=display_name or username,
         auth_mode=mode,
-        roles=effective_roles(username, settings.role_allowlist, dev_role),
+        roles=effective_roles(username, settings.role_allowlist, dev_role, subject=subject),
     )
 
 

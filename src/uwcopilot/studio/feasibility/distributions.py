@@ -142,13 +142,16 @@ def from_factor_value(name: str, description: str, factor: FactorValue) -> Distr
     """A data-fabric FactorValue (local wages, metro rent range) as a distribution.
 
     A value with low and high becomes a triangle around the value; a single value is fixed. UNKNOWN values cannot
-    be used (the caller falls back to the profile's ASSUMPTION range and says so).
+    be used (the caller falls back to the profile's ASSUMPTION range and says so). Assumptions the fabric used to
+    derive the value (for example hours per week to turn a weekly wage into an hourly one) are kept in the source.
     """
     if factor.value is None or factor.status not in STATUS_FROM_FACTOR:
         raise ValueError(f"{factor.factor} is UNKNOWN: {factor.reason}")
     status = STATUS_FROM_FACTOR[factor.status]
     where = factor.source.dataset if factor.source is not None else "no dataset"
     source = f"data fabric {factor.factor} ({factor.status}): {factor.reason}; {where}"
+    if factor.assumptions:
+        source = f"{source}; derived with: {'; '.join(factor.assumptions)}"
     low = factor.low if factor.low is not None else factor.value
     high = factor.high if factor.high is not None else factor.value
     mode = min(max(factor.value, low), high)

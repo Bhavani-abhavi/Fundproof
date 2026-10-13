@@ -9,13 +9,18 @@ debt-payment checks in checks_revenue.py.
   financials or payoff letters, so they are always missing when required (values: no_packet_document_type).
   Checklist mapping: signed_application <- loan application; bank_statements_12_months <- 12 consecutive statement
   months; business_tax_returns_2_years <- tax return summaries for two different years; ytd_pnl_and_balance_sheet
-  <- P&L and balance sheet; debt_schedule; principal_photo_ids <- a photo ID for every principal (NBC-1.2: a
-  person with 20% or more, or the control person); formation_documents and beneficial_ownership_certification <-
-  the formation document (the second one needs its members table); collateral_documents <- collateral valuation.
+  <- P&L and balance sheet, neither dated more than 90 days before the application date (NBC-3.1 item 4; the
+  P&L's date is its period end, the balance sheet's its "as of" date; a stale one is listed in
+  values["stale_documents"] and does not count); debt_schedule; principal_photo_ids <- a photo ID for every
+  principal (NBC-1.2: a person with 20% or more, or the control person); formation_documents and
+  beneficial_ownership_certification <- the formation document (the second one needs its members table);
+  collateral_documents <- collateral valuation. The evidence also cites the application values that make a
+  conditional document required (the requested amount, the purpose).
 - name_consistency / fein_consistency (NBC-3.1, 6.2, 9.1): the business name on the application, every statement
   (account holder), the P&L, balance sheet, debt schedule, formation document and tax returns; the FEIN on the
   application, formation document and tax returns. Compared with checks_identity.value_consistency.
-- owner_consistency (NBC-6.1): application owners vs formation-document members; every member must be listed.
+- owner_consistency (NBC-6.1): application owners vs formation-document members; every member must be listed,
+  and the application's percentages must add up to 100%.
 - tax_return_vs_pnl (NBC-9.1): the most recent tax return's gross receipts against the P&L revenue "for the same
   year". The summary's tax year is treated as a calendar year, so the check runs only when the P&L period ends on
   31 December of that year; otherwise it is not evaluated.
@@ -42,9 +47,10 @@ from uwcopilot.docintel.checks_identity import owner_consistency, value_consiste
 from uwcopilot.docintel.checks_statements import MONTHS_REQUIRED, consecutive_months
 from uwcopilot.docintel.deposits import month_of, sorted_by_month
 from uwcopilot.docintel.normalize import canonical_fein, canonical_name
-from uwcopilot.docintel.schemas import LoanPacket
+from uwcopilot.docintel.schemas import Cited, LoanPacket
 
 TAX_RETURN_DIFFERENCE_PCT = 10.0  # NBC-9.1: tax return receipts vs P&L revenue for the same year
+FINANCIALS_MAX_AGE_DAYS = 90  # NBC-3.1 item 4: P&L and balance sheet dated no more than 90 days before the application
 NO_PACKET_DOCUMENT_TYPE = ("cpa_reviewed_financials", "payoff_letters")
 # NBC-6.1: every member of the formation document must be on the application, whatever their share.
 FORMATION_LISTS_EVERY_OWNER_PCT = 0.0
@@ -64,6 +70,31 @@ def principals(packet: LoanPacket) -> list[tuple[int, str]]:
     return result
 
 
+def financial_dates(packet: LoanPacket) -> list[tuple[Cited, str, str]]:
+    """(date, field, doc id) of the P&L period end and the balance sheet date, for the documents present."""
+    dates = []
+    if packet.profit_and_loss is not None:
+        pnl = packet.profit_and_loss
+        dates.append((pnl.period_end, "profit_and_loss.period_end", pnl.doc_id))
+    if packet.balance_sheet is not None:
+        sheet = packet.balance_sheet
+        dates.append((sheet.as_of, "balance_sheet.as_of", sheet.doc_id))
+    return dates
+
+
+def stale_financials(packet: LoanPacket) -> list[Evidence]:
+    """Evidence of the P&L / balance sheet dates that are more than 90 days before the application date."""
+    application = packet.application
+    applied = None if application is None else application.application_date.value
+    if applied is None:
+        return []
+    stale = []
+    for cited, field, doc_id in financial_dates(packet):
+        if cited.value is not None and (applied - cited.value).days > FINANCIALS_MAX_AGE_DAYS:
+            stale.extend(found_only([cite(cited, field, None, doc_id)]))
+    return stale
+
+
 def documents_provided(packet: LoanPacket) -> dict[str, list[Evidence]]:
     """Checklist code -> evidence of the documents that satisfy it (only the codes the packet satisfies)."""
     provided: dict[str, list[Evidence]] = {}
@@ -80,7 +111,7 @@ def documents_provided(packet: LoanPacket) -> dict[str, list[Evidence]]:
             document_evidence(item, "document", "tax_return_summary", str(item.tax_year.value))
             for item in packet.tax_returns
         ]
-    if packet.profit_and_loss is not None and packet.balance_sheet is not None:
+    if packet.profit_and_loss is not None and packet.balance_sheet is not None and not stale_financials(packet):
         provided["ytd_pnl_and_balance_sheet"] = [
             document_evidence(packet.profit_and_loss, "document", "profit_and_loss"),
             document_evidence(packet.balance_sheet, "document", "balance_sheet"),
@@ -116,21 +147,43 @@ def required_documents_list(packet: LoanPacket) -> list[str]:
     return required
 
 
+def requirement_triggers(packet: LoanPacket, required: list[str]) -> list[Evidence]:
+    """The application values that make conditional documents required (requested amount, purpose)."""
+    application = packet.application
+    if application is None:
+        return []
+    items = []
+    if "cpa_reviewed_financials" in required or "collateral_documents" in required:
+        items.append(cite(application.requested_amount, "application.requested_amount", None, application.doc_id))
+    if "payoff_letters" in required:
+        items.append(cite(application.purpose, "application.purpose", None, application.doc_id))
+    return found_only(items)
+
+
 def check_required_documents(packet: LoanPacket) -> CheckResult:
     """NBC-3.1 required documents."""
     refs = CREDIT_REFS["required_documents"]
     provided = documents_provided(packet)
     required = required_documents_list(packet)
     missing = [code for code in required if code not in provided]
+    stale = stale_financials(packet)
     values = {
         "required": required,
         "provided": sorted(provided),
         "missing": missing,
         "no_packet_document_type": [code for code in NO_PACKET_DOCUMENT_TYPE if code in required],
+        "stale_documents": [item.field for item in stale],
     }
     evidence = [item for items in provided.values() for item in items]
+    evidence += requirement_triggers(packet, required) + stale
+    application = packet.application
+    if stale and application is not None:
+        applied = cite(application.application_date, "application.application_date", None, application.doc_id)
+        evidence += found_only([applied])
     if missing:
         message = f"Required documents are missing: {', '.join(missing)}."
+        if stale:
+            message += " The P&L or balance sheet is dated more than 90 days before the application date."
         return make_result("required_documents", refs, "fail", message, values, evidence)
     message = f"All {len(required)} required documents are in the packet."
     return make_result("required_documents", refs, "pass", message, values, evidence)
@@ -196,6 +249,7 @@ def check_owners(packet: LoanPacket) -> CheckResult:
         None if formation is None else formation.doc_id,
         "formation.members",
         FORMATION_LISTS_EVERY_OWNER_PCT,
+        total_must_be_100=True,
     )
 
 

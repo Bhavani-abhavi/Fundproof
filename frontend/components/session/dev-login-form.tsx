@@ -15,8 +15,9 @@ import { hasLenderRole, isRole, ROLE_LABELS, ROLES } from "@/lib/roles";
 /**
  * DEV LOGIN: pick a demo user and role without Hugging Face. Rendered only when /api/config says dev_auth is on
  * (UWC_DEV_AUTH=1 on a local server). The server refuses dev login inside a Hugging Face Space.
+ * After signing in it goes to `nextPath` (the page that sent the user to sign in) or the role's home area.
  */
-export function DevLoginForm() {
+export function DevLoginForm({ nextPath = null }: { nextPath?: string | null }) {
   const { devLogin } = useSession();
   const router = useRouter();
   const [username, setUsername] = useState("demo-founder");
@@ -30,7 +31,7 @@ export function DevLoginForm() {
     setError(null);
     try {
       await devLogin(username.trim(), role);
-      router.push(hasLenderRole([role]) ? "/lender" : "/studio");
+      router.push(nextPath ?? (hasLenderRole([role]) ? "/lender" : "/studio"));
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Dev login failed.");
     } finally {

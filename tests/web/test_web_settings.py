@@ -1,5 +1,7 @@
 """Tests for web settings: defaults, the dev-login refusal inside a Space, secrets and the role allowlist."""
 
+import logging
+
 import pytest
 
 from uwcopilot import studio
@@ -87,7 +89,23 @@ def test_role_allowlist_parsing() -> None:
     assert parse_role_allowlist(None) == {}
 
 
-@pytest.mark.parametrize("raw", ["alice", "alice:founder", "alice:superuser", "bad name:admin"])
+def test_role_allowlist_entries_pinned_to_an_account_id() -> None:
+    allowlist = parse_role_allowlist("Alice@6123abc:lender_senior, alice@6123abc:admin, bob:admin")
+    assert allowlist == {"alice@6123abc": ("lender_senior", "admin"), "bob": ("admin",)}
+
+
+def test_unpinned_allowlist_entries_are_warned_about_in_a_space(caplog: pytest.LogCaptureFixture) -> None:
+    environ = dict(SPACE_ENV)
+    with caplog.at_level(logging.WARNING, logger="uwcopilot.web.settings"):
+        load_web_settings(env_file=None, environ={**environ, "UWC_ROLE_ALLOWLIST": "astra6@6123abc:admin"})
+        assert "without an account id" not in caplog.text
+        load_web_settings(env_file=None, environ={**environ, "UWC_ROLE_ALLOWLIST": "astra6:admin"})
+        assert "without an account id" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "raw", ["alice", "alice:founder", "alice:superuser", "bad name:admin", "alice@:admin", "alice@bad id:admin"]
+)
 def test_role_allowlist_rejects_bad_entries(raw: str) -> None:
     with pytest.raises(WebSettingsError):
         parse_role_allowlist(raw)

@@ -15,7 +15,7 @@
     "formation_date": "2026-06-28",
     "planned_opening_date": "2027-02-28",
     "metro_id": "synthetic_metro",
-    "site_description": "Leased corner unit in the synthetic metro (SYNTHETIC example)."
+    "site_description": "Purchased two-story motel building with parking in the synthetic metro (SYNTHETIC example)."
   },
   "owners": [
     {
@@ -53,21 +53,21 @@
     "term_months": 120,
     "annual_rate_pct": 8.75,
     "rate_type": "variable",
-    "purpose": "build_out_and_equipment"
+    "purpose": "real_estate_purchase"
   },
   "sources_and_uses": {
     "uses": {
-      "build_out": 269832.0,
-      "equipment": 122651.0,
-      "real_estate": 0.0,
-      "initial_inventory": 39249.0,
-      "soft_costs": 58872.0,
+      "build_out": 26365.0,
+      "equipment": 11984.0,
+      "real_estate": 576000.0,
+      "initial_inventory": 3836.0,
+      "soft_costs": 5752.0,
       "working_capital_reserve": 176063.0,
       "other": 0.0
     },
     "sources": {
       "loan": 480000.0,
-      "owner_cash_equity": 186667.0,
+      "owner_cash_equity": 320000.0,
       "other": 0.0
     },
     "equity_verified_by_statements": true
@@ -174,6 +174,6 @@
     "contains_injection": false,
     "injection_kind": null,
     "watchlist_derived_owners": [],
-    "rationale": "Variable-rate request above $250,000 whose collateral covers 0.90 of the loan (NSP-7.1)."
+    "rationale": "The purchased motel building covers 0.90 of a variable-rate request above $250,000 (NSP-7.1); both stress tests pass."
   }
 }

@@ -110,6 +110,17 @@ def test_reference_covers_every_tract_and_needs_enough_values(small) -> None:
     assert reference is reference_for(ctx, profile, scaled_rings(profile, ctx.metro))  # cached
 
 
+def test_a_value_without_enough_reference_values_is_shown_but_not_scored() -> None:
+    tiny, _ = synthetic_context(load_metro("synthetic_metro"), SEED, PROFILES, n_tracts=12)
+    result = score_site("laundromat", "synthetic_metro", *site_of(tiny, 0), context=tiny)
+    renters = next(item for item in result.factors if item.factor == "renter_households")
+    assert renters.raw_value is not None and renters.normalized_score is None and not renters.used_in_overall
+    assert f"needs at least {MIN_REFERENCE_VALUES}" in renters.normalization
+    assert "Not scored: only 12 metro locations" in renters.reason and "does not vary" not in renters.reason
+    assert any(note.startswith("renter_households is SYNTHETIC but not scored: only 12") for note in result.notes)
+    assert result.overall_score is None
+
+
 def test_coverage_counts_only_data_backed_factors(small) -> None:
     ctx, _ = small
     result = score_site("retail_storefront", "synthetic_metro", *site_of(ctx, 6), context=ctx)

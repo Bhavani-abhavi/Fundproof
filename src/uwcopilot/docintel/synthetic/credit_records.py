@@ -12,7 +12,12 @@ import statistics
 from uwcopilot.agent.applications import MonthlyDeposits
 from uwcopilot.agent.credit_calculations import month_eligibility
 from uwcopilot.docintel.synthetic.common import money
-from uwcopilot.docintel.synthetic.credit_application import month_text, monthly_deposits, schedule_totals
+from uwcopilot.docintel.synthetic.credit_application import (
+    application_as_documented,
+    month_text,
+    monthly_deposits,
+    schedule_totals,
+)
 from uwcopilot.docintel.synthetic.credit_case import CreditCase
 from uwcopilot.docintel.synthetic.problems import ProblemPlan, ProblemRecord, nearest_option
 
@@ -30,7 +35,17 @@ MISSING_CODES = {
     "debt_schedule": ["debt_schedule"],
     "photo_id": ["principal_photo_ids"],
     "tax_return_summary": ["business_tax_returns_2_years"],
+    "cpa_reviewed_financials": ["cpa_reviewed_financials"],
 }
+# Application fields computed from the statements that change when a removed statement month comes back.
+STATEMENT_DERIVED_FIELDS: tuple[str, ...] = (
+    "bank_statements.nsf_events_last_6_months",
+    "bank_statements.negative_balance_months_last_12",
+    "bank_statements.average_daily_balance_last_3_months",
+    "debt.existing_monthly_payment_observed",
+    "debt.mca_monthly_remittance",
+    "new_loans_last_90_days",
+)
 IDENTITY_FIELDS = {
     ("name", "formation_document"): "formation.entity_name",
     ("name", "tax_return_summary"): "tax_return.business_name",
@@ -97,8 +112,40 @@ def revenue_gap(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: dict[st
     )
 
 
+def dotted(data: dict, path: str) -> object:
+    """The value at a plain dotted path ("debt.mca_monthly_remittance") of an application dict."""
+    value: object = data
+    for part in path.split("."):
+        value = value[part]  # type: ignore[index]
+    return value
+
+
+def complete_statement_values(case: CreditCase, app: dict) -> dict:
+    """STATEMENT_DERIVED_FIELDS as a reader of all 12 statements would compute them (only the ones that change).
+
+    With a statement month removed, the NSF count, negative months, average daily balance, observed loan and MCA
+    payments and new loans are computed from the 11 statements present. The latent world has all 12.
+    """
+    removed = case.removed_month_index
+    case.removed_month_index = None
+    try:
+        complete = application_as_documented(case)
+    finally:
+        case.removed_month_index = removed
+    changes = {}
+    for path in STATEMENT_DERIVED_FIELDS:
+        if dotted(complete, path) != dotted(app, path):
+            changes[path] = dotted(complete, path)
+    return changes
+
+
 def missing_pages(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: dict[str, str]) -> ProblemRecord:
-    """One statement month removed from the packet (NBC-3.2 cannot verify revenue until it arrives)."""
+    """One statement month removed from the packet (NBC-3.2 cannot verify revenue until it arrives).
+
+    Every option (and the latent world) also adds the bank_statements_12_months checklist code: once the month
+    arrives the packet holds 12 consecutive statements. The latent world also carries the account-conduct and
+    observed-payment figures recomputed over all 12 statements (complete_statement_values).
+    """
     index = plan.details["month_index"]
     true_month = monthly_deposits(case.statements[index])
     month = true_month["month"]
@@ -124,12 +171,28 @@ def missing_pages(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: dict[
         resolving_request_params={"month": month},
         params=params,
         latent_option_id=nearest_option(eligible(true_month), candidates),
-        latent_substitutions={"+bank_statements.months": true_month},
+        latent_substitutions={
+            "+bank_statements.months": true_month,
+            "documents_provided+": "bank_statements_12_months",
+            **complete_statement_values(case, app),
+        },
+        extra_option_substitutions={"documents_provided+": "bank_statements_12_months"},
     )
 
 
+def missing_description(doc_type: str, codes: list[str]) -> str:
+    """The problem description of a missing document."""
+    if doc_type == "cpa_reviewed_financials":
+        return (
+            "The packet has no CPA-reviewed financial statements, which NBC-3.1 requires above $500,000 "
+            "(cpa_reviewed_financials missing; no packet document type carries them)."
+        )
+    return f"The packet has no {doc_type.replace('_', ' ')} ({', '.join(codes)} missing)."
+
+
 def missing_document(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: dict[str, str]) -> ProblemRecord:
-    """A required document left out of the packet (NBC-3.1)."""
+    """A required document left out of the packet (NBC-3.1), including the CPA-reviewed financials of a request
+    above $500,000 (credit_generate.add_cpa_financials_problem)."""
     codes = MISSING_CODES[plan.details["doc_type"]]
     latent: dict = {"documents_provided+": codes if len(codes) > 1 else codes[0]}
     if plan.details["doc_type"] == "debt_schedule":
@@ -143,7 +206,7 @@ def missing_document(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: di
         doc_ids=[],
         fields=["documents_provided"],
         values_by_doc={},
-        description=f"The packet has no {plan.details['doc_type'].replace('_', ' ')} ({', '.join(codes)} missing).",
+        description=missing_description(plan.details["doc_type"], codes),
         resolving_request="missing_document",
         resolving_request_params={"document": codes[0]},
         params={"document": codes[0]},

@@ -277,9 +277,12 @@ def client_ip(scope: Scope, trusted_proxy_hops: int) -> str:
     With trusted_proxy_hops = N > 0 the app sits behind N proxies that each APPEND to X-Forwarded-For, so the
     N-th entry from the right is the address the first trusted proxy saw. Entries further left are written by the
     client and cannot be trusted. With N = 0 (local development) the socket peer address is used.
+
+    A request may carry several X-Forwarded-For header lines (a proxy may add its own line instead of extending the
+    client's). They are read in order and joined, so a client-written first line cannot hide the proxy's entry.
     """
     if trusted_proxy_hops > 0:
-        forwarded = Request(scope).headers.get("x-forwarded-for", "")
+        forwarded = ", ".join(Request(scope).headers.getlist("x-forwarded-for"))
         entries = [entry.strip() for entry in forwarded.split(",") if entry.strip()]
         if len(entries) >= trusted_proxy_hops:
             return entries[-trusted_proxy_hops]

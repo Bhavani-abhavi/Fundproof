@@ -7,11 +7,14 @@ percentages are rounded (two and one decimal places) before they are compared.
 
 import random
 from dataclasses import replace
+from decimal import Decimal
 from typing import Any
 
 import pytest
 
+from uwcopilot.agent import policy_startup
 from uwcopilot.agent.applications import parse_application, screened_parties
+from uwcopilot.agent.credit_calculations import coverage_ratio, round_pct
 from uwcopilot.agent.evidence import guideline_sections
 from uwcopilot.agent.injection import screen_application
 from uwcopilot.agent.policy import (
@@ -25,7 +28,13 @@ from uwcopilot.agent.policy import (
     ScreeningOutcome,
     evaluate_policy,
 )
-from uwcopilot.agent.policy_startup import projected_annual_debt_service
+from uwcopilot.agent.policy_startup import (
+    half_up,
+    program_pct,
+    program_ratio,
+    projected_annual_debt_service,
+    startup_loan_annual_debt_service,
+)
 from uwcopilot.agent.synthetic_startup import build_startup_application, scenario_spec
 from uwcopilot.agent.vocab import COMPLIANCE, CREDIT_COMMITTEE, FRAUD_OPERATIONS, KYC_OPERATIONS, SENIOR_UNDERWRITER
 
@@ -232,19 +241,23 @@ def test_entity_nsp_2_4() -> None:
 
 
 @pytest.mark.parametrize(
-    ("industry", "rule", "outcome", "sections"),
+    ("business_type", "industry", "rule", "outcome", "sections"),
     [
-        ("car_wash", None, None, None),
-        ("motel", None, None, None),
-        ("short_term_rental", "restricted_industry", "refer", ["NSP-2.3", "NSP-9.2"]),
-        ("restaurant_cafe", "restricted_industry", "refer", ["NSP-2.3", "NBC-2.3", "NSP-9.2"]),
-        ("restaurant", "restricted_industry", "refer", ["NSP-2.3", "NBC-2.3", "NSP-9.2"]),
-        ("long_haul_trucking", "restricted_industry", "refer", ["NSP-2.3", "NBC-2.3", "NSP-9.2"]),
-        ("cannabis_retail", "prohibited_industry", "decline_for_review", ["NSP-2.3", "NBC-2.2", "NBC-7.1"]),
+        ("car_wash", "car_wash", None, None, None),
+        ("motel", "motel", None, None, None),
+        ("car_wash", "bakery", None, None, None),
+        ("short_term_rental", "short_term_rental", "restricted_industry", "refer", ["NSP-2.3", "NSP-9.2"]),
+        ("restaurant_cafe", "restaurant_cafe", "restricted_industry", "refer", ["NSP-2.3", "NBC-2.3", "NSP-9.2"]),
+        ("car_wash", "restaurant", "restricted_industry", "refer", ["NSP-2.3", "NBC-2.3", "NSP-9.2"]),
+        ("car_wash", "long_haul_trucking", "restricted_industry", "refer", ["NSP-2.3", "NBC-2.3", "NSP-9.2"]),
+        ("car_wash", "cannabis_retail", "prohibited_industry", "decline_for_review", ["NSP-2.3", "NBC-2.2", "NBC-7.1"]),
     ],
 )
-def test_industry_nsp_2_3(industry: str, rule: str | None, outcome: str | None, sections: list[str] | None) -> None:
+def test_industry_nsp_2_3(
+    business_type: str, industry: str, rule: str | None, outcome: str | None, sections: list[str] | None
+) -> None:
     data = clean()
+    data["applicant"]["business_type"] = business_type
     data["applicant"]["industry"] = industry
     result = evaluate(data)
     if rule is None:
@@ -254,6 +267,30 @@ def test_industry_nsp_2_3(industry: str, rule: str | None, outcome: str | None, 
     assert finding.outcome == outcome and finding.section_ids == sections
     assert finding.trigger_ids == (["R-NSP-02"] if rule == "restricted_industry" else [])
     assert result.recommendation == outcome
+
+
+@pytest.mark.parametrize(
+    ("business_type", "industry", "reported", "rule"),
+    [
+        ("restaurant_cafe", "bakery", "restaurant_cafe", "restricted_industry"),
+        ("short_term_rental", "bakery", "short_term_rental", "restricted_industry"),
+        ("restaurant_cafe", "long_haul_trucking", "long_haul_trucking", "restricted_industry"),
+        ("motel", "cannabis_retail", "cannabis_retail", "prohibited_industry"),
+        ("restaurant_cafe", "cannabis_retail", "cannabis_retail", "prohibited_industry"),
+    ],
+)
+def test_the_stricter_of_business_type_and_industry_code_applies_nsp_2_3(
+    business_type: str, industry: str, reported: str, rule: str
+) -> None:
+    # A more specific Northwind code is accepted, but it can never make a restricted business type eligible.
+    data = clean()
+    data["applicant"]["business_type"] = business_type
+    data["applicant"]["industry"] = industry
+    finding = only(evaluate(data), rule)
+    assert f"Industry code {reported} " in finding.detail
+    assert set(finding.evidence_ids) <= {"APP-industry", "APP-business_type"}
+    if reported != industry:
+        assert finding.evidence_ids == ["APP-industry", "APP-business_type"]
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -287,6 +324,17 @@ def test_qualifying_experience_needs_a_resume_and_references() -> None:
     assert finding.outcome == "request_more_information" and "O1" in finding.detail
     # Evidence for a principal who does not qualify does not count.
     assert data["owners"][1]["experience_evidence_provided"] is True
+
+
+def test_experience_evidence_needs_the_resumes_in_the_file_nsp_2_1() -> None:
+    # The owner flag alone is not evidence: resumes and references must be listed in documents_provided (NSP-1.3).
+    data = clean()
+    data["documents_provided"].remove("owner_resumes_and_references")
+    result = evaluate(data)
+    finding = only(result, "experience_evidence_missing")
+    assert finding.outcome == "request_more_information"
+    assert "the documents provided list no owner resumes and references" in finding.detail
+    assert passed(result, "owner_experience") is None
 
 
 def test_only_principals_count_for_experience() -> None:
@@ -348,18 +396,22 @@ def test_missing_score_bankruptcy_and_tax_lien_nsp_2_2() -> None:
 def test_missing_documents_nsp_1_3() -> None:
     data = clean()
     data["documents_provided"].remove("business_plan")
-    data["documents_provided"].remove("collateral_documents")
+    data["documents_provided"].remove("principal_photo_ids")
     finding = only(evaluate(data), "missing_documents")
     assert finding.outcome == "request_more_information"
-    assert "business_plan" in finding.detail and "collateral_documents" in finding.detail
+    assert "business_plan" in finding.detail and "principal_photo_ids" in finding.detail
 
 
 def test_collateral_documents_are_only_required_when_collateral_applies() -> None:
-    data = clean()
-    set_loan(data, 250_000)
-    data["collateral"] = []
-    data["documents_provided"].remove("collateral_documents")
+    data = clean()  # $250,000, unsecured
+    assert data["collateral"] == [] and "collateral_documents" not in data["documents_provided"]
     assert not findings(evaluate(data), "missing_documents")
+    pledged = clean()
+    pledged["collateral"] = [{"collateral_type": "new_equipment", "value": 320_000.0}]
+    assert "collateral_documents" in only(evaluate(pledged), "missing_documents").detail
+    above = clean()
+    set_loan(above, 250_000.01)
+    assert "collateral_documents" in only(evaluate(above), "missing_documents").detail
 
 
 @pytest.mark.parametrize(("difference", "balanced"), [(1.00, True), (1.01, False)])
@@ -386,8 +438,10 @@ def test_loan_source_must_equal_the_requested_amount_nsp_3_2() -> None:
     [
         (80_000, 20.0, None, None),
         (79_840, 20.0, None, None),  # 19.96% rounds to 20.0% before the comparison
+        (79_800, 20.0, None, None),  # exactly 19.95%: an exact half rounds up (program conventions)
         (79_600, 19.9, "equity_injection_near_miss", "refer"),
         (60_000, 15.0, "equity_injection_near_miss", "refer"),
+        (59_800, 15.0, "equity_injection_near_miss", "refer"),  # exactly 14.95% rounds up to 15.0%
         (59_600, 14.9, "equity_injection_below_minimum", "decline_for_review"),
     ],
 )
@@ -407,6 +461,40 @@ def test_unverified_equity_is_a_request_for_bank_statements_nsp_3_1() -> None:
     result = evaluate(clean(equity_verified=False))
     assert only(result, "equity_not_verified").outcome == "request_more_information"
     assert result.recommendation == "request_more_information"
+
+
+def test_equity_marked_verified_needs_the_bank_statements_in_the_file_nsp_3_1() -> None:
+    data = clean()
+    data["documents_provided"].remove("equity_bank_statements")
+    assert data["sources_and_uses"]["equity_verified_by_statements"] is True
+    result = evaluate(data)
+    finding = only(result, "equity_not_verified")
+    assert "marked as verified, but the documents provided list no equity bank statements" in finding.detail
+    assert passed(result, "equity_verified") is None and result.recommendation == "request_more_information"
+
+
+@pytest.mark.parametrize(
+    ("numerator", "denominator", "program", "python_round"),
+    [
+        (1_095, 1_000, 1.10, 1.09),  # 1.095 exactly: half up gives 1.10; round() on the float gives 1.09
+        (1_245, 1_000, 1.25, 1.25),
+        (1_125, 1_000, 1.13, 1.12),
+        (1_094.99, 1_000, 1.09, 1.09),
+    ],
+)
+def test_program_ratios_round_exact_halves_up(
+    numerator: float, denominator: float, program: float, python_round: float
+) -> None:
+    # Program conventions: exact decimals, rounded half up. The Northwind helper keeps Python's round() (unchanged).
+    assert program_ratio(numerator, denominator) == program
+    assert coverage_ratio(numerator, denominator) == python_round
+    assert program_ratio(1, 0) is None
+
+
+def test_program_percentages_round_exact_halves_up() -> None:
+    assert program_pct(59_800, 400_000) == 15.0 and round_pct(59_800 / 400_000 * 100) == 14.9
+    assert program_pct(79_800, 400_000) == 20.0
+    assert half_up(Decimal("14.949999"), 1) == 14.9
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -440,6 +528,18 @@ def test_projected_dscr_nsp_4_1(dscr: float, expected: float, rule: str | None, 
     assert finding.refer_to == expected_targets
 
 
+def test_a_projected_dscr_tie_rounds_half_up_before_the_comparison(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 219,000 / 200,000 is exactly 1.095: half up gives 1.10 (the exception band, refer); Python's round() on the
+    # float would give 1.09 (below the decline floor).
+    monkeypatch.setattr(policy_startup, "projected_annual_debt_service", lambda app, rate_add_pct=0.0: 200_000.0)
+    data = clean()
+    set_year2_noi(data, 219_000.0)
+    result = evaluate(data)
+    assert calc(result, "startup_projected_dscr").value == 1.10
+    assert only(result, "projected_dscr_below_minimum").outcome == "refer"
+    assert not findings(result, "projected_dscr_below_decline_floor")
+
+
 @pytest.mark.parametrize(("stressed", "fails"), [(1.00, False), (0.99, True)])
 def test_revenue_stress_nsp_4_2(stressed: float, fails: bool) -> None:
     data = clean()
@@ -471,11 +571,87 @@ def test_rate_stress_applies_to_variable_rates_nsp_4_2(stressed: float, fails: b
         assert passed(result, "stress_test_rate") and not findings(result, "stress_test_rate")
 
 
+def test_the_revenue_stress_is_the_binding_test_below_the_dscr_minimum_nsp_4_2() -> None:
+    # NSP-4.2 explains why: the lost revenue comes out of NOI dollar for dollar and NOI is never above revenue, so a
+    # plan that passes the revenue stress has a projected DSCR of at least 1.24 after rounding. A seeded sweep of
+    # year-2 revenue and NOI margins over the clean example checks that statement against the code.
+    rng = random.Random(20261013)
+    base = clean()
+    service = service_of(base)
+    below_band = band = 0
+    for _ in range(400):
+        data = clean()
+        revenue = round(rng.uniform(0.5, 12.0) * service, 2)
+        noi = round(revenue * rng.uniform(0.02, 1.0), 2)
+        year = data["projections"]["years"][1]
+        year.update(revenue_p10=revenue, revenue_p50=revenue, revenue_p90=revenue, noi_p10=noi, noi_p90=noi)
+        set_year2_noi(data, noi)
+        result = evaluate(data)
+        dscr = calc(result, "startup_projected_dscr").value
+        rules = {finding.rule for finding in result.findings}
+        if dscr is not None and dscr < 1.24:
+            below_band += 1
+            assert "stress_test_revenue" in rules, (revenue, noi, dscr)
+        if dscr is not None and 1.10 <= dscr < 1.24:
+            band += 1
+            assert rules != {"projected_dscr_below_minimum"}
+    assert below_band > 50 and band > 0
+
+
 def test_fixed_rate_loans_get_no_rate_stress() -> None:
     result = evaluate(clean())
     check = passed(result, "stress_test_rate")
     assert check is not None and "fixed" in check.detail
     assert all(item.calc_id != "CALC-startup_stressed_dscr_rate" for item in result.calculations)
+
+
+def test_other_debt_payments_are_part_of_the_projected_debt_service_nsp_1_2() -> None:
+    # A seller note or other loan is not equity, and its payments count in the projected DSCR (NSP-1.2, NSP-3.2).
+    plain = evaluate(clean())
+    data = clean()
+    sources = data["sources_and_uses"]["sources"]
+    sources["owner_cash_equity"] -= 30_000
+    sources["other_debt"] = [{"kind": "seller_note", "amount": 30_000, "monthly_payment": 650}]
+    result = evaluate(data)
+    loan_service = startup_loan_annual_debt_service(parse_application(data))
+    service = calc(result, "startup_annual_debt_service")
+    assert service.inputs["other_debt_annual_debt_service"] == 7_800.0
+    assert service.value == round(loan_service + 7_800.0, 2)
+    year2_noi = data["projections"]["years"][1]["noi_p50"]
+    assert calc(result, "startup_projected_dscr").value == program_ratio(year2_noi, service.value)
+    assert calc(result, "startup_projected_dscr").value < calc(plain, "startup_projected_dscr").value
+    assert calc(result, "startup_equity_injection_pct").value < calc(plain, "startup_equity_injection_pct").value
+    assert calc(result, "startup_total_sources").inputs["other_debt"] == 30_000
+
+
+def test_the_rate_stress_raises_only_the_startup_loan_rate_nsp_4_2() -> None:
+    data = clean(rate_type="variable")
+    data["sources_and_uses"]["sources"]["owner_cash_equity"] -= 20_000
+    data["sources_and_uses"]["sources"]["other_debt"] = [
+        {"kind": "other_loan", "amount": 20_000, "monthly_payment": 400}
+    ]
+    application = parse_application(data)
+    stressed_loan = startup_loan_annual_debt_service(application, rate_add_pct=2.0)
+    assert projected_annual_debt_service(application, rate_add_pct=2.0) == round(stressed_loan + 4_800.0, 2)
+    rate = calc(evaluate(data), "startup_stressed_dscr_rate")
+    assert rate.inputs["annual_debt_service_stressed"] == round(stressed_loan + 4_800.0, 2)
+
+
+def test_coverage_that_the_policy_cannot_evaluate_is_listed_not_hidden() -> None:
+    # CLAUDE.md G: NBC rules NSP-1.1 keeps or replaces only in part are named as not evaluated, with a reason.
+    skipped = {item.rule: item for item in evaluate(clean()).not_evaluated}
+    assert {
+        "existing_business_debt_and_stacking",
+        "applicant_bankruptcy_and_tax_liens",
+        "ownership_matches_formation_documents",
+        "identity_verification",
+        "adverse_media_and_pep",
+        "document_integrity",
+        "risk_model_pd",
+    } <= set(skipped)
+    assert "NBC-4.4" in skipped["existing_business_debt_and_stacking"].section_ids
+    assert "NBC-6.1" in skipped["ownership_matches_formation_documents"].section_ids
+    assert all(item.reason for item in skipped.values())
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -556,6 +732,48 @@ def test_unranked_drivers_are_a_request_for_information_nsp_6_1() -> None:
     assert only(evaluate(data), "top_drivers_not_identified").outcome == "request_more_information"
 
 
+def test_ranks_one_to_three_must_all_be_present_nsp_6_1() -> None:
+    # Leaving an unbacked driver unranked must not avoid the NSP-6.1 request.
+    data = clean()
+    for item in data["material_assumptions"]:
+        if item["tornado_rank"] in (2, 3, 4):
+            item["tornado_rank"] = None
+        if item["name"] in ("average_ticket", "monthly_rent"):
+            item["supporting_document_provided"] = False
+    result = evaluate(data)
+    finding = only(result, "top_drivers_not_identified")
+    assert "tornado rank 2, 3" in finding.detail and passed(result, "material_assumptions_supported") is None
+
+
+def test_shifted_ranks_cannot_hide_the_real_top_driver_nsp_6_1() -> None:
+    data = clean()
+    for item in data["material_assumptions"]:
+        item["tornado_rank"] += 3
+    data["material_assumptions"][0]["supporting_document_provided"] = False
+    result = evaluate(data)
+    assert "tornado rank 1, 2, 3" in only(result, "top_drivers_not_identified").detail
+    assert passed(result, "material_assumptions_supported") is None
+
+
+def test_a_plan_with_fewer_than_three_assumptions_ranks_each_of_them_nsp_6_1() -> None:
+    data = clean()
+    data["material_assumptions"] = data["material_assumptions"][:2]
+    assert passed(evaluate(data), "material_assumptions_supported")
+    data["material_assumptions"][1]["tornado_rank"] = 3
+    assert "tornado rank 2" in only(evaluate(data), "top_drivers_not_identified").detail
+
+
+def test_a_backed_driver_needs_a_supporting_document_in_the_file_nsp_6_1() -> None:
+    data = clean()
+    supporting = ("lease_or_letter_of_intent", "contractor_or_equipment_quotes", "comparable_data_with_source")
+    data["documents_provided"] = [name for name in data["documents_provided"] if name not in supporting]
+    result = evaluate(data)
+    unsupported = findings(result, "material_assumption_unsupported")
+    assert len(unsupported) == 3 and all("is marked as backed" in item.detail for item in unsupported)
+    data["documents_provided"].append("comparable_data_with_source")
+    assert passed(evaluate(data), "material_assumptions_supported")
+
+
 # --------------------------------------------------------------------------------------------------------------
 # NSP-7.1 collateral, NSP-7.2 guarantees, NSP-7.3 ownership, sanctions and injection
 # --------------------------------------------------------------------------------------------------------------
@@ -583,6 +801,7 @@ def test_requests_up_to_250000_may_be_unsecured_nsp_7_1() -> None:
 )
 def test_collateral_coverage_nsp_7_1(value: float, coverage: float, refer_to: list[str] | None) -> None:
     data = clean()
+    set_loan(data, 300_000)
     data["collateral"] = [{"collateral_type": "owner_occupied_cre", "value": value}]
     result = evaluate(data)
     assert calc(result, "startup_collateral_coverage").value == coverage

@@ -136,7 +136,7 @@ test-ollama-live:  ## One live smoke call to the local Ollama server (needs `mak
 
 .PHONY: startup-applications
 
-startup-applications:  ## Make the 6 SYNTHETIC startup credit examples (one per business type); eval/startup_applications/
+startup-applications:  ## Make the SYNTHETIC startup credit examples (a case per program rule); eval/startup_applications/
 	uv run python scripts/make_startup_applications.py
 
 # Web app backend (src/uwcopilot/web). Serves /api and the static export in frontend/out, like the container does.
@@ -265,3 +265,8 @@ studio-siteiq:  ## Validate SiteIQ on 10 SYNTHETIC cities (+ real-metro sanity t
 
 studio-siteiq-test:  ## SiteIQ tests only (offline, fixtures)
 	uv run pytest tests/studio -q -k siteiq
+
+.PHONY: studio-siteiq-fixtures
+
+studio-siteiq-fixtures:  ## Re-record the OpenRouteService drive-time fixture (needs ORS_API_KEY; one request; never in CI)
+	uv run python tests/studio/fixtures/ors/record_isochrones.py

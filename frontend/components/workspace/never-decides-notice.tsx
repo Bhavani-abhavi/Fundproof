@@ -1,5 +1,6 @@
 import { Scale } from "lucide-react";
 
+import { PRODUCT_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 /** The Lender Desk's standing notice: the copilot prepares, a person decides (CLAUDE.md rule 8, addendum rule C). */
@@ -17,7 +18,7 @@ export function NeverDecidesNotice({ className }: { className?: string }) {
           The copilot never decides. A person does.
         </h2>
         <p className="text-sm leading-relaxed text-foreground/85">
-          Fundproof prepares the file: figures with their sources, checks, contradictions and a draft memo. Approving,
+          {PRODUCT_NAME} prepares the file: figures with their sources, checks, contradictions and a draft memo. Approving,
           referring, requesting more information or declining is always a person&apos;s choice. A decline needs a
           written reason from a senior lender.
         </p>

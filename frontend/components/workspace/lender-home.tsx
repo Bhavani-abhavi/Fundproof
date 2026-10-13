@@ -6,6 +6,7 @@ import { PageIntro } from "@/components/layout/page-intro";
 import { SyntheticBanner } from "@/components/layout/synthetic-banner";
 import { ApiOfflineNotice } from "@/components/session/api-offline-notice";
 import { RoleBadge } from "@/components/session/role-badge";
+import { SessionErrorNotice } from "@/components/session/session-error-notice";
 import { SignInPrompt } from "@/components/session/sign-in-prompt";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NeverDecidesNotice } from "@/components/workspace/never-decides-notice";
@@ -72,6 +73,8 @@ export function LenderHome() {
 
       {status === "offline" ? <ApiOfflineNotice /> : null}
 
+      {status === "error" ? <SessionErrorNotice /> : null}
+
       {status === "ready" && !me.signed_in ? (
         <SignInPrompt
           area="Lender Desk"
@@ -79,11 +82,11 @@ export function LenderHome() {
         />
       ) : null}
 
-      {status === "ready" && me.signed_in ? (
+      {(status === "ready" || status === "error") && me.signed_in ? (
         <Card>
           <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex flex-col gap-1.5">
-              <CardTitle>Review queue</CardTitle>
+              <CardTitle as="h2">Review queue</CardTitle>
               <CardDescription>Signed in as {me.display_name || me.username}. Your queue is empty.</CardDescription>
             </div>
             {role ? <RoleBadge role={role} className="self-start" /> : null}

@@ -45,7 +45,9 @@ in USD, rounded to cents):
   ytd_pnl_and_balance_sheet <- P&L and balance sheet; debt_schedule <- debt schedule; principal_photo_ids <- a
   photo ID for every person principal (20% or more, or the control person); formation_documents and
   beneficial_ownership_certification <- the formation document (its members table); collateral_documents <-
-  collateral valuation. cpa_reviewed_financials and payoff_letters are never in a packet (no document type).
+  collateral valuation. cpa_reviewed_financials and payoff_letters are never in a packet (no document type); a
+  request above $500,000 therefore always has a missing_document problem for cpa_reviewed_financials, and no
+  request has the refinance purpose that would need payoff letters.
 - notes: the application's Remarks text. ground_truth: None.
 """
 

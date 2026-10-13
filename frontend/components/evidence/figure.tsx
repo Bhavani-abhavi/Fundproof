@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * A number with its evidence: label, value (tabular numerals), status chip, an optional note and an optional
- * "Source" button. The button calls `onShowSource`, which later opens the evidence drawer for this figure.
+ * "Source" button. The button calls `onShowSource(button)`, which opens the evidence drawer for this figure; the
+ * drawer gives keyboard focus back to that button when it closes (WCAG 2.4.3), so callers keep the element.
  *
  * layout="tile": stacked, for grids of key figures.
  * layout="row":  one ledger line (label left, value right), for file views.
@@ -18,18 +19,18 @@ export interface FigureProps {
   value: ReactNode;
   status: EvidenceStatus;
   note?: string;
-  onShowSource?: () => void;
+  onShowSource?: (trigger: HTMLButtonElement) => void;
   layout?: "tile" | "row";
   className?: string;
 }
 
-function SourceButton({ label, onClick }: { label: string; onClick: () => void }) {
+function SourceButton({ label, onClick }: { label: string; onClick: (trigger: HTMLButtonElement) => void }) {
   return (
     <Button
       type="button"
       variant="ghost"
       size="sm"
-      onClick={onClick}
+      onClick={(event) => onClick(event.currentTarget)}
       className="h-7 gap-1 px-2 text-xs text-accent hover:text-accent-hover"
       aria-label={`Show the source for ${label}`}
     >

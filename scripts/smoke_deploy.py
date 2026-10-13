@@ -58,6 +58,7 @@ import httpx
 
 from uwcopilot.common.paths import RESULTS_DIR
 from uwcopilot.governance.provenance import RunProvenance, display_path
+from uwcopilot.web.settings import PRODUCT_NAME
 
 GENERATED_BY = "scripts/smoke_deploy.py"
 DEFAULT_OUTPUT = RESULTS_DIR / "deployment_metrics.json"
@@ -92,7 +93,7 @@ DOCKER_TIME_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\
 SPACE_HOST_SUFFIX = ".hf.space"
 
 RESULTS_DESCRIPTION = (
-    "Smoke checks and request latency of a running Fundproof deployment, written by scripts/smoke_deploy.py. "
+    f"Smoke checks and request latency of a running {PRODUCT_NAME} deployment, written by scripts/smoke_deploy.py. "
     "One entry per target; each entry says what was measured (target.label) and has its own provenance block. "
     "A target that is not listed here was not measured."
 )

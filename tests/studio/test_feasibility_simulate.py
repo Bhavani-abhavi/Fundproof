@@ -5,7 +5,7 @@ import pytest
 from feasibility_helpers import METRO, basic_loan, basic_plan, car_wash_site
 
 from uwcopilot.agent.applications import ProjectionYear, SimulationOutputs
-from uwcopilot.agent.credit_calculations import coverage_ratio
+from uwcopilot.agent.policy_startup import program_ratio
 from uwcopilot.studio import DISCLAIMER, SIMULATION_LABEL
 from uwcopilot.studio.feasibility import SIMULATOR_VERSION, default_dscr_target, run_simulation, simulate
 from uwcopilot.studio.feasibility.assumptions import custom_dscr_target
@@ -69,7 +69,7 @@ def test_same_seed_same_result_and_seed_matters() -> None:
 def test_projected_dscr_is_the_lender_formula(run) -> None:
     loan = run.result.loan
     service = round(annual_debt_service(loan.amount, loan.annual_rate_pct, loan.term_months), 2)
-    assert run.result.projected_dscr_base_case == coverage_ratio(run.result.yearly[1].noi_p50, service)
+    assert run.result.projected_dscr_base_case == program_ratio(run.result.yearly[1].noi_p50, service)
     assert loan.annual_debt_service == pytest.approx(12 * loan.monthly_payment, abs=0.06)
 
 
@@ -111,3 +111,31 @@ def test_add_months() -> None:
 
     assert add_months(date(2027, 11, 1), 0) == "2027-11"
     assert add_months(date(2027, 11, 1), 2) == "2028-01"
+
+
+def test_siteiq_score_feeds_the_simulator() -> None:
+    # Contract with S2: a real SiteIQ SiteScore on the SYNTHETIC metro is accepted as the site input, and its demand
+    # range, coverage score and competition percentile reach the simulation.
+    from uwcopilot.studio.data.fabric import get_fabric
+    from uwcopilot.studio.feasibility import as_site_demand
+    from uwcopilot.studio.siteiq import score_site
+
+    fabric = get_fabric(METRO)
+    tract = fabric.tract(fabric.tract_ids()[0])
+    score = score_site("laundromat", METRO, tract.lat, tract.lon)
+    site = as_site_demand(score)
+    assert (site.low, site.mode, site.high, site.unit) == (
+        score.demand.low,
+        score.demand.mode,
+        score.demand.high,
+        score.demand.unit,
+    )
+    assert site.coverage_score == score.coverage_score
+    competition = [factor for factor in score.factors if factor.factor == "competition"]
+    if competition and competition[0].percentile is not None:
+        assert site.competition_percentile == pytest.approx(competition[0].percentile / 100.0)
+    plan = basic_plan(capex=400_000.0, owner_equity=200_000.0)
+    result = simulate("laundromat", METRO, score, plan, basic_loan(amount=300_000.0), n=100, with_tornado=False)
+    mature = next(item for item in result.distributions if item.name == "mature_demand")
+    assert (mature.low, mature.mode, mature.high) == (site.low, site.mode, site.high)
+    assert result.site_demand == site

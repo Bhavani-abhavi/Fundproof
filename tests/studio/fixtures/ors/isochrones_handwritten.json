@@ -1,6 +1,6 @@
 {
   "fixture_origin": "hand-written from documentation, NOT recorded from the live API - re-record when ORS_API_KEY is available (values are SYNTHETIC)",
-  "note": "Shape of an openrouteservice v2 isochrones GeoJSON answer (field names from IsochronesRequest.java and GeoJSONIsochroneProperties.java in github.com/GIScience/openrouteservice, main branch, read 2026-10-12). The polygons are SYNTHETIC squares around the SYNTHETIC metro's origin in open ocean; no request with a key has been made from this repository.",
+  "note": "Shape of an openrouteservice v2 isochrones GeoJSON answer (field names from IsochronesRequest.java and GeoJSONIsochroneProperties.java in github.com/GIScience/openrouteservice, main branch, read 2026-10-12). The polygons are SYNTHETIC squares around the SYNTHETIC metro's origin in open ocean; a live answer with the key was recorded on 2026-10-13 in isochrones_houston_recorded.json. This hand-written answer stays because the scoring tests need polygons around the SYNTHETIC metro's origin.",
   "url": "https://api.openrouteservice.org/v2/isochrones/driving-car",
   "params": {
     "json": "(payload built by studio.siteiq.isochrones.isochrone_payload)"

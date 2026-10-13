@@ -61,14 +61,57 @@ def test_claims_history_compares_count_and_incurred_with_the_loss_runs() -> None
     assert checks_of(close)["claims_history_consistency"].status == "pass"
 
 
-def test_current_term_claims_are_counted() -> None:
-    data = insurance_submission_data()
+def add_current_term_claim(data: dict, update_summary: bool) -> None:
+    """Add an $8,000 current-term claim line to the second loss run (and to its summary when asked)."""
     pager = Pager()
     pager.new_page("D03")
     data["loss_runs"][1]["claims"].append(claim(pager, "C2-002", date(2026, 2, 1), "property", 8_000.0, 0.0, 8_000.0))
+    if update_summary:
+        for name, value in (("claim_count", 2), ("total_paid", 23_000.0), ("total_incurred", 23_000.0)):
+            set_value(data["loss_runs"][1]["summary"][name], value)
+
+
+def test_current_term_claims_are_counted() -> None:
+    data = insurance_submission_data()
+    add_current_term_claim(data, update_summary=True)
     result = checks_of(data)["claims_history_consistency"]
+    assert result.status == "fail"
     assert result.values["current_term_claim_count"] == 1
     assert result.values["loss_run_claim_count"] == 3
+    assert result.values["basis"] == "claim_lines" and result.values["readings_differ"] is False
+
+
+def test_a_summary_that_disagrees_with_its_lines_is_not_reported_twice() -> None:
+    # The new claim line is not in the summary: the application matches the summaries, and loss_run_totals
+    # reports the summary-vs-lines difference once.
+    data = insurance_submission_data()
+    add_current_term_claim(data, update_summary=False)
+    results = checks_of(data)
+    history = results["claims_history_consistency"]
+    assert history.status == "pass"
+    assert history.values["basis"] == "printed_summaries" and history.values["readings_differ"] is True
+    assert results["loss_run_totals"].status == "fail"
+    # A summary that counts a claim with no claim line: the application matches the claim lines.
+    phantom = insurance_submission_data()
+    for name, value in (("claim_count", 2), ("total_paid", 27_000.0), ("total_incurred", 27_000.0)):
+        set_value(phantom["loss_runs"][1]["summary"][name], value)
+    phantom_history = checks_of(phantom)["claims_history_consistency"]
+    assert phantom_history.status == "pass" and phantom_history.values["basis"] == "claim_lines"
+
+
+def test_claim_lines_the_extractor_missed_fall_back_to_the_summary() -> None:
+    data = insurance_submission_data()
+    data["loss_runs"][0]["claims"] = []
+    data["loss_runs"][1]["claims"] = []
+    result = checks_of(data)["claims_history_consistency"]
+    assert result.status == "pass" and result.values["basis"] == "printed_summaries"
+    assert {item.field for item in result.evidence} >= {
+        "loss_run.summary.claim_count",
+        "loss_run.summary.total_incurred",
+    }
+    set_value(data["application"]["stated_claim_count"], 5)
+    failing = checks_of(data)["claims_history_consistency"]
+    assert failing.status == "fail" and failing.values["basis"] == "printed_summaries"
 
 
 def test_tiv_bands_follow_hm_5_2() -> None:
@@ -183,3 +226,23 @@ def test_carrier_names_match_with_or_without_a_company_suffix() -> None:
     data = insurance_submission_data()
     set_value(data["loss_runs"][1]["carrier"], "Example Casualty Carrier Two Insurance Co")
     assert checks_of(data)["loss_run_coverage"].status == "pass"
+
+
+def test_schedule_signed_more_than_12_months_before_the_effective_date_does_not_count() -> None:
+    data = insurance_submission_data()
+    set_value(data["property_schedule"]["signed_date"], date(2025, 10, 31))  # effective date 2026-11-01
+    result = checks_of(data)["required_documents"]
+    assert result.values["missing"] == ["property_schedule"]
+    assert result.values["stale_documents"] == ["property_schedule.signed_date"]
+    on_the_day = insurance_submission_data()
+    set_value(on_the_day["property_schedule"]["signed_date"], date(2025, 11, 1))
+    assert checks_of(on_the_day)["required_documents"].status == "pass"
+
+
+def test_insurance_conditional_requirements_cite_their_trigger() -> None:
+    result = checks_of(insurance_submission_data())["required_documents"]
+    assert "revenue_and_payroll" in result.values["required"]
+    assert any(item.field == "application.coverage" for item in result.evidence)
+    property_only = insurance_submission_data()
+    set_value(property_only["application"]["coverage"], "Property")
+    assert "revenue_and_payroll" not in checks_of(property_only)["required_documents"].values["required"]

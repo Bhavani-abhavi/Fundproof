@@ -11,7 +11,7 @@ SPACE_HOST and the OAuth variables a Hugging Face Space injects) are read from t
 | OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OPENID_PROVIDER_URL | injected by a Space with `hf_oauth: true` | unset |
 | UWC_PUBLIC_URL | public base URL for the OAuth callback outside a Space (local OAuth testing) | unset |
 | UWC_DEV_AUTH | "1" turns on the dev login; REFUSED when SPACE_ID is set | off |
-| UWC_ROLE_ALLOWLIST | "hfuser:role,hfuser:role" with role lender_reviewer, lender_senior or admin | empty |
+| UWC_ROLE_ALLOWLIST | "hfuser@id:role,..." or "hfuser:role,..." (see parse_role_allowlist) | empty |
 | UWC_SESSION_SECRET | signs session cookies; at least 32 characters; REQUIRED in a Space | random per process |
 | UWC_SESSION_MAX_AGE_S | session lifetime in seconds | 28800 (8 hours) |
 | UWC_FERNET_KEY | Fernet key(s) for data at rest; REQUIRED with UWC_STORE=hf_dataset | dev fallback |
@@ -21,6 +21,7 @@ SPACE_HOST and the OAuth variables a Hugging Face Space injects) are read from t
 | HF_TOKEN | Hugging Face token with write access to that dataset | unset |
 | UWC_HF_FLUSH_EVERY_S | seconds between batched dataset commits | 300 |
 | UWC_RETENTION_DAYS | default retention for stored objects | 30 |
+| UWC_PURGE_EVERY_S | seconds between retention purges (expired objects are deleted; also once at startup) | 3600 |
 | UWC_RATE_LIMIT_IP_PER_MIN / UWC_RATE_LIMIT_IP_BURST | per-IP token bucket on /api | 120 / 60 |
 | UWC_RATE_LIMIT_USER_PER_MIN / UWC_RATE_LIMIT_USER_BURST | per-user token bucket on /api | 120 / 60 |
 | UWC_TRUSTED_PROXY_HOPS | proxies in front of the app that append to X-Forwarded-For | 1 in a Space, else 0 |
@@ -68,6 +69,8 @@ MIN_SESSION_SECRET_CHARS = 32
 DEV_FRONTEND_ORIGIN = "http://localhost:3000"
 # Hugging Face usernames: letters, digits, '-', '_' and '.'; we also use this shape for dev usernames.
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+# The account id ("sub" from Hugging Face sign-in) that an allowlist entry may be pinned to.
+SUBJECT_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 # Data minimization: only these scopes are requested, whatever the Space allows.
 OAUTH_SCOPES = "openid profile"
 
@@ -102,7 +105,7 @@ class WebSettings(BaseModel):
     space_host: str | None = None
     dev_auth: bool = False
     oauth: OAuthSettings | None = None
-    # {casefolded username: allowlisted roles}
+    # {allowlist_key(username, subject or None): allowlisted roles}
     role_allowlist: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     session_secret: SecretStr
     session_secret_generated: bool = False
@@ -114,6 +117,7 @@ class WebSettings(BaseModel):
     hf_token: SecretStr | None = None
     hf_flush_every_s: int = Field(default=300, gt=0)
     retention_days: int = Field(default=30, gt=0)
+    purge_every_s: int = Field(default=3600, gt=0)
     rate_limit_ip_per_minute: int = Field(default=120, gt=0)
     rate_limit_ip_burst: int = Field(default=60, gt=0)
     rate_limit_user_per_minute: int = Field(default=120, gt=0)
@@ -141,10 +145,20 @@ def package_version() -> str:
         return "unknown"
 
 
-def parse_role_allowlist(raw: str | None) -> dict[str, tuple[str, ...]]:
-    """Parse "alice:lender_reviewer, bob:admin" into {"alice": ("lender_reviewer",), "bob": ("admin",)}.
+def allowlist_key(username: str, subject: str | None = None) -> str:
+    """The role_allowlist key: "alice" for a username-only entry, "alice@<subject>" for a pinned entry."""
+    return username.casefold() if subject is None else f"{username.casefold()}@{subject}"
 
-    A user may be listed more than once to get several roles. Usernames are compared case-insensitively.
+
+def parse_role_allowlist(raw: str | None) -> dict[str, tuple[str, ...]]:
+    """Parse "alice@6123abc:lender_reviewer, bob:admin" into {"alice@6123abc": ("lender_reviewer",), "bob": ...}.
+
+    Two entry forms:
+    - "hfuser@id:role" (recommended in a Space): the role holds only for the account whose Hugging Face sign-in id
+      ("sub", shown as `subject` by GET /api/me after signing in) is `id`. A username can be renamed and then
+      registered by someone else; the id cannot, so a pinned entry does not pass to the new holder of the name.
+    - "hfuser:role": the role holds for whoever currently has that username (fine for local development).
+    A user may be listed more than once to get several roles. Usernames are compared case-insensitively; ids exactly.
     """
     allowlist: dict[str, list[str]] = {}
     if not raw:
@@ -152,16 +166,30 @@ def parse_role_allowlist(raw: str | None) -> dict[str, tuple[str, ...]]:
     for entry in raw.split(","):
         if not entry.strip():
             continue
-        username, separator, role = entry.strip().partition(":")
-        username, role = username.strip(), role.strip()
-        if not separator or not USERNAME_PATTERN.match(username):
-            raise WebSettingsError(f"UWC_ROLE_ALLOWLIST entry {entry.strip()!r} must look like 'hfuser:role'")
+        account, separator, role = entry.strip().partition(":")
+        username, pin, subject = account.strip().partition("@")
+        role = role.strip()
+        if not separator or not USERNAME_PATTERN.match(username) or (pin and not SUBJECT_PATTERN.match(subject)):
+            raise WebSettingsError(
+                f"UWC_ROLE_ALLOWLIST entry {entry.strip()!r} must look like 'hfuser@id:role' or 'hfuser:role'"
+            )
         if role not in ALLOWLIST_ROLES:
             raise WebSettingsError(f"UWC_ROLE_ALLOWLIST role {role!r} must be one of {list(ALLOWLIST_ROLES)}")
-        roles = allowlist.setdefault(username.casefold(), [])
+        roles = allowlist.setdefault(allowlist_key(username, subject if pin else None), [])
         if role not in roles:
             roles.append(role)
-    return {username: tuple(roles) for username, roles in allowlist.items()}
+    return {key: tuple(roles) for key, roles in allowlist.items()}
+
+
+def warn_about_unpinned_entries(allowlist: dict[str, tuple[str, ...]], is_space: bool) -> None:
+    """In a Space, warn when an allowlist entry is bound to a username only (see parse_role_allowlist)."""
+    unpinned = sorted(key for key in allowlist if "@" not in key)
+    if is_space and unpinned:
+        logger.warning(
+            "UWC_ROLE_ALLOWLIST has %d entr(y/ies) without an account id: a renamed username can be registered by "
+            "someone else, who would get the role. Pin them as 'hfuser@id:role' (id = `subject` in GET /api/me).",
+            len(unpinned),
+        )
 
 
 def read_int(read: SettingReader, name: str, default: int) -> int:
@@ -257,6 +285,8 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
     if backend == "hf_dataset" and not fernet_keys:
         raise WebSettingsError("UWC_STORE=hf_dataset needs UWC_FERNET_KEY: stored data is always encrypted.")
 
+    role_allowlist = parse_role_allowlist(read("UWC_ROLE_ALLOWLIST"))
+    warn_about_unpinned_entries(role_allowlist, is_space)
     static_dir = read("UWC_STATIC_DIR")
     store_dir = read("UWC_STORE_DIR")
     values = {
@@ -267,7 +297,7 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
         "space_host": space_host,
         "dev_auth": dev_auth,
         "oauth": read_oauth(process_env, read, space_host),
-        "role_allowlist": parse_role_allowlist(read("UWC_ROLE_ALLOWLIST")),
+        "role_allowlist": role_allowlist,
         "session_secret": session_secret,
         "session_secret_generated": generated,
         "session_max_age_s": read_int(read, "UWC_SESSION_MAX_AGE_S", DEFAULT_SESSION_MAX_AGE_S),
@@ -278,6 +308,7 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
         "hf_token": hf_token,
         "hf_flush_every_s": read_int(read, "UWC_HF_FLUSH_EVERY_S", 300),
         "retention_days": read_int(read, "UWC_RETENTION_DAYS", 30),
+        "purge_every_s": read_int(read, "UWC_PURGE_EVERY_S", 3600),
         "rate_limit_ip_per_minute": read_int(read, "UWC_RATE_LIMIT_IP_PER_MIN", 120),
         "rate_limit_ip_burst": read_int(read, "UWC_RATE_LIMIT_IP_BURST", 60),
         "rate_limit_user_per_minute": read_int(read, "UWC_RATE_LIMIT_USER_PER_MIN", 120),

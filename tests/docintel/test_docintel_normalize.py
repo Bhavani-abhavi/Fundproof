@@ -3,6 +3,7 @@
 import pytest
 
 from uwcopilot.docintel.normalize import (
+    HOMOGLYPHS,
     canonical_fein,
     canonical_name,
     digits_only,
@@ -73,3 +74,28 @@ def test_canonical_fein_and_digits() -> None:
 )
 def test_edit_distance(first: str, second: str, expected: int) -> None:
     assert edit_distance(first, second) == expected
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("Harbor Lane Bakery L.L.C", "Harbor Lane Bakery LLC"),  # periods are deleted, not turned into spaces
+        ("Harbor Lane Bakery Limited Liability Company", "HARBOR LANE BAKERY, LLC"),
+        ("Smith & Sons Co.", "Smith and Sons Company"),
+        ("Smith&Sons Incorporated", "smith and sons inc"),
+        ("Quayside Storage Corporation", "Quayside Storage Corp."),
+    ],
+)
+def test_canonical_name_folds_suffix_and_ampersand_spellings(first: str, second: str) -> None:
+    assert canonical_name(first) == canonical_name(second)
+
+
+def test_canonical_name_keeps_real_differences() -> None:
+    assert canonical_name("Smith & Sons Co") != canonical_name("Smith & Son Co")
+    assert canonical_name("Harbor Lane Bakery LLC") != canonical_name("Harbor Lane Bakery LLP")
+    assert canonical_name("Granite Peak Holdings LLC") != canonical_name("Harbor Lane Bakery LLC")
+
+
+def test_homoglyph_table_maps_only_non_ascii_lookalikes_to_ascii() -> None:
+    for lookalike, replacement in HOMOGLYPHS.items():
+        assert not lookalike.isascii() and replacement.isascii() and len(replacement) == 1

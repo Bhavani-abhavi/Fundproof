@@ -32,7 +32,7 @@ from uwcopilot.docintel.synthetic.insurance_build import (
     draw_runs,
     effective_date,
 )
-from uwcopilot.docintel.synthetic.insurance_case import InsuranceCase
+from uwcopilot.docintel.synthetic.insurance_case import InsuranceCase, LocationData
 from uwcopilot.docintel.synthetic.problems import ProblemPlan, find_plan
 from uwcopilot.docintel.synthetic.problems_insurance import (
     OUTDATED_SCHEDULE_NOTE,
@@ -72,6 +72,26 @@ def email_paragraphs(broker: str, brokerage: str, insured: str, effective: str, 
     paragraphs.append("Let me know if anything else is needed to quote.")
     paragraphs.append(f"Best regards, {broker}, {brokerage} (fictional)")
     return paragraphs
+
+
+def largest_schedule_scale(stated_tiv: float, schedule: float, plans: list[ProblemPlan]) -> float:
+    """The largest factor a tiv_mismatch resolution could scale the schedule values by (1.0 if none scales up).
+
+    The application_correct option scales the schedule to the application TIV and the midpoint option half way, so
+    the largest factor is application TIV / schedule TIV when the application is the higher figure.
+    """
+    if find_plan(plans, "tiv_mismatch") is None:
+        return 1.0
+    return max(1.0, stated_tiv / schedule)
+
+
+def inspected_locations(locations: list[LocationData], scale: float) -> list[LocationData]:
+    """Locations with an inspection report: TIV above $5,000,000 on the schedule or after scaling it by `scale`.
+
+    A location that crosses $5,000,000 only when the application's higher TIV is right also has an inspection
+    report, so resolving the TIV difference never creates a requirement (HM-3.1) that no document can meet.
+    """
+    return [location for location in locations if location.tiv * scale > INSPECTION_ABOVE_TIV - 1.0]
 
 
 def generate_insurance_case(rng: random.Random, fake: Faker, number: int, plans: list[ProblemPlan]) -> InsuranceCase:
@@ -136,8 +156,7 @@ def generate_insurance_case(rng: random.Random, fake: Faker, number: int, plans:
         schedule_signed=application_date - timedelta(days=rng.randint(5, 120)),
         inspections={
             location.location_id: effective - timedelta(days=rng.randint(30, 300))
-            for location in locations
-            if location.tiv > INSPECTION_ABOVE_TIV
+            for location in inspected_locations(locations, largest_schedule_scale(stated_tiv, schedule, plans))
         },
         inspector=rng.choice(INSPECTORS),
         email_paragraphs=email_paragraphs(broker, brokerage, insured, effective.isoformat(), outdated),

@@ -16,7 +16,11 @@ Tag characters can also carry a hidden ASCII message (U+E0041 is a hidden "A"). 
 message so the detector can read it too; normalize_text() itself only removes the characters.
 
 The module also holds the comparison keys used by the consistency checks: canonical_name() for business and
-person names and canonical_fein() for FEINs. Nothing here interprets the text; it only makes comparisons fair.
+person names (punctuation, "&"/"and" and company-suffix spellings folded) and canonical_fein() for FEINs.
+Nothing here interprets the text; it only makes comparisons fair.
+
+The homoglyph table is written with \\u escapes and the Unicode character name in a comment, because a Cyrillic
+small a (U+0430) and a Latin "a" look the same in an editor.
 """
 
 import re
@@ -35,70 +39,82 @@ TAG_TO_ASCII_OFFSET = 0xE0000
 # every entry is a character that renders like the Latin letter in common fonts.
 HOMOGLYPHS: dict[str, str] = {
     # Cyrillic lowercase
-    "а": "a",  # а
-    "е": "e",  # е
-    "о": "o",  # о
-    "р": "p",  # р
-    "с": "c",  # с
-    "у": "y",  # у
-    "х": "x",  # х
-    "ѕ": "s",  # ѕ
-    "і": "i",  # і
-    "ј": "j",  # ј
-    "һ": "h",  # һ
-    "ӏ": "l",  # ӏ
-    "ԁ": "d",  # ԁ
+    "\u0430": "a",  # cyrillic small letter a
+    "\u0435": "e",  # cyrillic small letter ie
+    "\u043e": "o",  # cyrillic small letter o
+    "\u0440": "p",  # cyrillic small letter er
+    "\u0441": "c",  # cyrillic small letter es
+    "\u0443": "y",  # cyrillic small letter u
+    "\u0445": "x",  # cyrillic small letter ha
+    "\u0455": "s",  # cyrillic small letter dze
+    "\u0456": "i",  # cyrillic small letter byelorussian-ukrainian i
+    "\u0458": "j",  # cyrillic small letter je
+    "\u04bb": "h",  # cyrillic small letter shha
+    "\u04cf": "l",  # cyrillic small letter palochka
+    "\u0501": "d",  # cyrillic small letter komi de
     # Cyrillic uppercase
-    "А": "A",  # А
-    "В": "B",  # В
-    "Е": "E",  # Е
-    "К": "K",  # К
-    "М": "M",  # М
-    "Н": "H",  # Н
-    "О": "O",  # О
-    "Р": "P",  # Р
-    "С": "C",  # С
-    "Т": "T",  # Т
-    "Х": "X",  # Х
-    "Ѕ": "S",  # Ѕ
-    "І": "I",  # І
-    "Ј": "J",  # Ј
+    "\u0410": "A",  # cyrillic capital letter a
+    "\u0412": "B",  # cyrillic capital letter ve
+    "\u0415": "E",  # cyrillic capital letter ie
+    "\u041a": "K",  # cyrillic capital letter ka
+    "\u041c": "M",  # cyrillic capital letter em
+    "\u041d": "H",  # cyrillic capital letter en
+    "\u041e": "O",  # cyrillic capital letter o
+    "\u0420": "P",  # cyrillic capital letter er
+    "\u0421": "C",  # cyrillic capital letter es
+    "\u0422": "T",  # cyrillic capital letter te
+    "\u0425": "X",  # cyrillic capital letter ha
+    "\u0405": "S",  # cyrillic capital letter dze
+    "\u0406": "I",  # cyrillic capital letter byelorussian-ukrainian i
+    "\u0408": "J",  # cyrillic capital letter je
     # Greek
-    "ο": "o",  # ο
-    "α": "a",  # α
-    "ι": "i",  # ι
-    "κ": "k",  # κ
-    "ν": "v",  # ν
-    "ρ": "p",  # ρ
-    "Α": "A",  # Α
-    "Β": "B",  # Β
-    "Ε": "E",  # Ε
-    "Ζ": "Z",  # Ζ
-    "Η": "H",  # Η
-    "Ι": "I",  # Ι
-    "Κ": "K",  # Κ
-    "Μ": "M",  # Μ
-    "Ν": "N",  # Ν
-    "Ο": "O",  # Ο
-    "Ρ": "P",  # Ρ
-    "Τ": "T",  # Τ
-    "Υ": "Y",  # Υ
-    "Χ": "X",  # Χ
+    "\u03bf": "o",  # greek small letter omicron
+    "\u03b1": "a",  # greek small letter alpha
+    "\u03b9": "i",  # greek small letter iota
+    "\u03ba": "k",  # greek small letter kappa
+    "\u03bd": "v",  # greek small letter nu
+    "\u03c1": "p",  # greek small letter rho
+    "\u0391": "A",  # greek capital letter alpha
+    "\u0392": "B",  # greek capital letter beta
+    "\u0395": "E",  # greek capital letter epsilon
+    "\u0396": "Z",  # greek capital letter zeta
+    "\u0397": "H",  # greek capital letter eta
+    "\u0399": "I",  # greek capital letter iota
+    "\u039a": "K",  # greek capital letter kappa
+    "\u039c": "M",  # greek capital letter mu
+    "\u039d": "N",  # greek capital letter nu
+    "\u039f": "O",  # greek capital letter omicron
+    "\u03a1": "P",  # greek capital letter rho
+    "\u03a4": "T",  # greek capital letter tau
+    "\u03a5": "Y",  # greek capital letter upsilon
+    "\u03a7": "X",  # greek capital letter chi
     # Typographic punctuation
-    "‘": "'",  # left single quote
-    "’": "'",  # right single quote / apostrophe
-    "“": '"',  # left double quote
-    "”": '"',  # right double quote
-    "‐": "-",  # hyphen (NFKC turns the non-breaking hyphen U+2011 into this)
-    "‒": "-",  # figure dash
-    "–": "-",  # en dash
-    "—": "-",  # em dash
-    "−": "-",  # minus sign
+    "\u2018": "'",  # left single quotation mark
+    "\u2019": "'",  # right single quotation mark
+    "\u201c": '"',  # left double quotation mark
+    "\u201d": '"',  # right double quotation mark
+    "\u2010": "-",  # hyphen
+    "\u2012": "-",  # figure dash
+    "\u2013": "-",  # en dash
+    "\u2014": "-",  # em dash
+    "\u2212": "-",  # minus sign
 }
 
 WHITESPACE_RUN = re.compile(r"\s+")
-# Characters dropped from names before comparison (punctuation that varies between documents).
-NAME_PUNCTUATION = re.compile(r"[.,'\"()&/\\-]")
+# Punctuation that varies between documents. Periods are deleted ("L.L.C" -> "llc", "Inc." -> "inc"); the other
+# characters become spaces.
+NAME_PERIOD = "."
+NAME_PUNCTUATION = re.compile(r"[,'\"()/\\-]")
+# Spellings of the same word or company suffix that documents use interchangeably, folded to one form. Applied to
+# whole words after punctuation is removed; the phrase entry is applied first.
+NAME_PHRASES: dict[str, str] = {"limited liability company": "llc"}
+NAME_WORDS: dict[str, str] = {
+    "&": "and",
+    "incorporated": "inc",
+    "corporation": "corp",
+    "company": "co",
+    "limited": "ltd",
+}
 
 
 def is_invisible(character: str) -> bool:
@@ -138,15 +154,21 @@ def normalize_text(text: str) -> str:
 def canonical_name(name: str | None) -> str:
     """A comparison key for a business or person name: normalized, casefolded, without punctuation.
 
-    "Harbor Bakery, L.L.C." and "HARBOR BAKERY LLC" give the same key ("harbor bakery llc"). A one-letter typo
-    still gives a different key, which is what the name checks need to see.
+    Steps: normalize_text, casefold, delete periods, turn the other NAME_PUNCTUATION into spaces, fold the
+    NAME_PHRASES and NAME_WORDS spellings, collapse spaces. "Harbor Bakery, L.L.C.", "HARBOR BAKERY LLC" and
+    "Harbor Bakery Limited Liability Company" give the same key ("harbor bakery llc"); "Smith & Sons Co." and
+    "Smith and Sons Company" give "smith and sons co". A one-letter typo still gives a different key, which is
+    what the name checks need to see.
     """
     if not name:
         return ""
-    text = normalize_text(name).casefold()
-    text = text.replace("l.l.c.", "llc")
-    text = NAME_PUNCTUATION.sub(" ", text)
-    return WHITESPACE_RUN.sub(" ", text).strip()
+    text = normalize_text(name).casefold().replace(NAME_PERIOD, "")
+    text = NAME_PUNCTUATION.sub(" ", text).replace("&", " & ")
+    text = " ".join(text.split())
+    for phrase, replacement in NAME_PHRASES.items():
+        text = f" {text} ".replace(f" {phrase} ", f" {replacement} ").strip()
+    words = [NAME_WORDS.get(word, word) for word in text.split()]
+    return " ".join(words)
 
 
 def edit_distance(first: str, second: str) -> int:

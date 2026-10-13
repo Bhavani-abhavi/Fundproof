@@ -3,7 +3,12 @@
 import pytest
 
 from uwcopilot.agent.applications import parse_application, screened_parties
+from uwcopilot.agent.insurance_calculations import location_tiv
 from uwcopilot.agent.policy import PolicyInputs, ScreeningOutcome, evaluate_policy
+from uwcopilot.agent.policy_credit import CPA_FINANCIALS_ABOVE
+from uwcopilot.agent.policy_credit import required_documents as credit_required_documents
+from uwcopilot.agent.policy_insurance import INSPECTION_REPORT_ABOVE_TIV
+from uwcopilot.agent.policy_insurance import required_documents as insurance_required_documents
 from uwcopilot.docintel.deposits import (
     average_daily_balance,
     average_monthly_loan_payments,
@@ -76,7 +81,8 @@ def test_problem_records_are_consistent(line: str, credit_truths: list, insuranc
     truths = credit_truths if line == "credit" else insurance_truths
     requests = set(evidence_request_ids())
     for truth in truths:
-        assert truth.scenario == ("clean" if not truth.problems else "+".join(p.problem_type for p in truth.problems))
+        types = list(dict.fromkeys(problem.problem_type for problem in truth.problems))
+        assert truth.scenario == ("clean" if not types else "+".join(types))
         doc_ids = {document.doc_id for document in truth.documents}
         for problem in truth.problems:
             assert problem.resolving_request in requests
@@ -153,3 +159,51 @@ def test_latent_application_applies_every_latent_substitution(credit_truths: lis
     for truth in [*credit_truths, *insurance_truths]:
         if not truth.problems:
             assert truth.application_latent == truth.application_as_documented
+
+
+@pytest.mark.parametrize("line", ["credit", "insurance"])
+def test_latent_world_has_every_required_document(line: str, credit_truths: list, insurance_truths: list) -> None:
+    """Each required document the packet lacks has a problem whose latent resolution provides it."""
+    truths = credit_truths if line == "credit" else insurance_truths
+    required_for = credit_required_documents if line == "credit" else insurance_required_documents
+    for truth in truths:
+        latent = parse_application(truth.application_latent)
+        missing = [code for code in required_for(latent) if code not in latent.documents_provided]
+        assert missing == [], truth.packet_id
+
+
+def test_cpa_financials_problem_exactly_when_the_request_is_above_500k(credit_truths: list) -> None:
+    above_seen = 0
+    for truth in credit_truths:
+        above = truth.application_as_documented["requested_amount"] > CPA_FINANCIALS_ABOVE
+        above_seen += above
+        cpa = [p for p in truth.problems if p.resolving_request_params.get("document") == "cpa_reviewed_financials"]
+        assert len(cpa) == (1 if above else 0), truth.packet_id
+        if cpa:
+            assert cpa[0].problem_type == "missing_document" and cpa[0].latent_option_id == "provided_consistent"
+            assert "cpa_reviewed_financials" in truth.missing_required_documents
+    assert above_seen > 0
+
+
+def test_missing_month_latent_has_twelve_months_and_the_checklist_code(credit_truths: list) -> None:
+    seen = 0
+    for truth in credit_truths:
+        if not any(problem.problem_type == "missing_pages" for problem in truth.problems):
+            continue
+        seen += 1
+        documented = truth.application_as_documented
+        latent = truth.application_latent
+        assert len(documented["bank_statements"]["months"]) == 11
+        months = [month["month"] for month in latent["bank_statements"]["months"]]
+        assert len(months) == 12 and months == sorted(months)
+        assert "bank_statements_12_months" not in documented["documents_provided"]
+        assert "bank_statements_12_months" in latent["documents_provided"]
+    assert seen > 0
+
+
+def test_inspection_reports_cover_every_latent_large_location(insurance_truths: list) -> None:
+    for truth in insurance_truths:
+        latent = parse_application(truth.application_latent)
+        large = [location for location in latent.locations if location_tiv(location) > INSPECTION_REPORT_ABOVE_TIV]
+        reports = [document for document in truth.documents if document.doc_type == "inspection_report"]
+        assert len(reports) >= len(large), truth.packet_id

@@ -1,9 +1,9 @@
 """Generate the SYNTHETIC startup credit example applications into eval/startup_applications/.
 
-Run with `make startup-applications`. Needs no downloaded data: the six examples (one per Fundproof business type)
-are built from the hand-written scenarios in uwcopilot.agent.synthetic_startup with a fixed seed, so every run
-writes the same bytes. Owner names use obviously fictional surnames and are not checked against any sanctions list
-(no list is read here).
+Run with `make startup-applications`. Needs no downloaded data: the examples (a clean file and one file per startup
+program rule, spread over the six Fundproof business types) are built from the hand-written scenarios in
+uwcopilot.agent.synthetic_startup with a fixed seed, so every run writes the same bytes. Owner names use obviously
+fictional surnames and are not checked against any sanctions list (no list is read here).
 
 Writes one APP-S-*.json per application and manifest.json with counts and a SHA-256 checksum of every file.
 """
@@ -61,14 +61,19 @@ def build_manifest(applications: list[dict], seed: int, file_hashes: dict[str, s
     return {
         "data_label": "SYNTHETIC",
         "description": "SYNTHETIC startup term loan applications (line startup_credit, schema startup-application-v1) "
-        "with designed ground truth, one per Fundproof business type, for the SYNTHETIC Northwind startup program "
-        "(corpus/programs/northwind_startup_program.md). Every amount and assumption is a made-up example input, not "
-        "a benchmark; no file carries simulator output.",
+        "with designed ground truth for the SYNTHETIC Northwind startup program "
+        "(corpus/programs/northwind_startup_program.md): a clean file and one file per program rule, spread over the "
+        "six Fundproof business types. Every amount and assumption is a made-up example input, not a benchmark; no "
+        "file carries simulator output.",
         "generator_version": GENERATOR_VERSION,
         "seed": seed,
         "as_of_date": AS_OF_DATE.isoformat(),
         "count": len(applications),
-        "business_types": sorted(application["applicant"]["business_type"] for application in applications),
+        "business_types": {
+            name: sum(1 for application in applications if application["applicant"]["business_type"] == name)
+            for name in sorted({application["applicant"]["business_type"] for application in applications})
+        },
+        "contains_injection": sum(1 for truth in truths if truth["contains_injection"]),
         "expected_recommendations": {
             name: sum(1 for truth in truths if truth["expected_recommendation"] == name) for name in RECOMMENDATIONS
         },

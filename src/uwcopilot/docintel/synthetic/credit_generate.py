@@ -5,7 +5,10 @@ The order matters and is fixed so a seed always gives the same case:
 2. the statement months the statement problems use, the revenue plan, a debt payment mismatch;
 3. 12 months of transactions (build_statements), then printed overrides;
 4. the requested amount and EBITDA from the target DSCR, the P&L, balance sheet, tax years, collateral;
-5. stated revenue, then the document-level problems.
+5. stated revenue, then the document-level problems;
+6. a missing_document problem for the CPA-reviewed financial statements when the request is above $500,000
+   (NBC-3.1 requires them, and no packet document type carries them), so every required document the packet
+   lacks has a problem record that resolves it.
 """
 
 import random
@@ -13,6 +16,7 @@ from datetime import date
 
 from faker import Faker
 
+from uwcopilot.agent.policy_credit import CPA_FINANCIALS_ABOVE
 from uwcopilot.docintel.synthetic.common import (
     CPA_FIRMS,
     PAYROLL_PROVIDERS,
@@ -80,6 +84,18 @@ def conduct_plan(rng: random.Random) -> tuple[list[int], list[bool]]:
     for index in rng.sample(range(12), count):
         negative[index] = True
     return nsf, negative
+
+
+def add_cpa_financials_problem(case: CreditCase, plans: list[ProblemPlan]) -> None:
+    """Record the CPA-reviewed financials a request above $500,000 needs (NBC-3.1) as a missing_document problem.
+
+    The packet format has no document type for them, so they are always missing. This problem is a consequence of
+    the requested amount, not one of the drawn problems; its details say so ("structural": True).
+    """
+    if case.amount > CPA_FINANCIALS_ABOVE:
+        plans.append(
+            ProblemPlan("missing_document", "missing", {"doc_type": "cpa_reviewed_financials", "structural": True})
+        )
 
 
 def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: list[ProblemPlan]) -> CreditCase:
@@ -194,4 +210,5 @@ def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: li
     )
     applied = apply_document_problems(rng, case, plans)
     plans[:] = applied
+    add_cpa_financials_problem(case, plans)
     return case

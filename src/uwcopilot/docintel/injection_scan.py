@@ -13,13 +13,20 @@ Input interfaces (so this module does not depend on the page-text models in doci
   Lines are grouped by (doc_id, page) in the order given. Each line is checked alone, and each pair of adjacent
   lines is checked joined with a space, to catch an instruction split across two lines. A pattern found only in a
   joined pair is reported on the pair's first line.
-- scan_pages(pages, doc_ids): objects with `page_number: int` and `lines`, where each line has `text: str` and
-  `line_number: int` (1-based), for example the PageText model of docintel/layout.py. doc_ids maps a page
-  number to its document id (a page not in the map uses its own `doc_id` attribute if it has one, else None).
+- scan_pages(pages, doc_ids): page objects with a page number and `lines`, where each line has `text: str`
+  and a 1-based line number, for example the PageText model of docintel/layout.py (see PageLike / LineLike).
+  The page number is read from `page_number` (or `page`), the line number from `line_number` (or `number`), so
+  the layout model may use either name. doc_ids maps a page number to its document id (a page not in the map
+  uses its own `doc_id` attribute if it has one, else None).
 - scan_extraction_fields(extraction): the free-text values of an extraction (remarks, transaction descriptions,
   the cover email subject and body, business and owner names), each with its own citation.
 Every hit is a DocumentInjectionHit with the document, page, line, pattern names and a short excerpt of the
 normalized text (the excerpt is untrusted data kept for the audit record).
+
+merge_hits(page_hits, field_hits) combines the two scans without counting one instruction twice: a field hit is
+dropped when the page scan already reported a hit on the same document page (a free-text field is printed on
+that page, so the page scan has seen the same text). A field hit on a page without a page hit is kept: the field
+scan reads a whole multi-line value at once and can see an instruction spread over more than two lines.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -55,17 +62,30 @@ class ScanLine(NamedTuple):
 
 
 class LineLike(Protocol):
-    """A line of page text as docintel/layout.py provides it."""
+    """A line of page text as docintel/layout.py provides it (the line number may also be called `number`)."""
 
     text: str
     line_number: int
 
 
 class PageLike(Protocol):
-    """A page of text as docintel/layout.py provides it."""
+    """A page of text as docintel/layout.py provides it (the page number may also be called `page`)."""
 
     page_number: int
     lines: Sequence[LineLike]
+
+
+PAGE_NUMBER_NAMES = ("page_number", "page")
+LINE_NUMBER_NAMES = ("line_number", "number")
+
+
+def number_attribute(item: object, names: tuple[str, ...]) -> int:
+    """The first of the named attributes that holds an int (a page or line number); an error if none does."""
+    for name in names:
+        value = getattr(item, name, None)
+        if isinstance(value, int):
+            return value
+    raise AttributeError(f"{type(item).__name__} has none of the number attributes {names}")
 
 
 def detection_text(raw: str) -> str:
@@ -135,9 +155,10 @@ def scan_pages(pages: Iterable[PageLike], doc_ids: Mapping[int, str] | None = No
     mapping = doc_ids or {}
     lines = []
     for page in pages:
-        doc_id = mapping.get(page.page_number, getattr(page, "doc_id", None))
+        page_number = number_attribute(page, PAGE_NUMBER_NAMES)
+        doc_id = mapping.get(page_number, getattr(page, "doc_id", None))
         for line in page.lines:
-            lines.append(ScanLine(doc_id, page.page_number, line.line_number, line.text))
+            lines.append(ScanLine(doc_id, page_number, number_attribute(line, LINE_NUMBER_NAMES), line.text))
     return scan_lines(lines)
 
 
@@ -194,11 +215,17 @@ def scan_extraction_fields(extraction: PacketExtraction) -> list[DocumentInjecti
 def merge_hits(
     page_hits: list[DocumentInjectionHit], field_hits: list[DocumentInjectionHit]
 ) -> list[DocumentInjectionHit]:
-    """Page-text hits plus the field hits on a (doc_id, page, line) the page scan did not already report."""
-    seen = {(hit.doc_id, hit.page, hit.line) for hit in page_hits}
+    """Page-text hits plus the field hits on document pages the page scan did not flag (see the module docstring).
+
+    Field hits are also kept only once per (doc_id, page, line, field).
+    """
+    flagged_pages = {(hit.doc_id, hit.page) for hit in page_hits}
+    seen_fields: set[tuple] = set()
     merged = list(page_hits)
     for hit in field_hits:
-        if (hit.doc_id, hit.page, hit.line) not in seen:
-            merged.append(hit)
-            seen.add((hit.doc_id, hit.page, hit.line))
+        place = (hit.doc_id, hit.page, hit.line, hit.field)
+        if (hit.doc_id, hit.page) in flagged_pages or place in seen_fields:
+            continue
+        merged.append(hit)
+        seen_fields.add(place)
     return merged

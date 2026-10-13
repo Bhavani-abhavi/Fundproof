@@ -15,7 +15,7 @@
     "formation_date": "2026-06-28",
     "planned_opening_date": "2027-02-28",
     "metro_id": "synthetic_metro",
-    "site_description": "Leased corner unit in the synthetic metro (SYNTHETIC example)."
+    "site_description": "Leased pad site for an express car wash tunnel in the synthetic metro (SYNTHETIC example)."
   },
   "owners": [
     {
@@ -49,7 +49,7 @@
   ],
   "loan_request": {
     "product": "startup_term_loan",
-    "amount": 300000.0,
+    "amount": 250000.0,
     "term_months": 120,
     "annual_rate_pct": 9.5,
     "rate_type": "fixed",
@@ -57,17 +57,17 @@
   },
   "sources_and_uses": {
     "uses": {
-      "build_out": 140913.0,
-      "equipment": 125256.0,
+      "build_out": 110827.0,
+      "equipment": 98513.0,
       "real_estate": 0.0,
-      "initial_inventory": 15656.0,
-      "soft_costs": 31314.0,
-      "working_capital_reserve": 103528.0,
+      "initial_inventory": 12314.0,
+      "soft_costs": 24628.0,
+      "working_capital_reserve": 100940.0,
       "other": 0.0
     },
     "sources": {
-      "loan": 300000.0,
-      "owner_cash_equity": 116667.0,
+      "loan": 250000.0,
+      "owner_cash_equity": 97222.0,
       "other": 0.0
     },
     "equity_verified_by_statements": true
@@ -79,27 +79,27 @@
         "revenue_p10": 492000,
         "revenue_p50": 615000,
         "revenue_p90": 707250,
-        "noi_p10": -54249,
-        "noi_p50": 99501,
-        "noi_p90": 161001
+        "noi_p10": -57918,
+        "noi_p50": 95832,
+        "noi_p90": 157332
       },
       {
         "year": 2,
         "revenue_p10": 656000,
         "revenue_p50": 820000,
         "revenue_p90": 943000,
-        "noi_p10": 16113,
-        "noi_p50": 221113,
-        "noi_p90": 303113
+        "noi_p10": 7961,
+        "noi_p50": 212961,
+        "noi_p90": 294961
       },
       {
         "year": 3,
         "revenue_p10": 688800,
         "revenue_p50": 861000,
         "revenue_p90": 990150,
-        "noi_p10": 23552,
-        "noi_p50": 238802,
-        "noi_p90": 324902
+        "noi_p10": 14748,
+        "noi_p50": 229998,
+        "noi_p90": 316098
       }
     ],
     "monthly_fixed_costs": 22000.0,
@@ -143,12 +143,7 @@
       "tornado_rank": 4
     }
   ],
-  "collateral": [
-    {
-      "collateral_type": "owner_occupied_cre",
-      "value": 460000.0
-    }
-  ],
+  "collateral": [],
   "documents_provided": [
     "signed_application",
     "business_plan",
@@ -159,7 +154,6 @@
     "formation_documents",
     "beneficial_ownership_certification",
     "equity_bank_statements",
-    "collateral_documents",
     "owner_resumes_and_references",
     "lease_or_letter_of_intent",
     "contractor_or_equipment_quotes"
@@ -172,6 +166,6 @@
     "contains_injection": false,
     "injection_kind": null,
     "watchlist_derived_owners": [],
-    "rationale": "Meets every startup program rule; collateral covers the request above $250,000."
+    "rationale": "Meets every startup program rule; a request of $250,000 may be unsecured (NSP-7.1)."
   }
 }

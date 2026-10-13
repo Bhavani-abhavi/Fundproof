@@ -30,7 +30,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import rankdata
 
-from uwcopilot.studio.data.fabric import SyntheticFabric, coverage_share, get_fabric
+from uwcopilot.studio.data.fabric import Snapshot, SyntheticFabric, coverage_share, get_fabric
 from uwcopilot.studio.data.synthetic_city import SyntheticCity, generate_city
 from uwcopilot.studio.metros.models import MetroConfig
 from uwcopilot.studio.profiles.models import Profile
@@ -333,5 +333,17 @@ def real_metro_sanity(metro_id: str, profiles: dict[str, Profile]) -> dict[str, 
         "mode_reason": mode_reason,
         "tracts_in_snapshot": len(fabric.tract_ids()),
         "snapshot_date": snapshot.snapshot_date.isoformat() if snapshot is not None else None,
+        "snapshot_steps_not_ok": steps_not_ok(snapshot),
         "by_business_type": rows,
+    }
+
+
+def steps_not_ok(snapshot: Snapshot | None) -> dict[str, str]:
+    """{step: 'status: detail'} for every snapshot step that did not succeed, copied from the snapshot manifest."""
+    if snapshot is None:
+        return {}
+    return {
+        str(step.get("name")): f"{step.get('status')}: {step.get('detail', '')}"
+        for step in snapshot.manifest.get("steps", [])
+        if step.get("status") != "ok"
     }

@@ -9,8 +9,11 @@ GeoJSONIsochroneProperties.java in github.com/GIScience/openrouteservice, main b
 
 The answer is a GeoJSON FeatureCollection with one Polygon per range; each feature's properties carry "value" (the
 range in seconds) and "group_index". A request without the key answered HTTP 401 "Authorization field missing" on
-2026-10-12. No request with a key has been made from this repository yet (the key was not set in this session), so
-the tests use a hand-written fixture. Terms of use and attribution are to verify on openrouteservice.org.
+2026-10-12. With the key, one answer was recorded on 2026-10-13 by tests/studio/fixtures/ors/record_isochrones.py
+(fixture isochrones_houston_recorded.json); its shape matched this parser, and its "metadata" carries an
+"attribution" string and the routing engine's data dates ("engine": osm_date, graph_date). Both are copied into the
+SourceRecord of every answer (license_note and vintage). The terms of use themselves are still to verify on
+openrouteservice.org.
 
 The key travels only in the Authorization header. PoliteClient redacts it from logs and errors, and it is not part
 of the cache key, the stored request or the SourceRecord.
@@ -31,7 +34,7 @@ SOURCE = SourceInfo(
     source_id="openrouteservice_isochrones",
     publisher="openrouteservice (api.openrouteservice.org)",
     dataset="openrouteservice v2 isochrones, driving-car profile",
-    license_note="Terms of use and attribution to verify on openrouteservice.org (not yet recorded)",
+    license_note="Terms of use to verify on openrouteservice.org; the answer gave no attribution string",
 )
 
 
@@ -63,6 +66,30 @@ def parse_isochrones(data: dict[str, Any]) -> dict[int, list[tuple[float, float]
     return areas
 
 
+def answer_metadata(data: dict[str, Any]) -> dict[str, Any]:
+    """The answer's "metadata" object ({} when it is missing or not an object)."""
+    metadata = data.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def answer_attribution(data: dict[str, Any]) -> str | None:
+    """The attribution string the answer asks users to show (metadata.attribution), or None."""
+    attribution = answer_metadata(data).get("attribution")
+    return attribution.strip() if isinstance(attribution, str) and attribution.strip() else None
+
+
+def answer_vintage(data: dict[str, Any]) -> str:
+    """The data dates the answer reports (metadata.engine osm_date and graph_date), for the SourceRecord vintage."""
+    found = answer_metadata(data).get("engine")
+    engine: dict[str, Any] = found if isinstance(found, dict) else {}
+    parts = []
+    if isinstance(engine.get("osm_date"), str):
+        parts.append(f"OpenStreetMap data of {engine['osm_date'][:10]}")
+    if isinstance(engine.get("graph_date"), str):
+        parts.append(f"routing graph of {engine['graph_date'][:10]}")
+    return "; ".join(parts) if parts else "live routing at the request date (the answer gave no data dates)"
+
+
 def fetch_isochrones(
     client: PoliteClient, api_key: str, lat: float, lon: float, minutes: tuple[int, ...]
 ) -> tuple[dict[int, list[tuple[float, float]]], SourceRecord]:
@@ -82,5 +109,10 @@ def fetch_isochrones(
         key,
         True,
     )
-    record = SOURCE.record(fetched, vintage="live routing at the request date", geography=f"{lat:.5f},{lon:.5f}")
-    return parse_isochrones(fetched.json()), record
+    data = fetched.json()
+    record = SOURCE.record(fetched, vintage=answer_vintage(data), geography=f"{lat:.5f},{lon:.5f}")
+    attribution = answer_attribution(data)
+    if attribution is not None:
+        note = f"Attribution required by the answer: '{attribution}'. Terms of use to verify on openrouteservice.org"
+        record = record.model_copy(update={"license_note": note})
+    return parse_isochrones(data), record

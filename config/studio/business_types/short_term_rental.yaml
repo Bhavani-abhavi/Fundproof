@@ -199,7 +199,7 @@ ramp_up:
 
 design:
   status: DESIGN_CHOICE
-  note: Scoring-method choices by the project author, not facts. Comparable listings count as evidence of demand here; saturation is the competition factor. Weights are tuned in S2 on the SYNTHETIC metro only.
+  note: Scoring-method choices by the project author, not facts. Comparable listings count as evidence of demand here; saturation is the competition factor. Weights are not tuned; S2 decided against fitting them to the SYNTHETIC metro (docs/studio/walkthrough_s2.md).
   trade_area_rings_miles: [0.5, 1, 3]
   location_weights:
     tourism: {weight: 0.35, direction: higher_is_better}

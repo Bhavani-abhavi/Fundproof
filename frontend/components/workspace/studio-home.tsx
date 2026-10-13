@@ -5,6 +5,7 @@ import { Building2, FileCheck2, LineChart, ListChecks, MapPinned, Plus, Route } 
 import { PageIntro } from "@/components/layout/page-intro";
 import { ApiOfflineNotice } from "@/components/session/api-offline-notice";
 import { RoleBadge } from "@/components/session/role-badge";
+import { SessionErrorNotice } from "@/components/session/session-error-notice";
 import { SignInPrompt } from "@/components/session/sign-in-prompt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,8 @@ export function StudioHome() {
 
       {status === "offline" ? <ApiOfflineNotice /> : null}
 
+      {status === "error" ? <SessionErrorNotice /> : null}
+
       {status === "ready" && !me.signed_in ? (
         <SignInPrompt
           area="Founder Studio"
@@ -101,11 +104,11 @@ export function StudioHome() {
         />
       ) : null}
 
-      {status === "ready" && me.signed_in ? (
+      {(status === "ready" || status === "error") && me.signed_in ? (
         <Card>
           <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex flex-col gap-1.5">
-              <CardTitle>Your plans</CardTitle>
+              <CardTitle as="h2">Your plans</CardTitle>
               <CardDescription>
                 Signed in as {me.display_name || me.username}. You have no plans yet.
               </CardDescription>
@@ -134,7 +137,7 @@ export function StudioHome() {
       {status === "ready" ? (
         <Card>
           <CardHeader>
-            <CardTitle>Cities and business types</CardTitle>
+            <CardTitle as="h2">Cities and business types</CardTitle>
             <CardDescription>As reported by the server right now.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-6 sm:grid-cols-2">

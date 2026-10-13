@@ -14,11 +14,15 @@ from uwcopilot.studio.profiles import load_profile
 from uwcopilot.studio.siteiq.enhancements import demand_area, license_context
 from uwcopilot.studio.siteiq.isochrones import (
     ISOCHRONES_URL,
+    SOURCE,
+    answer_attribution,
+    answer_vintage,
     fetch_isochrones,
     isochrone_payload,
     parse_isochrones,
 )
 from uwcopilot.studio.siteiq.trade_area import (
+    DRIVE_MINUTES,
     circle_polygon,
     drive_time_area,
     miles_label,
@@ -29,6 +33,7 @@ from uwcopilot.studio.siteiq.trade_area import (
 )
 
 FIXTURE = "ors/isochrones_handwritten.json"
+RECORDED = "ors/isochrones_houston_recorded.json"
 SITE = (10.0, -140.0)
 FAKE_KEY = "test-ors-key-123"
 
@@ -79,6 +84,47 @@ def test_isochrone_payload_and_parsing() -> None:
     assert all(len(points) >= 4 for points in areas.values())
     with pytest.raises(UpstreamError):
         parse_isochrones({"error": {"code": 2000}})
+
+
+def recorded_site() -> tuple[float, float]:
+    """(lat, lon) the recorded answer was requested for (the Census Geocoder's point for a public building)."""
+    params = load_fixture("geocoder/coordinates.json")["params"]
+    return float(params["y"]), float(params["x"])
+
+
+def test_recorded_answer_matches_the_request_and_the_parser() -> None:
+    record = load_fixture(RECORDED)
+    assert record["fixture_origin"].startswith("recorded from the live API on ")
+    assert record["params"]["json"] == isochrone_payload(*recorded_site(), DRIVE_MINUTES)
+    areas = parse_isochrones(json.loads(record["body"]))
+    assert sorted(areas) == sorted(DRIVE_MINUTES)
+    for points in areas.values():
+        assert len(points) >= 4 and points[0] == points[-1]
+    lat, lon = recorded_site()
+    for minutes in DRIVE_MINUTES:
+        area = drive_time_area(lat, lon, minutes, areas[minutes])
+        assert area.contains(np.array([lat]), np.array([lon])).tolist() == [True]
+
+
+def test_attribution_and_data_dates_come_from_the_answer(tmp_path) -> None:
+    body = json.loads(load_fixture(RECORDED)["body"])
+    engine = body["metadata"]["engine"]
+    assert answer_attribution(body) == body["metadata"]["attribution"]
+    assert answer_vintage(body) == (
+        f"OpenStreetMap data of {engine['osm_date'][:10]}; routing graph of {engine['graph_date'][:10]}"
+    )
+    synthetic = json.loads(load_fixture(FIXTURE)["body"])
+    assert answer_attribution(synthetic) is None and "no data dates" in answer_vintage(synthetic)
+    network = FakeNetwork()
+    network.add_fixture(ISOCHRONES_URL, RECORDED)
+    client, _ = make_client(tmp_path, network, policies=fast_policies("api.openrouteservice.org"))
+    _, source = fetch_isochrones(client, FAKE_KEY, *recorded_site(), DRIVE_MINUTES)
+    assert body["metadata"]["attribution"] in source.license_note and source.vintage == answer_vintage(body)
+    network = FakeNetwork()
+    network.add_fixture(ISOCHRONES_URL, FIXTURE)
+    client, _ = make_client(tmp_path / "b", network, policies=fast_policies("api.openrouteservice.org"))
+    _, source = fetch_isochrones(client, FAKE_KEY, *SITE, DRIVE_MINUTES)
+    assert source.license_note == SOURCE.license_note
 
 
 def test_fetch_sends_the_key_only_in_the_header(tmp_path) -> None:
