@@ -11,16 +11,26 @@ How the search works:
    the largest, and keep the first that meets every target. That is the smallest change of that lever.
 3. Pairs, only when fewer than max_results single moves were found: for two levers that do not work alone but
    each move the plan closer on its own, first try both at their best single values (a screen). If that meets the
-   targets, walk the pair's grid from small to large changes (a staircase over the two sorted value lists) to find
-   the least-effort combination. A site candidate is a category, so its partner lever is scanned per site.
-   Any change-set that would break a startup-program check the plan meets now (equity injection, loan limits,
-   term range; program.py) is refused like a value outside the bounds.
+   targets, or if the screen itself is not allowed (two dollar levers that both cut the loan can take it below its
+   bound together), walk the pair's grid from small to large changes (a staircase over the two sorted value lists)
+   to find the least-effort combination. A site candidate is a category, so its partner lever is scanned per site.
+   Any change-set that would break a startup-program check the plan meets now, or move the plan further from a
+   check it already fails (equity injection, loan limits, term range; program.py), is refused like a value outside
+   the bounds.
 4. Rank change-sets by the number of levers changed, then by effort; return the first max_results.
 5. Nothing found: "no path within your bounds" plus the closest result (the smallest total shortfall seen).
 Every variant is simulated with the plan's own random draws (common random numbers, evaluate.py) and cached.
+The budget (SearchSettings.max_evaluations) counts every variant the search evaluates, simulated or read from the
+cache, so the same request gives the same answer whatever the shared cache holds.
 
-Quick mode (for the website): fewer simulated paths and a coarser grid for the search, then every change-set it
-returns is re-checked with the full number of paths, so the probabilities shown are the full simulation's.
+Quick mode (for the website): a coarser grid (4 values on each side of a lever instead of 8) and a smaller budget
+of evaluated variants, on the SAME 1,000 simulated paths and seed as full mode. Every number it shows is therefore a
+full simulation's, quick and full share cached outcomes, and the coarse grid is a subset of the fine one, so a
+single-lever change from quick is never smaller than full's for that lever (it can be larger; pairs come from the
+heuristic and are not guaranteed either way). An earlier version searched with 500 paths and
+re-checked with 1,000; the re-check dropped change-sets that only just met a target with 500 paths (Monte Carlo
+noise), and quick mode then answered "no path" for plans where full mode found one, so it was replaced.
+SearchSettings.confirm_paths still supports a search with fewer paths plus a re-check, for anyone who wants it.
 
 The pair search is a heuristic: it assumes that moving a lever further in its helpful direction does not hurt.
 That holds exactly for owner equity, loan term, build-out cost and the cash reserve under common random numbers
@@ -28,7 +38,9 @@ That holds exactly for owner equity, loan term, build-out cost and the cash rese
 exhaustive.py measures what it costs (scripts/eval_studio_paths.py).
 """
 
+import threading
 import time
+import weakref
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -44,6 +56,7 @@ from uwcopilot.studio.path_to_approval.errors import LeverError
 from uwcopilot.studio.path_to_approval.evaluate import SHARED_CACHE, EvaluationCache, PathEvaluator, setup_for_case
 from uwcopilot.studio.path_to_approval.guardrails import GUARDRAIL_RULES, apply_changes, field_values
 from uwcopilot.studio.path_to_approval.levers import (
+    AMOUNT_LEVERS,
     LEVER_NAMES,
     LEVERS_FILE,
     LeverBounds,
@@ -60,20 +73,19 @@ from uwcopilot.studio.path_to_approval.models import (
     Mode,
     Outcome,
     PathResult,
+    PlanAmounts,
     PlanCase,
     SearchSettings,
     SearchStats,
     Target,
 )
-from uwcopilot.studio.path_to_approval.program import failed_checks, newly_broken
-from uwcopilot.studio.path_to_approval.space import LEVER_WRITES, LeverSpace, build_lever_space
+from uwcopilot.studio.path_to_approval.program import failed_checks, refusals
+from uwcopilot.studio.path_to_approval.space import LEVER_WRITES, LeverSpace, amounts_of, build_lever_space
 from uwcopilot.studio.path_to_approval.targets import default_target
 from uwcopilot.studio.profiles.models import Profile
 
 FULL_SETTINGS = SearchSettings()
-QUICK_SETTINGS = SearchSettings(
-    mode="quick", n_paths=500, confirm_paths=1000, steps_per_side=4, max_results=3, max_evaluations=400
-)
+QUICK_SETTINGS = SearchSettings(mode="quick", steps_per_side=4, max_results=3, max_evaluations=250)
 PAIR_HEURISTIC_NOTE = (
     "Pairs are searched only for levers that do not reach the targets alone but move the plan closer on their own, "
     "and the pair grid assumes that moving a lever further in its helpful direction does not hurt; a pair can be "
@@ -86,6 +98,16 @@ def settings_for(mode: Mode) -> SearchSettings:
     return QUICK_SETTINGS if mode == "quick" else FULL_SETTINGS
 
 
+def quick_note(settings: SearchSettings) -> str:
+    """What quick mode does differently, shown with its result."""
+    full = FULL_SETTINGS.steps_per_side
+    return (
+        f"Quick mode: a coarser search ({settings.steps_per_side} values on each side of each lever instead of {full}, "
+        f"at most {settings.max_evaluations} plan variants evaluated) on {settings.n_paths:,} simulated paths, seed "
+        f"{settings.seed}. A finer search can find a smaller change than the one shown."
+    )
+
+
 @lru_cache(maxsize=8)
 def fabric_for(metro_id: str) -> DataFabric:
     """The metro's data fabric, loaded once per process (a snapshot is read from disk once)."""
@@ -96,6 +118,31 @@ def fabric_for(metro_id: str) -> DataFabric:
 def mode_for(metro_id: str) -> tuple[str, str]:
     """The metro's mode and its reason, computed once per process (a real metro's mode reads every profile)."""
     return fabric_for(metro_id).mode()
+
+
+# The mode of a fabric the caller passed in (the web app keeps one fabric per metro for the life of the process).
+# Keyed by the object's id, with a weak reference to make sure an id reused by a new object is never read.
+FABRIC_MODES: dict[int, tuple["weakref.ref[DataFabric]", tuple[str, str]]] = {}
+FABRIC_MODES_LOCK = threading.Lock()
+
+
+def mode_of(fabric: DataFabric) -> tuple[str, str]:
+    """A fabric's mode and its reason, computed once per fabric object.
+
+    A real metro's mode() reads every business-type profile and measures its coverage on every call, and the
+    website passes its own long-lived fabric on every request, so the answer is kept per fabric object.
+    """
+    key = id(fabric)
+    with FABRIC_MODES_LOCK:
+        entry = FABRIC_MODES.get(key)
+        if entry is not None and entry[0]() is fabric:
+            return entry[1]
+    mode = fabric.mode()
+    with FABRIC_MODES_LOCK:
+        for stale in [item for item, (ref, _) in FABRIC_MODES.items() if ref() is None]:
+            del FABRIC_MODES[stale]
+        FABRIC_MODES[key] = (weakref.ref(fabric), mode)
+    return mode
 
 
 @lru_cache(maxsize=64)
@@ -125,6 +172,8 @@ def clear_caches() -> None:
     """
     fabric_for.cache_clear()
     mode_for.cache_clear()
+    with FABRIC_MODES_LOCK:
+        FABRIC_MODES.clear()
     profile_for.cache_clear()
     levers_from.cache_clear()
     default_assumptions.cache_clear()
@@ -168,8 +217,9 @@ class Search:
         self.pairs_screened = 0
         self.pairs_searched = 0
         self.budget_exhausted = False
-        self.base_checks = space.plan_amounts(space.case).checks
+        self.base_amounts = space.plan_amounts(space.case)
         self.blocked_by_program = 0
+        self.variants_evaluated = 1  # the plan itself
 
     def effort_of(self, changes: Sequence[Change]) -> float:
         """Total effort of a change-set."""
@@ -180,19 +230,24 @@ class Search:
         )
 
     def breaks_program(self, changes: tuple[Change, ...]) -> bool:
-        """True when the change-set would break a startup-program check the plan meets now (program.py).
+        """True when the change-set would break a startup-program check the plan meets now, or move the plan
+        further from one it already fails (program.refusals).
 
         Raises LeverError (through the guardrails) when the change-set is not allowed at all.
         """
         after = apply_changes(self.space, changes)
-        if newly_broken(self.base_checks, self.space.plan_amounts(after).checks):
+        if refusals(self.base_amounts, self.space.plan_amounts(after)):
             self.blocked_by_program += 1
             return True
         return False
 
     def try_changes(self, changes: tuple[Change, ...]) -> Tried | None:
-        """Evaluate a change-set; None when it is not allowed (bounds, program checks) or the budget is spent."""
-        if self.evaluator.evaluations >= self.settings.max_evaluations:
+        """Evaluate a change-set; None when it is not allowed (bounds, program checks) or the budget is spent.
+
+        The budget counts every evaluated variant, simulated or read from the cache, so the result never depends on
+        what a shared cache holds. A refused change-set is never simulated and does not count.
+        """
+        if self.variants_evaluated >= self.settings.max_evaluations:
             self.budget_exhausted = True
             return None
         try:
@@ -201,6 +256,7 @@ class Search:
             outcome = self.evaluator.evaluate(changes)
         except LeverError:
             return None
+        self.variants_evaluated += 1
         tried = Tried(changes, outcome, self.effort_of(changes))
         if self.closest is None or tried.closeness_key() < self.closest.closeness_key():
             self.closest = tried
@@ -256,20 +312,24 @@ class Search:
         """Least-effort feasible pair on two sorted value lists, assuming more of either lever never hurts.
 
         Start with the largest first value and the smallest second value; when a pair meets the targets, record it
-        and try a smaller first value; when it does not, try a larger second value. At most len(firsts) +
-        len(seconds) evaluations.
+        and try a smaller first value; when it does not, try a larger second value. When a pair is not allowed
+        (bounds or program checks), try a smaller first value too: two dollar levers that both cut the loan take it
+        out of its bounds when both move far, and a larger second value would only move it further. At most
+        len(firsts) + len(seconds) evaluations.
         """
         best: Tried | None = None
         i, j = len(firsts) - 1, 0
         while i >= 0 and j < len(seconds):
             tried = self.try_changes((Change(lever=first, value=firsts[i]), Change(lever=second, value=seconds[j])))
-            if tried is not None and tried.outcome.meets_target:
+            if self.budget_exhausted:
+                break
+            if tried is None:
+                i -= 1
+            elif tried.outcome.meets_target:
                 if best is None or tried.rank_key() < best.rank_key():
                     best = tried
                 i -= 1
             else:
-                if self.budget_exhausted:
-                    break
                 j += 1
         return best
 
@@ -288,7 +348,12 @@ class Search:
         return best
 
     def search_pair(self, first: str, second: str, best_first: Tried, best_second: Tried) -> None:
-        """Screen one pair at its best single values, then find its least-effort combination."""
+        """Screen one pair at its best single values, then find its least-effort combination.
+
+        The pair is searched when the screen meets the targets, and also when the screen is not allowed (refused by
+        the bounds or the program checks), because then smaller moves of the two levers can still be allowed and
+        reach the targets. A screen that is allowed but misses the targets ends the pair (the heuristic).
+        """
         self.pairs_screened += 1
         screen = self.try_changes(
             (
@@ -296,7 +361,9 @@ class Search:
                 Change(lever=second, value=best_second.changes[0].value),
             )
         )
-        if screen is None or not screen.outcome.meets_target:
+        if self.budget_exhausted:
+            return
+        if screen is not None and not screen.outcome.meets_target:
             return
         self.pairs_searched += 1
         firsts = self.helpful_values(first, best_first)
@@ -307,8 +374,9 @@ class Search:
             found = self.per_site(seconds, first, firsts)
         else:
             found = self.staircase(first, firsts, second, seconds)
-        candidates = [screen] if found is None else [screen, found]
-        self.found.append(min(candidates, key=Tried.rank_key))
+        candidates = [item for item in (screen, found) if item is not None]
+        if candidates:
+            self.found.append(min(candidates, key=Tried.rank_key))
 
     def run(self) -> None:
         """Singles, then pairs when fewer than max_results singles were found (find_paths checks the plan first)."""
@@ -335,33 +403,51 @@ class Search:
         return sorted(self.found, key=Tried.rank_key)[: self.settings.max_results]
 
 
-def applied_changes(space: LeverSpace, tried: Tried, after: PlanCase) -> list[AppliedChange]:
-    """What each lever of a change-set did, for the result."""
+def applied_changes(
+    space: LeverSpace, tried: Tried, after: PlanCase, plan_after: PlanAmounts | None = None
+) -> list[AppliedChange]:
+    """What each lever of a change-set did, for the result.
+
+    to_value is the lever's amount in the changed plan. For a dollar lever that can differ from the value the
+    search set, because two dollar levers can move the same amount (more owner equity also lowers the loan, so with
+    the loan lever in the same change-set the loan moves twice). own_change is the lever's own move.
+    evidence_needed says what would back the changed figure for a lender (explain.evidence_for).
+    """
+    plan_after = plan_after or space.plan_amounts(after)
     before_fields, after_fields = field_values(space.case), field_values(after)
+    after_amounts = amounts_of(after, space.amounts.capex)
     project_cost = space.amounts.project_cost
     items = []
     for change in tried.changes:
         config = space.configs[change.lever]
         changed = [path for path in LEVER_WRITES[change.lever] if before_fields[path] != after_fields[path]]
-        items.append(
-            AppliedChange(
-                lever=change.lever,
-                label=config.label,
-                unit=space.demand_unit if change.lever == "site" else config.unit,
-                from_value=space.current[change.lever],
-                to_value=change.value,
-                effort=round(effort(config, space.current[change.lever], change.value, project_cost), 6),
-                fields_changed=changed,
-            )
+        current = space.current[change.lever]
+        to_value: float | str = change.value
+        own_change = None
+        if change.lever in AMOUNT_LEVERS:
+            to_value = round(after_amounts.value_of(change.lever), 2)
+            own_change = round(float(change.value) - float(current), 2)
+        item = AppliedChange(
+            lever=change.lever,
+            label=config.label,
+            unit=space.demand_unit if change.lever == "site" else config.unit,
+            from_value=current,
+            to_value=to_value,
+            own_change=own_change,
+            effort=round(effort(config, current, change.value, project_cost), 6),
+            fields_changed=changed,
         )
+        evidence = explain.evidence_for(item, space, after, plan_after)
+        items.append(item.model_copy(update={"evidence_needed": evidence}))
     return items
 
 
 def change_set(space: LeverSpace, tried: Tried, before: Outcome, target: Target, rank: int) -> ChangeSet:
     """A ChangeSet with its before/after plan and its explanation."""
     after_case = apply_changes(space, tried.changes)
-    changes = applied_changes(space, tried, after_case)
-    plan_after = space.plan_amounts(after_case)
+    plan_before, plan_after = space.plan_amounts(space.case), space.plan_amounts(after_case)
+    changes = applied_changes(space, tried, after_case, plan_after)
+    rules_not_met = failed_checks(plan_after.checks)
     return ChangeSet(
         rank=rank,
         changes=changes,
@@ -369,11 +455,15 @@ def change_set(space: LeverSpace, tried: Tried, before: Outcome, target: Target,
         effort=round(tried.effort, 6),
         before=before,
         after=tried.outcome,
-        plan_before=space.plan_amounts(space.case),
+        plan_before=plan_before,
         plan_after=plan_after,
         applied_plan=after_case,
         meets_target=tried.outcome.meets_target,
-        explanation=explain.explain_change_set(changes, space, after_case, before, tried.outcome, plan_after, target),
+        program_rules_not_met=rules_not_met,
+        evidence_needed=list(dict.fromkeys(change.evidence_needed for change in changes if change.evidence_needed)),
+        explanation=explain.explain_change_set(
+            changes, space, after_case, before, tried.outcome, plan_before, plan_after, target, rules_not_met
+        ),
         unchanged=explain.unchanged_text(space.case),
     )
 
@@ -409,8 +499,9 @@ def plan_notes(case: PlanCase, space: LeverSpace, metro_mode: tuple[str, str], s
         notes.append(
             "Your plan does not meet these rules of the SYNTHETIC startup program: "
             + "; ".join(failed)
-            + ". The search does not try to repair them (set a lever's bounds to explore that); a change-set is "
-            "never allowed to break a rule your plan meets now."
+            + ". The search does not try to repair them, but it never moves the plan further from them, and a "
+            "change-set is never allowed to break a rule your plan meets now. Each change-set lists the rules its "
+            "changed plan still fails."
         )
     if case.facts.other_debt:
         notes.append(
@@ -488,7 +579,7 @@ def prepare_search(
     metro = fabric or fabric_for(plan.metro_id)
     if metro.metro.id != plan.metro_id:
         raise ValueError(f"the data fabric is for {metro.metro.id}, but the plan is in {plan.metro_id}")
-    metro_mode = metro.mode() if fabric is not None else mode_for(plan.metro_id)
+    metro_mode = mode_of(metro) if fabric is not None else mode_for(plan.metro_id)
     profile = profile_for(plan.profile_id, plan.metro_id)
     metro_inputs = metro.metro_inputs(profile)
     chosen_assumptions = assumptions or default_assumptions()
@@ -574,10 +665,12 @@ def find_paths(
     if confirmer is not None:
         chosen, closest, dropped = confirm(chosen, closest, confirmer)
         notes.append(
-            f"Quick mode: searched with {chosen_settings.n_paths} simulated paths and a coarser grid; every number "
-            f"shown was re-checked with {chosen_settings.confirm_paths} paths ({dropped} change-set(s) dropped "
-            "because they missed a target in the re-check)."
+            f"Searched with {chosen_settings.n_paths} simulated paths; every number shown was re-checked with "
+            f"{chosen_settings.confirm_paths} paths ({dropped} change-set(s) dropped because they missed a target in "
+            "the re-check)."
         )
+    if chosen_settings.mode == "quick":
+        notes.append(quick_note(chosen_settings))
     if before.meets_target:
         status, chosen, closest = "already_meets_target", [], None
     elif chosen:
@@ -596,7 +689,7 @@ def find_paths(
         metro_mode=prepared.metro_mode[0],
         data_label=prepared.data_label,
         status=status,
-        message=explain.status_message(status, len(chosen)),
+        message=explain.status_message(status, len(chosen), search.budget_exhausted, closest is not None),
         target=chosen_target,
         before=before,
         plan_before=space.plan_amounts(plan),
@@ -611,6 +704,7 @@ def find_paths(
         search=SearchStats(
             evaluations=sum(item.evaluations for item in evaluators),
             cache_hits=sum(item.cache_hits for item in evaluators),
+            variants_evaluated=search.variants_evaluated,
             singles_tried=search.singles_tried,
             pairs_screened=search.pairs_screened,
             pairs_searched=search.pairs_searched,

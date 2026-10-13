@@ -25,6 +25,10 @@ How one plan is made (draws always in the same order, so a seed reproduces it):
    CANDIDATE_RENT_QUOTE_SHARE, a rent quote (the metro rent value, or the profile's rent mode when the metro has
    none, times worlds.RENT_FACTOR: the same rule as worlds.draw_plan).
 
+with_synthetic_facts() gives a plan SYNTHETIC founder facts for the evaluation's guardrail check (the headline plans
+carry none, like the S3 worlds): a credit score, months of experience, sometimes a seller note (other debt), and some
+plan figures marked as verified. The search must leave every one of them untouched.
+
 Why anchor on the stressed DSCR and not the plain one: the S3 worlds anchor the plain one-forecast DSCR on 0.6-2.4,
 which is right for checking S3's calibration, but for a business keeping 30 cents of NOI per revenue dollar the
 stress needs a plain DSCR near 3 (targets.py), so almost every S3 world is far from the binding test and the search
@@ -54,7 +58,7 @@ from uwcopilot.studio.feasibility.worlds import (
     draw_plan,
     uniform,
 )
-from uwcopilot.studio.path_to_approval.models import Candidate, PlanCase
+from uwcopilot.studio.path_to_approval.models import Candidate, FounderFacts, OtherDebt, PlanCase
 from uwcopilot.studio.profiles.models import Profile
 
 # Generator parameters (SYNTHETIC; design choices, not data).
@@ -67,6 +71,15 @@ CANDIDATE_RENT_QUOTE_SHARE = 0.5
 ANCHOR_YEAR = 2
 SOURCE = "SYNTHETIC evaluation plan (src/uwcopilot/studio/path_to_approval/synthetic_plans.py)"
 SITE_LABELS: tuple[str, ...] = ("candidate A", "candidate B", "candidate C")
+
+# Founder facts for the guardrail check (with_synthetic_facts; SYNTHETIC generator parameters, design choices).
+FACTS_STREAM = 7  # keeps the facts' random draws apart from the plan's own
+FACTS_CREDIT_SCORE = (600, 800)
+FACTS_EXPERIENCE_MONTHS = (0, 120)
+FACTS_OTHER_DEBT_SHARE = 0.5
+FACTS_OTHER_DEBT_OF_LOAN = (0.02, 0.10)
+FACTS_OTHER_DEBT_MONTHLY_RATE = 0.02  # monthly payment per dollar of proceeds
+FACTS_VERIFIED_SHARE = 0.25
 
 AnchorResult = Literal["demand", "rent_quote", "none"]
 
@@ -234,3 +247,40 @@ def generate_plan(
         profile_id=profile.id, metro_id=metro_id, site_label=SITE_LABELS[0], site=site, plan=plan, loan=loan
     )
     return SyntheticPlan(case, candidates, target, anchored_by, staffing)
+
+
+def typed_fields(case: PlanCase) -> list[str]:
+    """The verifiable plan figures this plan actually holds (an empty figure cannot be verified)."""
+    plan = case.plan
+    optional = {
+        "plan.capex": plan.capex,
+        "plan.price": plan.price,
+        "plan.monthly_rent": plan.monthly_rent,
+        "plan.days_open_per_week": plan.days_open_per_week,
+        "plan.paid_hours_per_month": plan.paid_hours_per_month,
+    }
+    always = ["plan.owner_equity", "loan.amount", "loan.term_months", "site"]
+    return always + [name for name, value in optional.items() if value is not None]
+
+
+def with_synthetic_facts(case: PlanCase, seed: int) -> PlanCase:
+    """The plan with SYNTHETIC founder facts drawn from the seed (see the module docstring).
+
+    A credit score and experience in months (uniform whole numbers), with probability FACTS_OTHER_DEBT_SHARE a
+    seller note whose proceeds are a uniform share of the loan and whose monthly payment is
+    FACTS_OTHER_DEBT_MONTHLY_RATE of them, and each typed plan figure marked as verified with probability
+    FACTS_VERIFIED_SHARE.
+    """
+    rng = np.random.default_rng(np.random.SeedSequence([seed, FACTS_STREAM]))
+    credit_score = int(rng.integers(FACTS_CREDIT_SCORE[0], FACTS_CREDIT_SCORE[1] + 1))
+    experience = int(rng.integers(FACTS_EXPERIENCE_MONTHS[0], FACTS_EXPERIENCE_MONTHS[1] + 1))
+    other_debt = []
+    if rng.uniform() < FACTS_OTHER_DEBT_SHARE:
+        amount = round(case.loan.amount * uniform(rng, FACTS_OTHER_DEBT_OF_LOAN), 2)
+        payment = round(amount * FACTS_OTHER_DEBT_MONTHLY_RATE, 2)
+        other_debt.append(OtherDebt(name="seller note (SYNTHETIC)", amount=amount, monthly_payment=payment))
+    verified = [name for name in typed_fields(case) if rng.uniform() < FACTS_VERIFIED_SHARE]
+    facts = FounderFacts(
+        credit_score=credit_score, experience_months=experience, other_debt=other_debt, verified_fields=verified
+    )
+    return case.model_copy(update={"facts": facts})

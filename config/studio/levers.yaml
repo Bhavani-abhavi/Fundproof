@@ -3,7 +3,9 @@
 #
 # EVERY number in this file is a DESIGN_CHOICE of the project author (how far the search looks by default and how
 # "hard" a change is assumed to be for a founder). None is data and none is a benchmark. The founder can set their
-# own bounds for every lever (for example the most cash they can really add) and can lock any lever.
+# own bounds for every lever (for example the most cash they can really add) and can lock any lever. Locking a dollar
+# lever freezes its amount: no other lever may move it either (space.py), so a lever balanced by a locked amount is
+# not available.
 #
 # A lever is a PLAN CHOICE the founder can make. The loader refuses any lever name that is not in the code's
 # allow-list (levers.LEVER_NAMES): facts (credit score, experience, other debt), assumption ranges, the site's

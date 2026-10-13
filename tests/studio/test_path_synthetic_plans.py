@@ -62,3 +62,17 @@ def test_band_labels_cover_the_target_range() -> None:
     assert band_label(STRESSED_DSCR_TARGET[1]) == "[2.1, 2.6]"
     with pytest.raises(ValueError):
         band_label(3.0)
+
+
+def test_synthetic_facts_are_seeded_and_only_verify_typed_figures() -> None:
+    plan = make("car_wash", 2)
+    first = synthetic_plans.with_synthetic_facts(plan.case, 11)
+    assert first == synthetic_plans.with_synthetic_facts(plan.case, 11)
+    assert first.plan == plan.case.plan and first.loan == plan.case.loan
+    facts = first.facts
+    assert synthetic_plans.FACTS_CREDIT_SCORE[0] <= facts.credit_score <= synthetic_plans.FACTS_CREDIT_SCORE[1]
+    assert set(facts.verified_fields) <= set(synthetic_plans.typed_fields(plan.case))
+    seeds_with_debt = [
+        seed for seed in range(20) if synthetic_plans.with_synthetic_facts(plan.case, seed).facts.other_debt
+    ]
+    assert 0 < len(seeds_with_debt) < 20

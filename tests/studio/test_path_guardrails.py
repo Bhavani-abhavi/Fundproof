@@ -14,6 +14,7 @@ from uwcopilot.studio.path_to_approval import (
     guardrails,
 )
 from uwcopilot.studio.path_to_approval.guardrails import NOT_A_LEVER, apply_changes
+from uwcopilot.studio.path_to_approval.levers import BALANCED_BY
 from uwcopilot.studio.path_to_approval.models import VERIFIABLE_FIELDS
 from uwcopilot.studio.path_to_approval.space import LEVER_WRITES
 
@@ -196,3 +197,42 @@ def test_guardrail_rules_are_listed_on_every_result() -> None:
     result = search(car_wash_case(), settings=FAST)
     assert any("Facts never move" in rule for rule in result.guardrails)
     assert any("not an approval" in rule for rule in result.guardrails)
+
+
+AMOUNT_OF = {
+    "owner_equity": lambda amounts: amounts.owner_equity,
+    "loan_amount": lambda amounts: amounts.loan_amount,
+    "build_out_cost": lambda amounts: amounts.build_out_cost,
+    "working_capital_reserve": lambda amounts: amounts.cash_reserve_at_opening,
+}
+
+
+@pytest.mark.parametrize("locked", sorted(AMOUNT_OF))
+def test_a_locked_dollar_amount_never_moves_through_another_lever(locked: str) -> None:
+    """Regression: a lock only took the lever itself off the list, so the amount still moved through the levers
+    balanced against it (with owner equity locked, the top change-set was "keep $127,500 more cash in reserve,
+    funded by your own cash": equity $600,000 -> $727,500). A lock now freezes the amount, like a bound would."""
+    case = car_wash_case(mode=380.0)
+    result = search(case, [north_lot(380.0)], locked=[locked])
+    before = AMOUNT_OF[locked](result.plan_before)
+    items = result.change_sets + ([result.closest] if result.closest else [])
+    assert items
+    for item in items:
+        assert AMOUNT_OF[locked](item.plan_after) == before
+        assert locked not in {change.lever for change in item.changes}
+    ready = prepared(case, [north_lot(380.0)], locked=[locked])
+    assert ready.space.bounds[locked] == (ready.space.amounts.value_of(locked),) * 2
+    for lever, absorbed_by in BALANCED_BY.items():
+        if absorbed_by == locked:
+            assert "which you locked" in ready.space.not_available[lever]
+
+
+def test_a_lock_is_enforced_even_for_a_change_set_built_by_hand() -> None:
+    """The reserve lever is not available with owner equity locked, and any amounts that would move the locked
+    equity are refused by the bounds check, whichever lever produced them."""
+    ready = prepared(car_wash_case(), locked=["owner_equity"])
+    with pytest.raises(LeverError, match="which you locked"):
+        apply_changes(ready.space, [Change(lever="working_capital_reserve", value=300_000.0)])
+    moved_equity = guardrails.Amounts(equity=650_000.0, loan=1_050_000.0, other=0.0, capex=1_500_000.0)
+    with pytest.raises(OutOfBounds, match="owner_equity"):
+        guardrails.check_amounts(ready.space, moved_equity)

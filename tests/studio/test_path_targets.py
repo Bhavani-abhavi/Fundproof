@@ -4,7 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from uwcopilot.agent.policy_credit import DSCR_MINIMUM, REVENUE_STRESS_MIN_DSCR, REVENUE_STRESS_SHARE
-from uwcopilot.studio.path_to_approval.targets import TARGET_NAMES, custom_target, default_target, describe
+from uwcopilot.studio.path_to_approval.targets import (
+    TARGET_NAMES,
+    custom_target,
+    default_target,
+    describe,
+    uses_lender_stress,
+)
 
 
 def test_default_targets_and_their_sources() -> None:
@@ -36,3 +42,12 @@ def test_describe_names_all_three_targets() -> None:
     lines = describe(default_target())
     assert len(lines) == 3
     assert "1.25" in lines[0] and "20% revenue stress" in lines[1] and "24 months" in lines[2]
+
+
+def test_an_edited_stress_is_described_as_the_founders_own() -> None:
+    assert uses_lender_stress(default_target())
+    for edited in (custom_target(stress_revenue_share=0.1), custom_target(stressed_dscr_min=1.2)):
+        assert not uses_lender_stress(edited)
+        line = describe(edited)[1]
+        assert "after your edited revenue stress" in line and "after the lender's" not in line
+    assert "the lender's 20% revenue stress (NSP-4.2)" in describe(custom_target(p_stressed_min=0.7))[1]

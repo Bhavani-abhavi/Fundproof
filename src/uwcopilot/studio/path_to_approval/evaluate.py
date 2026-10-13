@@ -7,11 +7,14 @@ two variants is then the effect of the change, not luck of the draw, and the aft
 S3's simulate() gives for the changed plan with the same seed (a test checks this).
 
 Outcome of one plan (all simulated, based on stated assumptions):
-- P(year-2 DSCR >= target.dscr_min), each path's DSCR rounded like the lender rounds it (S3 metrics.dscr_by_year);
+- P(year-2 DSCR >= target.dscr_min), each path's DSCR rounded like the lender rounds it (rounded_dscr: the same
+  numbers as S3's metrics.dscr_by_year, computed for all paths at once);
 - P(stressed year-2 DSCR >= target.stressed_dscr_min): the NSP-4.2 revenue stress on every path (revenue lower by
   stress_revenue_share and NOI lower by the same dollars; the same as S3's stress run);
 - P(cash < 0 within target.cash_months months);
 - the lender's base-case ratios (NSP-4.1 and NSP-4.2 on the year-2 P50, the startup program's half-up rounding).
+  These always use the program's own constants (the 20% revenue stress of agent/policy_credit.py), whatever the
+  target says: a founder may edit the stress of the simulated target, but "the lender's check" is the lender's.
 Other debt (a FACT) adds its monthly payment to debt service, net income and cash, and its proceeds to the cash
 at opening (NSP-1.2); without other debt the outcome equals S3's simulate() exactly.
 
@@ -33,17 +36,12 @@ from typing import Any
 
 import numpy as np
 
+from uwcopilot.agent.credit_calculations import coverage_ratio
+from uwcopilot.agent.policy_credit import REVENUE_STRESS_SHARE
 from uwcopilot.agent.policy_startup import half_up, program_ratio, to_decimal
 from uwcopilot.studio.data.fabric_base import FactorValue
 from uwcopilot.studio.feasibility.assumptions import FeasibilityAssumptions
-from uwcopilot.studio.feasibility.metrics import (
-    annual_total,
-    dscr_by_year,
-    p_cash_negative,
-    p_dscr_at_least,
-    percentiles_of,
-    share_at_least,
-)
+from uwcopilot.studio.feasibility.metrics import annual_total, p_cash_negative, percentiles_of, share_at_least
 from uwcopilot.studio.feasibility.model import PathResults, draw, input_values, run_paths
 from uwcopilot.studio.feasibility.result import SIMULATOR_VERSION
 from uwcopilot.studio.feasibility.setup import SimulationSetup, build_setup
@@ -65,6 +63,10 @@ from uwcopilot.studio.profiles.models import Profile
 
 DEFAULT_CACHE_ENTRIES = 20_000
 PROBABILITY_TOLERANCE = 1e-12
+# rounded_dscr: how close to a half cent (ratio x 100 ending in .5) a ratio must be for the exact Python rounding,
+# and the ratio size above which floating-point x 100 is no longer precise enough to trust NumPy's rounding.
+HALF_CENT_TOLERANCE = 1e-6
+LARGE_RATIO = 1e6
 CacheKey = tuple[str, tuple[tuple[str, float | str], ...]]
 
 
@@ -167,6 +169,30 @@ def with_other_debt(paths: PathResults, monthly_payment: float) -> PathResults:
     )
 
 
+def rounded_dscr(paths: PathResults, year: int) -> np.ndarray:
+    """Per path, the year's DSCR rounded to two decimals: exactly the numbers of S3's metrics.dscr_by_year.
+
+    dscr_by_year calls the lender's coverage_ratio (Python's round) once per path, which took about half of a
+    search's run time. Here NumPy divides and rounds every path at once. NumPy rounds by computing ratio x 100,
+    rounding to the nearest whole number and dividing by 100; that can only differ from Python's round when
+    ratio x 100 ends in .5 (within a hair) or the ratio is huge, so those few paths are rounded with coverage_ratio
+    itself. A year without debt service gives NaN, like dscr_by_year. Tests compare both on many ratios and on
+    crafted halves.
+    """
+    noi = annual_total(paths.noi, year)
+    debt = annual_total(paths.debt_service, year)
+    positive = debt > 0
+    ratio = np.full(noi.shape, np.nan)
+    ratio[positive] = noi[positive] / debt[positive]
+    rounded = np.round(ratio, 2)
+    scaled = ratio * 100.0
+    near_half = np.abs(scaled - np.floor(scaled) - 0.5) < HALF_CENT_TOLERANCE
+    exact = positive & (near_half | (np.abs(ratio) >= LARGE_RATIO))
+    for index in np.flatnonzero(exact):
+        rounded[index] = coverage_ratio(float(noi[index]), float(debt[index]))
+    return rounded
+
+
 def stressed_noi_base_case(noi: float, revenue: float, share: float) -> float:
     """NSP-4.2: NOI minus share x revenue, to the cent, in the startup program's exact decimal arithmetic."""
     return half_up(to_decimal(noi) - to_decimal(share) * to_decimal(revenue), 2)
@@ -201,9 +227,9 @@ def outcome_of(
     """The three probabilities and the lender's base-case ratios of one simulated plan."""
     paths = with_other_debt(paths, facts.other_debt_monthly_payment)
     year = target.year
-    p_dscr = p_dscr_at_least(paths, year, target.dscr_min)
+    p_dscr = share_at_least(rounded_dscr(paths, year), target.dscr_min)
     stressed = dataclasses.replace(paths, noi=paths.noi - target.stress_revenue_share * paths.revenue)
-    p_stressed = share_at_least(dscr_by_year(stressed, year), target.stressed_dscr_min)
+    p_stressed = share_at_least(rounded_dscr(stressed, year), target.stressed_dscr_min)
     p_cash = p_cash_negative(paths, target.cash_months)
     noi_p50 = money(percentiles_of(annual_total(paths.noi, year))[1])
     revenue_p50 = money(percentiles_of(annual_total(paths.revenue, year))[1])
@@ -217,7 +243,7 @@ def outcome_of(
         p_cash_negative_within_months=p_cash,
         projected_dscr_base_case=program_ratio(noi_p50, service),
         stressed_dscr_base_case=program_ratio(
-            stressed_noi_base_case(noi_p50, revenue_p50, target.stress_revenue_share), service
+            stressed_noi_base_case(noi_p50, revenue_p50, REVENUE_STRESS_SHARE), service
         ),
         annual_debt_service=service,
         meets_target=all(value == 0.0 for value in missed.values()),

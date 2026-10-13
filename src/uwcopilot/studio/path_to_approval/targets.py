@@ -14,6 +14,10 @@ dollar of revenue, that means a DSCR of about 3, far above 1.25. The startup pro
 1.25 minimum, is the binding test (corpus/programs/northwind_startup_program.md NSP-4.2). A path that only reached
 1.25 would show the founder a plan the lender's own stress test still flags.
 
+Editing: every field can be edited (custom_target). When the stress share or the stressed minimum is edited, the
+second target is the founder's own stress, not the lender's: stress_words() says so in every text, and the lender's
+base-case ratios in the result (Outcome.stressed_dscr_base_case) keep the program's own 20% and 1.00.
+
 The probability levels (0.80, 0.80, 0.10) are design choices written in the build plan (Prompt S5 and the lead
 engineer's decision of 2026-10-13), not lender rules: the SYNTHETIC program tests one base case, not a share of
 simulated futures (NSP-4.4 records simulated probabilities as information only).
@@ -74,11 +78,24 @@ def custom_target(**changes: float | int) -> Target:
     return Target.model_validate({**base.model_dump(), **changes, "sources": sources})
 
 
+def uses_lender_stress(target: Target) -> bool:
+    """True when the stress target uses the program's own stress (NSP-4.2: 20% revenue cut, stressed DSCR 1.00)."""
+    return target.stress_revenue_share == REVENUE_STRESS_SHARE and target.stressed_dscr_min == REVENUE_STRESS_MIN_DSCR
+
+
+def stress_words(target: Target) -> str:
+    """'the lender's 20% revenue stress (NSP-4.2)', or 'your edited revenue stress (a 10% revenue cut)'."""
+    share = f"{target.stress_revenue_share:.0%}"
+    if uses_lender_stress(target):
+        return f"the lender's {share} revenue stress (NSP-4.2)"
+    return f"your edited revenue stress (a {share} revenue cut, not the lender's NSP-4.2 stress)"
+
+
 def describe(target: Target) -> list[str]:
     """The three targets in plain words, in TARGET_NAMES order."""
     return [
         f"P(year-2 DSCR >= {target.dscr_min:.2f}) at least {target.p_dscr_min:.2f}",
-        f"P(year-2 DSCR >= {target.stressed_dscr_min:.2f} after the lender's {target.stress_revenue_share:.0%} revenue "
-        f"stress) at least {target.p_stressed_min:.2f}",
+        f"P(year-2 DSCR >= {target.stressed_dscr_min:.2f} after {stress_words(target)}) at least "
+        f"{target.p_stressed_min:.2f}",
         f"P(cash < 0 within {target.cash_months} months) at most {target.p_cash_negative_max:.2f}",
     ]

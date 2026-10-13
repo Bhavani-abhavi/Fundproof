@@ -31,6 +31,11 @@ def test_main_writes_results_with_provenance(tmp_path, monkeypatch, capsys) -> N
     assert row["facts_moved"] == []
     assert row["s3_check_max_gap"] in (None, 0.0)
     assert report["checks"]["facts_moved"]["count"] == 0
+    assert report["checks"]["facts_variant"]["fields_moved"] == 0
+    assert row["facts_variant_change_sets"] >= 0 and row["facts_variant_moved"] == []
+    assert "path_found_and_program_compliant_rate_full" in report["headline"]
+    assert "two_target_top_change_set_fails_lender_base_case_nsp_4_2" in report["stress_target_effect"]
+    assert "fabric" in report["runtime"]["call_path"]
     assert report["heuristic_vs_brute_force"]["n_plans"] == 1
     assert report["heuristic_vs_brute_force"]["heuristic_missed_a_path"] == 0
     assert set(report["runtime"]) >= {"full", "quick", "quick_repeat_warm_cache"}

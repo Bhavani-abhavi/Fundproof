@@ -1,11 +1,14 @@
 """evaluate.py: common random numbers, agreement with S3's simulate(), other debt, and the outcome cache."""
 
+import numpy as np
 import pytest
 from path_helpers import FAST, METRO, car_wash_case, north_lot, prepared
 
 from uwcopilot.studio.feasibility import load_assumptions, simulate
+from uwcopilot.studio.feasibility.metrics import dscr_by_year
+from uwcopilot.studio.feasibility.model import PathResults
 from uwcopilot.studio.path_to_approval import Change, EvaluationCache, FounderFacts, OtherDebt
-from uwcopilot.studio.path_to_approval.evaluate import plan_hash
+from uwcopilot.studio.path_to_approval.evaluate import plan_hash, rounded_dscr
 from uwcopilot.studio.path_to_approval.guardrails import apply_changes
 from uwcopilot.studio.path_to_approval.targets import default_target
 from uwcopilot.studio.profiles import load_profile
@@ -45,6 +48,44 @@ def test_outcomes_equal_s3_simulate_on_the_changed_plan(changes: list[Change]) -
     )
     assert got == expected
     assert outcome.label == "simulated, based on stated assumptions"
+
+
+def year_two_paths(noi: np.ndarray, debt: np.ndarray) -> PathResults:
+    """Paths whose year-2 NOI and debt service are the given totals (all in month 13, other months zero)."""
+    n = noi.shape[0]
+    empty = np.zeros((n, 24))
+    noi_matrix, debt_matrix = empty.copy(), empty.copy()
+    noi_matrix[:, 12], debt_matrix[:, 12] = noi, debt
+    months = np.full(n, -1)
+    return PathResults(empty, empty, noi_matrix, debt_matrix, empty, empty, np.zeros(n), months, months, months)
+
+
+def test_rounded_dscr_equals_s3s_dscr_by_year_exactly() -> None:
+    """The vectorized rounding gives exactly the numbers of S3's per-path loop, including ratios that end in a half
+    cent (the only place NumPy's rounding and Python's round can disagree) and years without debt service."""
+    rng = np.random.default_rng(7)
+    n = 20_000
+    debt = rng.uniform(1_000.0, 500_000.0, n)
+    ratios = np.concatenate(
+        [
+            rng.uniform(-2.0, 6.0, n // 2),
+            np.round(rng.uniform(0.5, 3.0, n // 2), 3),  # three decimals: many end in 5, the half-cent cases
+        ]
+    )
+    noi = ratios * debt
+    crafted_ratio = np.array([1.245, 1.255, 0.995, 1.005, 2.675, -1.245, 1.25, 3e7])
+    crafted_debt = np.array([12_345.67, 100_000.0, 99_999.99, 7.0, 1.0, 1_000.0, 0.0, 1.0])
+    noi = np.concatenate([noi, crafted_ratio * crafted_debt, [5_000.0]])
+    debt = np.concatenate([debt, crafted_debt, [-1.0]])
+    paths = year_two_paths(noi, debt)
+    expected = dscr_by_year(paths, 2)
+    got = rounded_dscr(paths, 2)
+    assert np.array_equal(got, expected, equal_nan=True)
+    assert np.isnan(got[-1]) and np.isnan(got[-3])
+    # The data really holds cases where plain NumPy rounding differs from the lender's, so the fallback is exercised.
+    finite = debt > 0
+    naive = np.round(noi[finite] / debt[finite], 2)
+    assert not np.array_equal(naive, expected[finite])
 
 
 def test_base_case_ratios_use_the_programs_arithmetic() -> None:

@@ -11,8 +11,9 @@ Inputs:
 Outputs:
 - Outcome: the three probabilities for one plan (simulated, based on stated assumptions) and the lender's
   base-case ratios, plus which targets are missed and by how much.
-- AppliedChange / ChangeSet: what changed, by how much, how hard it is (effort), the before/after outcomes and a
-  plain-language explanation.
+- AppliedChange / ChangeSet: what changed, by how much, how hard it is (effort), what would back each changed
+  figure for a lender (evidence_needed), the program rules the changed plan still fails, the before/after outcomes
+  and a plain-language explanation.
 - PlanAmounts / ProgramChecks: the plan's money before and after, with the startup program's equity and product-limit
   checks (program.py).
 - PathResult: the status ("already_meets_target", "paths_found" or "no_path_within_bounds"), the change-sets, the
@@ -26,7 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from uwcopilot.studio import DISCLAIMER, SIMULATION_LABEL
 from uwcopilot.studio.feasibility.inputs import Loan, Plan, SiteDemand
 
-PATH_ENGINE_VERSION = "studio-path-to-approval-1.0"
+PATH_ENGINE_VERSION = "studio-path-to-approval-1.2"
 FactStatus = Literal["USER_STATED", "VERIFIED"]
 # The plan figures a founder can mark as observed or verified (backed by a document). The search never edits them.
 VERIFIABLE_FIELDS: tuple[str, ...] = (
@@ -154,7 +155,9 @@ class Outcome(Frozen):
     projected_dscr_base_case: float | None = Field(
         description="NSP-4.1 the lender's way: year-2 P50 NOI / projected annual debt service (incl. other debt)"
     )
-    stressed_dscr_base_case: float | None = Field(description="NSP-4.2 revenue stress on the year-2 P50")
+    stressed_dscr_base_case: float | None = Field(
+        description="NSP-4.2 revenue stress on the year-2 P50, always with the program's own 20% (not an edited target)"
+    )
     annual_debt_service: float = Field(description="Year-2 scheduled debt service: the loan's 12 payments + other debt")
     meets_target: bool
     targets_missed: list[str]
@@ -162,15 +165,29 @@ class Outcome(Frozen):
 
 
 class AppliedChange(Frozen):
-    """One lever's change inside a change-set."""
+    """One lever's change inside a change-set.
+
+    to_value is the lever's amount in the changed plan. For a dollar lever it includes the moves of the other dollar
+    levers of the same change-set (more owner equity also lowers the loan), and own_change is the lever's own move.
+    """
 
     lever: str
     label: str
     unit: str
     from_value: float | str
     to_value: float | str
-    effort: float = Field(ge=0)
+    own_change: float | None = Field(
+        default=None, description="Dollar levers only: this lever's own move, USD (to_value - from_value when alone)"
+    )
+    effort: float = Field(ge=0, description="Effort of this lever's own move")
     fields_changed: list[str]
+    evidence_needed: str | None = Field(
+        default=None,
+        description=(
+            "What would back the changed figure for a lender (a quote, bank statements, a new loan request). Until "
+            "it exists, the new figure is a plan change suggested by a simulation, not a quote and not verified."
+        ),
+    )
 
 
 class ProgramChecks(Frozen):
@@ -211,6 +228,13 @@ class ChangeSet(Frozen):
     plan_after: PlanAmounts
     applied_plan: PlanCase = Field(description="The whole plan with the change-set applied ('apply this change')")
     meets_target: bool
+    program_rules_not_met: list[str] = Field(
+        default_factory=list,
+        description="Rules of the SYNTHETIC startup program the changed plan still fails (program.py), in words",
+    )
+    evidence_needed: list[str] = Field(
+        default_factory=list, description="AppliedChange.evidence_needed of every change, in order"
+    )
     explanation: str
     unchanged: str = Field(description="What the change-set leaves alone (facts, assumptions, verified figures)")
 
@@ -230,19 +254,27 @@ class LeverSummary(Frozen):
 
 
 class SearchSettings(Frozen):
-    """How hard the search looks. full = 1,000 paths (the S3 default); quick = fewer paths and a coarser grid."""
+    """How hard the search looks. full = 1,000 paths (the S3 default), 8 grid values per side; quick = the same
+    paths with 4 grid values per side and a smaller budget of evaluated variants (search.QUICK_SETTINGS)."""
 
     mode: Mode = "full"
     n_paths: int = Field(default=1000, ge=50)
     confirm_paths: int | None = Field(
-        default=None, description="Quick mode re-checks what it returns with this many paths (None = no re-check)"
+        default=None, description="Re-check what the search returns with this many paths (None = no re-check)"
     )
     months: int = Field(default=36, ge=24)
     seed: int = 42
     steps_per_side: int = Field(default=8, ge=1, le=50)
     max_results: int = Field(default=3, ge=1, le=10)
     search_pairs: bool = True
-    max_evaluations: int = Field(default=2000, ge=1)
+    max_evaluations: int = Field(
+        default=2000,
+        ge=1,
+        description=(
+            "Budget: the most plan variants one search evaluates, counting the plan itself and every variant whether "
+            "it is simulated or read from the cache (so the answer never depends on what the cache holds)"
+        ),
+    )
 
 
 class SearchStats(Frozen):
@@ -250,6 +282,9 @@ class SearchStats(Frozen):
 
     evaluations: int = Field(description="Plans simulated (cache misses)")
     cache_hits: int
+    variants_evaluated: int = Field(
+        default=0, description="Plan variants the search evaluated, simulated or read from the cache (the budget)"
+    )
     singles_tried: int
     pairs_screened: int
     pairs_searched: int

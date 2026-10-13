@@ -2,12 +2,18 @@
 
 build_lever_space() is called once per search. It reads the plan's money (sources = uses), decides which levers
 apply to this plan, and resolves their bounds. A lever is not available when:
-- the founder locked it;
+- the founder locked it, or it is balanced by a dollar amount the founder locked (levers.BALANCED_BY: "put in more
+  of your own cash" lowers the loan, so a locked loan amount also stops it);
 - it would edit a figure the founder marked as verified (FounderFacts.verified_fields);
 - it does not apply to this business (opening days for a business whose demand is counted per month);
 - it needs an input the plan lacks (opening days need a typed staffing plan, the build-out lever a typed build-out
   cost, the site lever candidates);
 - the config does not list it.
+
+A lock freezes the AMOUNT, not only the lever: a locked dollar lever gets the bounds (current, current), and
+guardrails.check_amounts enforces every dollar lever's bounds whichever lever moves the amount. So a locked owner
+equity cannot grow through the cash-reserve lever either, and a locked cash reserve cannot shrink through "borrow
+less". A lock is never weaker than a bound.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -16,6 +22,7 @@ from dataclasses import dataclass
 from uwcopilot.studio.path_to_approval.errors import GuardrailViolation
 from uwcopilot.studio.path_to_approval.levers import (
     AMOUNT_LEVERS,
+    BALANCED_BY,
     LEVER_NAMES,
     LeverBounds,
     LeverConfig,
@@ -149,6 +156,10 @@ def why_not_available(
         return "not listed in config/studio/levers.yaml"
     if name in locked:
         return "locked by you"
+    absorbed_by = BALANCED_BY.get(name)
+    if absorbed_by in locked and absorbed_by in AMOUNT_LEVERS:
+        label = configs[absorbed_by].label.lower() if absorbed_by in configs else absorbed_by
+        return f"it is balanced by the {label}, which you locked (moving it would also move that amount)"
     verified = sorted(set(LEVER_WRITES[name]) & set(case.facts.verified_fields))
     if verified:
         return f"it would edit {', '.join(verified)}, which you marked as verified; verified figures never move"
@@ -222,6 +233,8 @@ def build_lever_space(
         if numeric and config is not None:
             value = float(current[name])
             resolved[name] = resolve_bounds(name, config, value, amounts.project_cost, user_bounds.get(name))
+            if name in locked_set and name in AMOUNT_LEVERS:
+                resolved[name] = (value, value)  # a locked amount stays put, whichever lever would move it
         if reason is not None:
             not_available[name] = reason
             continue
