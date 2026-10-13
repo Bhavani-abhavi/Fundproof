@@ -323,3 +323,14 @@ studio-paths:  ## Path-to-approval search on SYNTHETIC plans (6 metros x 6 types
 
 studio-paths-test:  ## Path-to-approval tests only (offline)
 	uv run pytest tests/studio -q -k path
+
+# Founder Studio data layers (docs/studio/data_sources.md): Overture places, the HPMS road layer and LODES daytime
+# workers are built by `make studio-data`; these targets check NAICS codes and re-record the layers' test fixtures.
+
+.PHONY: studio-naics studio-layer-fixtures
+
+studio-naics:  ## Check the profiles' NAICS codes against the BLS QCEW industry titles file -> results/studio_naics_check.json
+	uv run python scripts/studio_verify_naics.py
+
+studio-layer-fixtures:  ## Re-record the Overture, LODES, HPMS-page and BLS-title test fixtures (network; never in CI)
+	uv run python tests/studio/fixtures/record_fixtures.py --only overture,lodes,hpms_pages,industry_titles

@@ -8,12 +8,14 @@ Two files:
 
 The mapping rule (CategoryMap.tags_for): walk a place's taxonomy.hierarchy from the most specific category to the
 most general one; the first category with a row decides the place's tags. A row with no tags means "reviewed and not
-counted" and stops the walk. A hierarchy without any row is "unmapped" (None): ignored and counted.
+counted" and stops the walk. A hierarchy without any row is "unmapped" (None): ignored and counted. A row with
+merge_within_miles is a facility row (airport, hospital, university): nearby places it decides are merged into one.
 """
 
 import hashlib
 import re
 from collections.abc import Sequence
+from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -41,6 +43,7 @@ class ReleasePin(StrictModel):
     id: str
     release_date: str
     schema_version: str
+    public_days_max: int = Field(gt=0)
     note: str = Field(min_length=1)
     s3_https_base: str
     bucket: str
@@ -62,6 +65,10 @@ class ReleasePin(StrictModel):
         if not self.s3_https_base.startswith("https://"):
             raise ValueError("s3_https_base must be an https:// URL")
         return self
+
+    def retire_on(self) -> date:
+        """The last day the pin may be used: release_date plus public_days_max (Overture's retention policy)."""
+        return date.fromisoformat(self.release_date) + timedelta(days=self.public_days_max)
 
     @property
     def places_url(self) -> str:
@@ -107,6 +114,7 @@ class LicenseFacts(StrictModel):
     licenses_by_source: dict[str, list[str]]
     attribution: str = Field(min_length=1)
     foursquare_notice_url: str
+    retention: str = Field(min_length=1)
 
 
 class DocSource(StrictModel):
@@ -129,15 +137,31 @@ class OvertureSettings(StrictModel):
     def license_note(self) -> str:
         """The text stored in every Overture SourceRecord.license_note."""
         pages = ", ".join(f"{item.url} (retrieved {item.retrieved_at_utc[:10]})" for item in self.sources[:2])
-        return f"{self.license.summary} Attribution: {self.license.attribution} Read from: {pages}."
+        return (
+            f"{self.license.summary} Attribution: {self.license.attribution} Retention: {self.license.retention} "
+            f"Read from: {pages}."
+        )
 
 
 class MapRow(StrictModel):
-    """One reviewed mapping row: an Overture category and the profile tags it counts as (none = not counted)."""
+    """One reviewed mapping row: an Overture category and the profile tags it counts as (none = not counted).
+
+    merge_within_miles (optional, DESIGN_CHOICE) marks a facility category: one airport, hospital or campus appears
+    in Overture as many places filed under the same category, so places decided by this row that lie within this
+    distance of an already kept place of the row are merged into it (overture_places.merge_facilities).
+    """
 
     category: str
     tags: list[str]
     note: str = Field(min_length=1)
+    merge_within_miles: float | None = Field(default=None, gt=0, le=5)
+
+    @model_validator(mode="after")
+    def merge_needs_tags(self) -> "MapRow":
+        """Only a counted row can merge places (a row with no tags keeps nothing to merge)."""
+        if self.merge_within_miles is not None and not self.tags:
+            raise ValueError(f"row {self.category!r}: merge_within_miles needs tags")
+        return self
 
     @field_validator("category")
     @classmethod
@@ -191,6 +215,10 @@ class CategoryMap(StrictModel):
     def mapped_tags(self) -> set[str]:
         """Every tag at least one row produces."""
         return {tag for row in self.rows for tag in row.tags}
+
+    def merge_distances(self) -> dict[str, float]:
+        """{row category: merge distance in miles} for the facility rows (see MapRow.merge_within_miles)."""
+        return {row.category: row.merge_within_miles for row in self.rows if row.merge_within_miles is not None}
 
     def search_categories(self) -> list[str]:
         """Categories whose rows produce tags (the extraction query keeps places with one of them in the hierarchy)."""

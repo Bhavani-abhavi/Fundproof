@@ -1,7 +1,8 @@
 # Walkthrough: Studio S2, SiteIQ location scoring and "suggest a better area"
 
-Written on 2026-10-12 and updated on 2026-10-13 (API keys became visible), so that both Rahul Vajja and Bhavani
-Adula can explain this phase in their own words.
+Written on 2026-10-12 and updated on 2026-10-13 (API keys became visible; later the same day the real-metro
+snapshots gained places, roads and daytime workers, see S1 walkthrough section 7), so that both Rahul Vajja and
+Bhavani Adula can explain this phase in their own words.
 
 **What S2 is.** SiteIQ answers two questions for a founder: "how good is this address for my kind of business, in
 this metro?" (`score_site`) and "which parts of the metro look better?" (`suggest_areas`). It reads everything
@@ -15,13 +16,14 @@ the demand estimate (low / mode / high bounds plus percentiles 0-100) that the S
   optional OpenRouteService drive-time areas (used only when `ORS_API_KEY` is set and a live client is passed);
   city-license context for Chicago and NYC; a validation on 10 SYNTHETIC cities against hidden true demand with
   bootstrap intervals and two baselines; a sanity table for the five real metros; tests with fixtures only.
-- Not done: no real metro can be scored yet. In the 2026-10-13 snapshots (made with every key set) the ACS and County
-  Business Patterns steps failed with "api.census.gov rejected CENSUS_API_KEY (invalid_key)": Census redirects the
-  key to its Invalid Key page (not activated or mistyped). The POI step failed (overpass-api.de reset every
-  connection), and the road layer is looked up live per site, so there is no metro-wide reference to rank against.
-  The real-metro table therefore says "not measured" and copies each failed snapshot step (`snapshot_steps_not_ok`).
-  Even with ACS data, traffic and POI factors would stay unrankable in a real metro until a snapshot step stores
-  per-tract nearest-road AADT and POI counts (not built yet).
+- Update 2026-10-13: real metros can now rank their tracts for five of the six business types. The rebuilt
+  snapshots hold ACS tract data (api.census.gov accepted the key later on 2026-10-13 after refusing it as invalid_key
+  earlier that day), an Overture places extract, the HPMS road
+  layer and LODES daytime workers, so the metro-wide reference has values for every factor except short-term rental
+  comparables. The real-metro table (section 5) now reports tract counts and score spreads, with no accuracy claim.
+- Still not done: short-term rental cannot be ranked in a real metro (Inside Airbnb coverage not verified, so
+  comparables are UNKNOWN), and every real metro is still in limited mode because its lowest business type
+  (short-term rental, 0.6779 to 0.6826 in `results/studio_metro_coverage.json`) is below the 0.80 threshold.
 - OpenRouteService with a key: one answer was recorded on 2026-10-13 as a test fixture
   (`tests/studio/fixtures/ors/isochrones_houston_recorded.json`, around the Census Geocoder's point for Houston City
   Hall, a public building). Its shape matched the parser, so the drive-time code is now tested against a real answer
@@ -117,10 +119,10 @@ with the largest weight x score, plus a "watch out" when a used factor scores be
   measured the same way (drive-time areas for thousands of reference tracts would cost thousands of requests). When
   `ORS_API_KEY` is set and a live client is passed, the demand estimate uses the 10-minute drive-time area instead
   of the market ring; otherwise the reason for using rings is recorded in `TradeAreaInfo`.
-- **Live layers in real metros.** S1 snapshots store tract tables, not POI or road layers, and road lookups are live
-  per site. `build_reference` therefore measures live layers only at a seeded sample of tract centroids
-  (`live_sample`, default 0). Until a snapshot step stores those layers per tract, real metros cannot be ranked on
-  traffic, competition or anchors, and the result says so.
+- **Stored layers in real metros.** Snapshots now store the places and road layers, so `build_reference` measures
+  them at every tract centroid exactly as at a site (the tests check that SiteIQ's counts equal the per-tract counts
+  the snapshot stores). Only a snapshot without those layers, used with a live client, falls back to live lookups at
+  a seeded sample of tract centroids (`live_sample`, default 0).
 - **The budget cannot filter tracts.** There is no tract-level rent or build-out cost data. The budget is compared
   with the metro rent range and the sum of the profile's capex ranges, and `filters_tracts` is `false`.
 - **Weights unchanged.** The weights are the profiles' DESIGN_CHOICE values. They were not tuned on the SYNTHETIC
@@ -181,17 +183,32 @@ so a negative value means the factor points the wrong way in this world):
 Diagnostic (`diagnostics` in the file): in all 10 cities the share of tract centroids whose nearest road is the
 generator's own local street is 1.0.
 
-Real metros (`real_metro_sanity`, snapshots dated 2026-10-13): all five are in limited mode ("data coverage 0.00 is
-below the threshold 0.80"). For every business type the status is "not measured: no real tract data for this
-business type in the snapshot", with coverage 0.0 (no ACS estimate because Census refused the key; OpenStreetMap
-unreachable; traffic has no per-tract value, only a live per-site lookup, so it no longer counts as covered).
-In every metro `snapshot_steps_not_ok` lists `acs_tracts`, `business_patterns` and `osm_pois` as failed, plus the
-enhancements that are not available yet.
+Real metros (`real_metro_sanity`, rebuilt snapshots dated 2026-10-13, rerun after the S1 section 7 layers were
+added and again after the verify-and-fix pass: second category-map review, airport/hospital/university places merged
+per facility, water-only tracts at 0 jobs): all five are in limited mode ("data coverage 0.68 is below the threshold 0.80"). `snapshot_steps_not_ok` now
+lists only enhancements that are not available (state DOT traffic adapters, Inside Airbnb, and the Dallas, Houston
+and Los Angeles open-data datasets). Tracts ranked per business type, with the score spread (P10 / P50 / P90), counts
+and spread only, no accuracy claim:
 
-The synthetic part took 106.6 s of wall-clock time on a shared 4-CPU machine with other agents running (from
+| Metro (tracts) | Car wash | Laundromat | Motel | Restaurant/cafe | Retail | Short-term rental |
+|---|---|---|---|---|---|---|
+| new_york_ny_nj_pa (4928) | 4731 (33.9 / 49.7 / 67.2) | 4860 (34.3 / 50.7 / 65.1) | 4774 (33.4 / 50.9 / 65.3) | 4705 (34.9 / 49.3 / 65.6) | 4571 (37.0 / 50.4 / 63.7) | not measured |
+| los_angeles_ca (3112) | 3005 (33.5 / 49.7 / 67.0) | 3101 (33.4 / 50.6 / 65.6) | 3005 (33.6 / 50.6 / 66.0) | 3099 (35.1 / 50.8 / 64.4) | 3003 (37.3 / 50.2 / 63.6) | not measured |
+| chicago_il_in (2292) | 2209 (31.9 / 51.1 / 66.7) | 2282 (31.7 / 51.1 / 66.9) | 2209 (32.2 / 51.4 / 66.6) | 2236 (34.0 / 49.6 / 66.5) | 2161 (34.0 / 50.5 / 65.8) | not measured |
+| dallas_fort_worth_tx (1704) | 1543 (32.9 / 49.7 / 67.4) | 1702 (33.4 / 50.4 / 65.9) | 1543 (34.0 / 50.9 / 66.6) | 1702 (32.8 / 50.5 / 66.3) | 1542 (35.4 / 50.9 / 66.6) | not measured |
+| houston_tx (1615) | 1389 (33.1 / 49.8 / 66.2) | 1606 (34.6 / 50.1 / 64.9) | 1389 (35.0 / 51.2 / 66.0) | 1597 (32.9 / 50.1 / 67.4) | 1376 (36.7 / 51.6 / 65.0) | not measured |
+
+Scores are rounded to one decimal here from the file. Tracts that are not ranked are excluded with the reason in the
+file (`excluded`): mostly no HPMS segment within 0.5 miles of the centroid (car wash, motel, retail), a market ring
+that includes a tract without a LODES value (restaurant, retail; 164 tracts in New York, which equals the share the
+coverage report gives for daytime workers) or without a published ACS median income. Short-term rental is "not measured: no tract could be ranked" because comparables are UNKNOWN in
+every tract. Before this update the same table said "not measured" for every metro and business type.
+
+The synthetic part took 125.6 s of wall-clock time on a shared 4-CPU machine with other agents running (from
 `method.elapsed_seconds_synthetic_part`); it is not a benchmark. Re-running the script on 2026-10-13 gave the same
 `by_business_type` block value for value as the 2026-10-12 run (fixed seeds), including the rerun after the
-verify-and-fix pass. The results now pin each real-metro snapshot by the SHA-256 of its files
+verify-and-fix pass, the rerun after the real-metro layers were added and the rerun after their verify-and-fix pass
+(`by_business_type` and `diagnostics` compared as JSON: identical). The results now pin each real-metro snapshot by the SHA-256 of its files
 (`snapshot_fingerprint`), matching `results/studio_metro_coverage.json`.
 
 ## 6. What the results say
@@ -216,11 +233,10 @@ verify-and-fix pass. The results now pin each real-metro snapshot by the SHA-256
 
 ## 7. Limitations and open issues
 
-- Real metros cannot be scored until a snapshot holds ACS tract data (the 2026-10-13 snapshot's ACS step got an HTML
-  page instead of data although `CENSUS_API_KEY` was set, and a direct request on 2026-10-13 was redirected to the
-  Census `invalid_key.html` page, so the key needs checking), a POI layer (overpass-api.de unreachable here) and a
-  per-tract road layer (a new snapshot step: sample tract centroids and store their nearest-road AADT and place
-  counts).
+- Real metros: short-term rental cannot be ranked (no comparables source). The metro-wide "limited mode" (the lowest
+  business type decides) is shown as a note on every result, also for the five types that can be ranked; a
+  per-business-type mode is an open design question. The resolved items (ACS data, a places layer, a per-tract road
+  layer, daytime workers) are described in the S1 walkthrough, section 7.
 - Drive-by businesses need a "busiest road within a frontage distance" measure for area suggestions; the fabric only
   offers the nearest road. This needs a small S1 fabric extension (all segments within a radius). Caution: the
   generator's car-wash truth already uses "the highest AADT within 0.3 miles", so after such a change the synthetic

@@ -55,6 +55,11 @@ class SyntheticFabric(DataFabric):
         self.poi_lats = np.array([poi.lat for poi in self.city.pois])
         self.poi_lons = np.array([poi.lon for poi in self.city.pois])
 
+    @property
+    def point_layers_local(self) -> bool:
+        """The generated city's places and roads are in memory."""
+        return True
+
     def mode(self, profiles: dict[str, Profile] | None = None) -> tuple[MetroMode, str]:
         return metro_mode(self.metro, None)
 

@@ -6,7 +6,13 @@ model uses (key, key=* or key=value with a restricted character set), so a tag c
 
 OpenStreetMap data is (c) OpenStreetMap contributors; the license and the attribution wording to show are to verify
 at https://www.openstreetmap.org/copyright. overpass-api.de reset connections from this build environment on
-2026-10-12, so the tests use a hand-written fixture.
+2026-10-12 and 2026-10-13, so the tests use a hand-written fixture.
+
+This connector is OPTIONAL. The default place source is the Overture Maps places extract stored in each snapshot
+(overture_places.py, places_layer.py): it is reachable from here, one pinned release makes it reproducible, and a
+metro-wide extract gives the per-tract counts the metro-wide ranking needs, which per-site Overpass queries cannot.
+SnapshotFabric falls back to this connector only for a snapshot without a places layer, and only with a live client;
+`make studio-data` checks Overpass only with --with-overpass.
 """
 
 from dataclasses import dataclass, field

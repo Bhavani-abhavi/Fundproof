@@ -125,6 +125,14 @@ class FactorCoverage(BaseModel):
         description="True when the layer has no per-tract values but can be looked up live for one site (a real "
         "metro's road or POI layer). Such a layer is UNKNOWN for ranking tracts and counts 0 in the coverage share",
     )
+    definition_share: float = Field(
+        default=1.0,
+        ge=0,
+        le=1,
+        description="Share of the factor's definition the data can measure: for a place factor, the share of its "
+        "tag filters that the places layer maps (Overture has no category for some OpenStreetMap tags). The "
+        "coverage share counts share_of_tracts x definition_share",
+    )
     source: str | None
     freshness: str | None
     reason: str
@@ -141,14 +149,18 @@ def required_factors(profile: Profile) -> dict[str, float]:
 def coverage_share(rows: list[FactorCoverage]) -> float:
     """Weighted share of the profile's factors backed by data (DATA or SYNTHETIC); ASSUMPTION and UNKNOWN count 0.
 
-    Demand-only inputs (weight 0) count with the average weight, so a missing demand input still lowers the score.
+    A factor backed by data counts share_of_tracts x definition_share (a place factor whose tag filters are only
+    partly mapped counts that part). Demand-only inputs (weight 0) count with the average weight, so a missing
+    demand input still lowers the score.
     """
     if not rows:
         return 0.0
     positive = [row.weight for row in rows if row.weight > 0]
     fallback = sum(positive) / len(positive) if positive else 1.0
     weights = [row.weight if row.weight > 0 else fallback for row in rows]
-    covered = [row.share_of_tracts if row.status in ("DATA", "SYNTHETIC") else 0.0 for row in rows]
+    covered = [
+        row.share_of_tracts * row.definition_share if row.status in ("DATA", "SYNTHETIC") else 0.0 for row in rows
+    ]
     return float(sum(w * c for w, c in zip(weights, covered, strict=True)) / sum(weights))
 
 
@@ -161,6 +173,12 @@ class DataFabric(ABC):
     def data_label(self) -> Literal["PUBLIC", "SYNTHETIC"]:
         """PUBLIC for a real metro, SYNTHETIC for the generated one."""
         return self.metro.data_label
+
+    @property
+    def point_layers_local(self) -> bool:
+        """True when sites_near and nearest_road answer without the network (so SiteIQ can measure them at every
+        tract centroid of the metro for its reference distributions). Implementations override it."""
+        return False
 
     @abstractmethod
     def mode(self, profiles: dict[str, Profile] | None = None) -> tuple[MetroMode, str]:

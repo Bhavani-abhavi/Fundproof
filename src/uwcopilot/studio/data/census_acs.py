@@ -8,8 +8,8 @@ answer is never cached (http.PoliteClient `accept`), so a fixed key works on the
 endpoint (variables/<id>.json) answers without a key, so verify_variables() can check that every variable below
 still means what this module says before a snapshot uses it.
 
-Daytime workers are NOT in these tables: the ACS tract tables count residents. A daytime-population source (for
-example the Census LEHD origin-destination files) is not built yet, so `daytime_workers` stays UNKNOWN for real metros.
+Daytime workers are NOT in these tables: the ACS tract tables count residents. They come from the Census LEHD LODES
+workplace files instead (lodes.py, the snapshot's lehd_daytime_workers step).
 
 Census marks unavailable estimates with large negative codes. Every variable used here is a count or a dollar amount
 that cannot be negative, so any negative value is read as "no estimate" (None), never as a number.

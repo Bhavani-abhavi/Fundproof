@@ -51,6 +51,27 @@ def point_to_polyline_miles(lat: float, lon: float, line: list[tuple[float, floa
     return best
 
 
+def point_to_segments_miles(
+    lat: float, lon: float, lat1: np.ndarray, lon1: np.ndarray, lat2: np.ndarray, lon2: np.ndarray
+) -> np.ndarray:
+    """Distances in miles from one point to many straight pieces (start and end arrays of degrees).
+
+    The same math as point_to_polyline_miles, for many pieces at once: a local flat projection around the point,
+    then the distance from the origin to each piece, with the projection clamped to the piece's ends.
+    """
+    miles_per_degree_lat = math.radians(1.0) * EARTH_RADIUS_MILES
+    miles_per_degree_lon = miles_per_degree_lat * math.cos(math.radians(lat))
+    x1 = (np.asarray(lon1, dtype=float) - lon) * miles_per_degree_lon
+    y1 = (np.asarray(lat1, dtype=float) - lat) * miles_per_degree_lat
+    dx = (np.asarray(lon2, dtype=float) - lon) * miles_per_degree_lon - x1
+    dy = (np.asarray(lat2, dtype=float) - lat) * miles_per_degree_lat - y1
+    length_sq = dx * dx + dy * dy
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = np.where(length_sq > 0, -(x1 * dx + y1 * dy) / length_sq, 0.0)
+    t = np.clip(t, 0.0, 1.0)
+    return np.hypot(x1 + t * dx, y1 + t * dy)
+
+
 def distance_to_segment(x1: float, y1: float, x2: float, y2: float) -> float:
     """Distance from the origin (0, 0) to the segment from (x1, y1) to (x2, y2), in the same units."""
     dx, dy = x2 - x1, y2 - y1

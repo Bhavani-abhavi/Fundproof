@@ -1,7 +1,7 @@
 """Overture Maps places for one metro: competitors, anchors and tourism places as a small, cached point extract.
 
     extract = extract_metro_places(client, "houston_tx", bbox)
-    extract.payload["rows"]   # [[lon, lat, confidence, [tag index], category index, dataset index, license index]]
+    extract.payload["rows"]   # [[lon, lat, confidence, [tag index], category index, dataset index, licenses index]]
     extract.record            # SourceRecord: release, query, SHA-256 of the extract, request date, license note
 
 What happens:
@@ -10,31 +10,38 @@ What happens:
 2. DuckDB reads the files over HTTPS with predicate pushdown on the bbox columns (duckdb_http.py), twice:
    - path counts: how many places of each category path are in the bounding box, with and without enough
      confidence and by operating status (for the accounting: mapped, unmapped, filtered);
-   - places: the coordinates, category, confidence and first source's dataset and license of every place whose
-     hierarchy contains a mapped category, above the confidence threshold and not permanently closed.
+   - places: the coordinates, category, confidence, the first source's dataset and the licenses of ALL the place's
+     sources of every place whose hierarchy contains a mapped category, above the confidence threshold and not
+     permanently closed. Every place lists its provider first and then Overture's own contributions (datasets
+     "Overture" and "Overture-signals", CDLA-Permissive-2.0), so the stored license string is the sorted set of all
+     its sources' licenses joined with "+" (for example "Apache-2.0+CDLA-Permissive-2.0"), not one license.
 3. Each place gets its profile tags from the reviewed mapping (overture_config.CategoryMap.tags_for). Places whose
    most specific mapped category is "not counted" are dropped. The number kept must equal the accounting's number.
+   Then facility rows (merge_within_miles: airport, hospital, university) merge places of one facility into one
+   (merge_facilities), because Overture files many places of one airport or campus under the same category.
 4. The extract is stored in the response cache (data/studio/cache) with its SHA-256 and the request date, under a key
-   made of the release, the files' ETags, the bounding box, the settings and the mapping file's SHA-256, so the same
-   extract is reused until one of them changes (or --refresh).
+   made of the release, the files' ETags, the bounding box, the settings, the mapping file's SHA-256 and the code's
+   own version (FORMAT, RULES_VERSION and the SHA-256 of the two queries), so the same extract is reused until one of
+   them changes (or --refresh). Rows are sorted on every stored field, so the same inputs give the same bytes.
 
-Only category, coordinates, confidence, the dataset name and its license are read; names, ids, addresses, phones
+Only category, coordinates, confidence, the dataset name and the licenses are read; names, ids, addresses, phones
 and websites are never read. The reader is injectable (PlacesReader) so tests run on local files without a network.
 """
 
 import json
-import re
 import xml.etree.ElementTree as ElementTree
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Protocol
+
+import numpy as np
 
 from uwcopilot.studio.data import duckdb_http
 from uwcopilot.studio.data.cache import CachedResponse, request_key, sha256_bytes
-from uwcopilot.studio.data.errors import HostUnreachable, UpstreamError
-from uwcopilot.studio.data.geo import miles_to_degrees
+from uwcopilot.studio.data.errors import HostUnreachable, NotAvailable, UpstreamError
+from uwcopilot.studio.data.geo import haversine_miles_array, miles_to_degrees
 from uwcopilot.studio.data.http import FetchResult, PoliteClient
 from uwcopilot.studio.data.overture_config import (
     CATEGORY_MAP_FILE,
@@ -48,7 +55,11 @@ from uwcopilot.studio.data.provenance import SourceRecord
 
 SOURCE_ID = "overture_places"
 PUBLISHER = "Overture Maps Foundation"
-FORMAT = "studio-overture-places-v1"
+FORMAT = "studio-overture-places-v2"
+# Bump when a rule in this file that shapes the extract changes (tag_places, merge_facilities, account, the payload);
+# it is part of the cache key, so a changed rule never reuses an extract made by the old one.
+RULES_VERSION = "2026-10-13.2"
+LICENSE_RULE = "licenses of all the place's sources, sorted, joined with '+'"
 COLUMNS: tuple[str, ...] = ("lon", "lat", "confidence", "tags", "category", "dataset", "license")
 S3_NAMESPACE = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 UNMAPPED_EXAMPLES = 15
@@ -110,7 +121,7 @@ class PathCount:
 
 @dataclass(frozen=True)
 class PlaceRow:
-    """One place as read (no name, no id, no address)."""
+    """One place as read (no name, no id, no address). license: every source's license (LICENSE_RULE)."""
 
     hierarchy: tuple[str, ...]
     lon: float
@@ -145,7 +156,8 @@ PATH_COUNTS_SQL = (
 )
 PLACES_SQL = (
     "SELECT taxonomy.hierarchy AS hierarchy, bbox.xmin AS lon, bbox.ymin AS lat, confidence, "
-    "sources[1].dataset AS dataset, sources[1].license AS license "
+    "sources[1].dataset AS dataset, "
+    "array_to_string(list_sort(list_distinct(list_transform(sources, s -> s.license))), '+') AS license "
     f"FROM read_parquet(?) WHERE {BOX_FILTER} "
     "AND confidence >= ? AND (operating_status IS NULL OR NOT list_contains(?, operating_status)) "
     "AND list_has_any(taxonomy.hierarchy, ?)"
@@ -183,7 +195,7 @@ class DuckDbPlacesReader:
         finally:
             connection.close()
         return [
-            PlaceRow(as_path(row[0]) or (), float(row[1]), float(row[2]), float(row[3]), row[4], row[5])
+            PlaceRow(as_path(row[0]) or (), float(row[1]), float(row[2]), float(row[3]), row[4], row[5] or None)
             for row in rows
         ]
 
@@ -256,10 +268,16 @@ class Accounting:
     mapped_below_confidence: int = 0
     mapped_excluded_status: int = 0
     kept: int = 0
+    merged_into_facility: int = 0
     unmapped_categories: Counter = field(default_factory=Counter)
+    merged_by_row: Counter = field(default_factory=Counter)
 
     def as_json(self) -> dict[str, Any]:
-        """The counts, plus the number of distinct unmapped categories and the most frequent ones."""
+        """The counts, plus the number of distinct unmapped categories and the most frequent ones.
+
+        kept counts the places that pass the filters; stored = kept - merged_into_facility is the number of rows
+        in the extract (facility places merged into a kept place of the same facility row are not stored).
+        """
         return {
             "places_in_bbox": self.places_in_bbox,
             "without_taxonomy": self.without_taxonomy,
@@ -271,6 +289,9 @@ class Accounting:
             "mapped_below_confidence": self.mapped_below_confidence,
             "mapped_excluded_status": self.mapped_excluded_status,
             "kept": self.kept,
+            "merged_into_facility": self.merged_into_facility,
+            "merged_by_row": dict(sorted(self.merged_by_row.items())),
+            "stored": self.kept - self.merged_into_facility,
         }
 
 
@@ -301,7 +322,7 @@ def account(counts: Sequence[PathCount], cmap: CategoryMap, excluded_status: Seq
 
 @dataclass(frozen=True)
 class TaggedPlace:
-    """A kept place with its profile tags."""
+    """A kept place with its profile tags. row: the category of the mapping row that decided its tags."""
 
     lon: float
     lat: float
@@ -310,27 +331,64 @@ class TaggedPlace:
     category: str
     dataset: str
     license: str
+    row: str = ""
+
+    def sort_key(self) -> tuple:
+        """Every stored field, so the order (and the extract's bytes) never depends on the order rows were read."""
+        return (self.lat, self.lon, self.category, self.confidence, self.dataset, self.license, self.tags, self.row)
 
 
 def tag_places(rows: Sequence[PlaceRow], cmap: CategoryMap) -> list[TaggedPlace]:
     """The rows that the mapping counts, with their tags (rows whose deciding row has no tags are dropped)."""
     kept = []
     for row in rows:
-        tags = cmap.tags_for(row.hierarchy)
-        if tags:
+        decided = cmap.match(row.hierarchy)
+        if decided is not None and decided.tags:
             kept.append(
                 TaggedPlace(
                     lon=round(row.lon, 6),
                     lat=round(row.lat, 6),
                     confidence=round(row.confidence, 3),
-                    tags=tags,
+                    tags=tuple(decided.tags),
                     category=row.hierarchy[-1],
                     dataset=row.dataset or "unknown",
                     license=row.license or "unknown",
+                    row=decided.category,
                 )
             )
-    kept.sort(key=lambda item: (item.lat, item.lon, item.category, item.confidence))
+    kept.sort(key=TaggedPlace.sort_key)
     return kept
+
+
+def merge_facilities(places: Sequence[TaggedPlace], cmap: CategoryMap) -> tuple[list[TaggedPlace], Counter]:
+    """Merge the places of one facility (rows with merge_within_miles) into one kept place.
+
+    Rule, per facility row: take its places from the highest confidence down (ties in sort_key order); a place within
+    the row's merge distance (great-circle miles) of a place already kept for that row is merged into it, otherwise
+    it is kept. Kept places are never chained, so two kept places of a row are always more than the distance apart.
+    Returns (the places to store, sorted; {row category: places merged}).
+    """
+    distances = cmap.merge_distances()
+    merged: Counter = Counter()
+    result = [place for place in places if place.row not in distances]
+    for row_category, miles in sorted(distances.items()):
+        members = sorted(
+            (place for place in places if place.row == row_category),
+            key=lambda place: (-place.confidence, place.sort_key()),
+        )
+        kept_lats: list[float] = []
+        kept_lons: list[float] = []
+        for place in members:
+            if kept_lats:
+                to_kept = haversine_miles_array(place.lat, place.lon, np.array(kept_lats), np.array(kept_lons))
+                if float(to_kept.min()) <= miles:
+                    merged[row_category] += 1
+                    continue
+            kept_lats.append(place.lat)
+            kept_lons.append(place.lon)
+            result.append(place)
+    result.sort(key=TaggedPlace.sort_key)
+    return result, merged
 
 
 def index_of(table: list[str], value: str) -> int:
@@ -347,8 +405,9 @@ def build_payload(
     cmap: CategoryMap,
     bbox: BBox,
     map_sha256: str,
+    data_label: str = "PUBLIC",
 ) -> dict[str, Any]:
-    """The extract as stored: string tables plus one compact row per place."""
+    """The extract as stored: string tables plus one compact row per place (data_label SYNTHETIC for test data)."""
     tags: list[str] = sorted(cmap.mapped_tags())
     categories: list[str] = []
     datasets: list[str] = []
@@ -367,16 +426,18 @@ def build_payload(
     ]
     return {
         "format": FORMAT,
-        "data_label": "PUBLIC",
+        "data_label": data_label,
         "release": settings.release.id,
         "schema_version": settings.release.schema_version,
         "bbox": bbox.as_list(),
         "min_confidence": settings.extract.min_confidence.value,
         "exclude_operating_status": list(settings.extract.exclude_operating_status.values),
         "category_map_sha256": map_sha256,
+        "merge_within_miles": dict(sorted(cmap.merge_distances().items())),
         "mapped_tags": tags,
         "unmapped_profile_tags": {item.tag: item.reason for item in cmap.unmapped_profile_tags},
         "accounting": accounting.as_json(),
+        "license_rule": LICENSE_RULE,
         "kept_by_license": dict(Counter(place.license for place in places)),
         "kept_by_dataset": dict(Counter(place.dataset for place in places)),
         "tags": tags,
@@ -403,6 +464,9 @@ def extract_key(settings: OvertureSettings, files: Sequence[ReleaseFile], bbox: 
     """The public facts the extract depends on (they form its cache key and its SourceRecord params)."""
     etags = sha256_bytes("\n".join(f"{item.key} {item.etag} {item.size}" for item in files).encode("utf-8"))
     return {
+        "format": FORMAT,
+        "rules_version": RULES_VERSION,
+        "queries_sha256": sha256_bytes(f"{PATH_COUNTS_SQL}\n{PLACES_SQL}".encode()),
         "release": settings.release.id,
         "files": str(len(files)),
         "files_etag_sha256": etags,
@@ -413,6 +477,17 @@ def extract_key(settings: OvertureSettings, files: Sequence[ReleaseFile], bbox: 
     }
 
 
+def check_retention(settings: OvertureSettings, today: date) -> None:
+    """NotAvailable once the pinned release is past Overture's public window (license.retention in the config)."""
+    retire_on = settings.release.retire_on()
+    if today > retire_on:
+        raise NotAvailable(
+            f"the pinned Overture release {settings.release.id} is past Overture's {settings.release.public_days_max}-"
+            f"day public window (last day {retire_on.isoformat()}); move the pin in config/studio/overture_places.yaml "
+            "and re-make the extracts (old extracts are not reused; see license.retention)"
+        )
+
+
 def extract_metro_places(
     client: PoliteClient,
     metro_id: str,
@@ -421,9 +496,14 @@ def extract_metro_places(
     settings: OvertureSettings | None = None,
     cmap: CategoryMap | None = None,
     map_sha256: str | None = None,
+    today: date | None = None,
 ) -> PlacesExtract:
-    """The metro's places extract: from the cache when the same extract was made before, else built with DuckDB."""
+    """The metro's places extract: from the cache when the same extract was made before, else built with DuckDB.
+
+    Refused (NotAvailable) after the pinned release's public window (check_retention); today defaults to the UTC date.
+    """
     settings = settings or load_settings()
+    check_retention(settings, today or datetime.now(UTC).date())
     cmap = cmap or load_category_map()
     map_sha256 = map_sha256 or file_sha256(CATEGORY_MAP_FILE)
     files, listing = list_release_files(client, settings)
@@ -490,6 +570,9 @@ def build_extract_body(
             "overturemaps-us-west-2",
             f"inconsistent answers: {len(places)} places read but the path counts say {accounting.kept}",
         )
+    places, merged = merge_facilities(places, cmap)
+    accounting.merged_by_row = merged
+    accounting.merged_into_facility = sum(merged.values())
     payload = build_payload(places, accounting, settings, cmap, bbox, map_sha256)
     return (json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
 
@@ -498,13 +581,13 @@ def summary(payload: dict[str, Any]) -> str:
     """One line for the snapshot step's detail: what was kept, filtered and ignored, and the licenses."""
     counts = payload["accounting"]
     licenses = ", ".join(f"{name} {n}" for name, n in sorted(payload["kept_by_license"].items()))
+    merged = ", ".join(f"{name} {n}" for name, n in counts.get("merged_by_row", {}).items()) or "none"
     return (
         f"release {payload['release']}: {counts['places_in_bbox']} places in the bbox; kept {counts['kept']} "
         f"(mapped {counts['mapped']}, below confidence {counts['mapped_below_confidence']}, closed "
-        f"{counts['mapped_excluded_status']}); not counted by a reviewed row {counts['not_counted_by_row']}; "
-        f"unmapped {counts['unmapped']} in {counts['unmapped_distinct_categories']} categories (ignored); "
-        f"no taxonomy {counts['without_taxonomy']}; licenses of kept places: {licenses}"
+        f"{counts['mapped_excluded_status']}); merged into a facility {counts.get('merged_into_facility', 0)} "
+        f"({merged}), stored {counts.get('stored', counts['kept'])}; not counted by a reviewed row "
+        f"{counts['not_counted_by_row']}; unmapped {counts['unmapped']} in {counts['unmapped_distinct_categories']} "
+        f"categories (ignored); no taxonomy {counts['without_taxonomy']}; licenses of stored places "
+        f"({payload.get('license_rule', 'first source')}): {licenses}"
     )
-
-
-RELEASE_PATTERN = re.compile(r"^release/(\d{4}-\d{2}-\d{2}\.\d+)/")

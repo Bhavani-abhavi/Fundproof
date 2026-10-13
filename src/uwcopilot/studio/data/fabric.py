@@ -27,9 +27,10 @@ Where the code lives: the interface and value types in fabric_base.py, and two i
   the app, the tests and the S2/S3 validations until real snapshots exist.
 - SnapshotFabric (fabric_snapshot.py): a real metro read from its newest snapshot under
   data/studio/snapshots/<metro id>/ (written by `make studio-data METRO=<id>`, see snapshot.py). Without a snapshot
-  every factor is UNKNOWN and the metro runs in limited mode. Site-level lookups (HPMS roads, OpenStreetMap POIs) are
-  made live through a PoliteClient only when one is passed in (`live=`); otherwise they are UNKNOWN. City license
-  data (city_open_data.py) is a per-site enhancement that S2 can call directly; the fabric does not wrap it yet.
+  every factor is UNKNOWN and the metro runs in limited mode. Places (Overture Maps) and roads (HPMS) are answered from
+  the layers the snapshot stores; only when a snapshot lacks them, and a PoliteClient is passed in (`live=`), are they
+  looked up live per site (OpenStreetMap Overpass, HPMS FeatureServer). City license data (city_open_data.py) is a
+  per-site enhancement that S2 can call directly; the fabric does not wrap it yet.
 """
 
 from functools import lru_cache

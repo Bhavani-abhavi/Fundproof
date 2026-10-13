@@ -20,8 +20,10 @@ from typing import Literal
 import numpy as np
 
 from uwcopilot.studio.data.geo import haversine_miles_array, miles_to_degrees
-from uwcopilot.studio.metros.models import MetroConfig
-from uwcopilot.studio.profiles.models import Profile
+from uwcopilot.studio.metros.rings import near_and_market, scaled_rings
+
+# scaled_rings and near_and_market live in metros/rings.py (the data layer uses them too); re-exported for SiteIQ.
+__all__ = ["Area", "circle_polygon", "drive_time_area", "near_and_market", "ring_area", "scaled_rings"]
 
 # Drive-time minutes asked from OpenRouteService (near, market, outer). A design choice, not a fact.
 DRIVE_MINUTES: tuple[int, ...] = (5, 10, 15)
@@ -53,17 +55,6 @@ class Area:
         if self.kind == "ring":
             return inside
         return inside & points_in_polygon(lats, lons, self.polygon)
-
-
-def scaled_rings(profile: Profile, metro: MetroConfig) -> tuple[float, ...]:
-    """The profile's rings times the metro's ring multiplier, in miles."""
-    multiplier = metro.trade_area.ring_multiplier
-    return tuple(round(ring * multiplier, 3) for ring in profile.design.trade_area_rings_miles)
-
-
-def near_and_market(rings: tuple[float, ...]) -> tuple[float, float]:
-    """(near ring, market ring): the first ring and the middle ring."""
-    return rings[0], rings[len(rings) // 2]
 
 
 def miles_label(miles: float) -> str:

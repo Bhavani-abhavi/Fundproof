@@ -8,8 +8,15 @@ display_name: Laundromat
 naics:
   - code: "812310"
     title: Coin-operated laundries and drycleaners
-    verified: false
-    note: Written from the author's knowledge; confirm against the Census NAICS reference (https://www.census.gov/naics/).
+    verified: true
+    verification:
+      publisher: U.S. Bureau of Labor Statistics, Quarterly Census of Employment and Wages
+      list_name: QCEW industry titles (industry_titles.csv)
+      url: https://data.bls.gov/cew/doc/titles/industry/industry_titles.csv
+      retrieved_at_utc: "2026-10-13T14:31:09+00:00"
+      sha256: facc122ef582f3efdbb5294f103331894d8fdab694de38e4ee7bff1b941ab8e1
+      published_title: NAICS 812310 Coin-operated laundries and drycleaners
+    note: Code and title found in the BLS QCEW industry titles list (scripts/studio_verify_naics.py -> results/studio_naics_check.json). The list confirms the code exists with this title; choosing it for this business type is the author's judgement.
 
 demand_unit: machine turns/day
 demand:

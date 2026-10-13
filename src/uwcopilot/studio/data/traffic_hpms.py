@@ -21,6 +21,13 @@ HOST = "geo.dot.gov"
 DEFAULT_YEAR = 2024
 METERS_PER_MILE = 1609.344
 OUT_FIELDS = "route_id,routename,aadt,f_system,data_year,begin_point,end_point"
+# County downloads (road_layer.py): the fields kept, the page size (the layer's maxRecordCount, read from the layer's
+# metadata on 2026-10-13) and a shape simplification of 0.0001 degrees (about 11 m), a design choice that keeps the
+# download small; it moves a shape by less than the 0.5-mile search distance cares about.
+COUNTY_FIELDS = "route_id,routename,aadt,f_system,data_year"
+PAGE_SIZE = 2000
+SIMPLIFY_DEGREES = "0.0001"
+MAX_PAGES_PER_COUNTY = 1000
 SOURCE = SourceInfo(
     source_id="fhwa_hpms",
     publisher="U.S. Federal Highway Administration",
@@ -148,6 +155,70 @@ def nearest_road(
     segment, distance = nearest_segment(parse_segments(fetched.json()), lat, lon)
     record = SOURCE.record(fetched, vintage=f"HPMS {year}", geography=f"{lat:.5f},{lon:.5f}")
     return NearestRoad(segment=segment, distance_miles=distance, source=record)
+
+
+def county_segments_request(county_fips: str, offset: int, page_size: int = PAGE_SIZE) -> dict[str, str]:
+    """Query parameters for one page of a county's segments with AADT > 0, as GeoJSON, in a stable order."""
+    params = county_count_request(county_fips)
+    params.pop("returnCountOnly")
+    params.update(
+        {
+            "outFields": COUNTY_FIELDS,
+            "returnGeometry": "true",
+            "outSR": "4326",
+            "geometryPrecision": "5",
+            "maxAllowableOffset": SIMPLIFY_DEGREES,
+            "orderByFields": "objectid",
+            "resultOffset": str(offset),
+            "resultRecordCount": str(page_size),
+            "f": "geojson",
+        }
+    )
+    return params
+
+
+def more_pages(data: dict[str, Any]) -> bool:
+    """True when the server says the page was cut at the record limit (exceededTransferLimit)."""
+    flag = data.get("exceededTransferLimit")
+    if flag is None:
+        flag = (data.get("properties") or {}).get("exceededTransferLimit")
+    return bool(flag)
+
+
+@dataclass(frozen=True)
+class CountySegments:
+    """Every segment with AADT of one county, the provenance of each page, and the segments skipped (no shape)."""
+
+    state: str
+    county_fips: str
+    segments: list[RoadSegment]
+    page_of_segment: list[int]
+    records: list[SourceRecord]
+    features_read: int
+
+
+def fetch_county_segments(
+    client: PoliteClient, state: str, county_fips: str, year: int = DEFAULT_YEAR, page_size: int = PAGE_SIZE
+) -> CountySegments:
+    """Download a county's segments page by page (resultOffset) until the server stops flagging more pages."""
+    segments: list[RoadSegment] = []
+    page_of_segment: list[int] = []
+    records: list[SourceRecord] = []
+    features_read = 0
+    for page in range(MAX_PAGES_PER_COUNTY):
+        params = county_segments_request(county_fips, page * page_size, page_size)
+        fetched = client.get(layer_url(state, year), params, accept=check_arcgis_answer)
+        data = fetched.json()
+        found = parse_segments(data)
+        features_read += len(data.get("features", []))
+        segments += found
+        page_of_segment += [page] * len(found)
+        records.append(
+            SOURCE.record(fetched, vintage=f"HPMS {year}", geography=f"state {state} county {county_fips} page {page}")
+        )
+        if not more_pages(data) or not data.get("features"):
+            return CountySegments(state, county_fips, segments, page_of_segment, records, features_read)
+    raise UpstreamError(HOST, f"more than {MAX_PAGES_PER_COUNTY} pages for county {county_fips}; refused")
 
 
 def county_segment_count(

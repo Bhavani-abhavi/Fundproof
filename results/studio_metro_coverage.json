@@ -18,7 +18,7 @@
       "metro_id": "chicago_il_in",
       "data_label": "PUBLIC",
       "mode": "limited",
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6812,
       "snapshot_date": "2026-10-13",
       "tracts": 2292
     },
@@ -26,7 +26,7 @@
       "metro_id": "dallas_fort_worth_tx",
       "data_label": "PUBLIC",
       "mode": "limited",
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6826,
       "snapshot_date": "2026-10-13",
       "tracts": 1704
     },
@@ -34,7 +34,7 @@
       "metro_id": "houston_tx",
       "data_label": "PUBLIC",
       "mode": "limited",
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6813,
       "snapshot_date": "2026-10-13",
       "tracts": 1615
     },
@@ -42,7 +42,7 @@
       "metro_id": "los_angeles_ca",
       "data_label": "PUBLIC",
       "mode": "limited",
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6812,
       "snapshot_date": "2026-10-13",
       "tracts": 3112
     },
@@ -50,7 +50,7 @@
       "metro_id": "new_york_ny_nj_pa",
       "data_label": "PUBLIC",
       "mode": "limited",
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6779,
       "snapshot_date": "2026-10-13",
       "tracts": 4928
     },
@@ -74,8 +74,8 @@
       "snapshot_date": "2026-10-13",
       "snapshot_fingerprint": {
         "snapshot_date": "2026-10-13",
-        "manifest_sha256": "7a8baba2d44ad94a9de61e29e9e0fa71d40e3e39e7692d978f5b07c145c7f52a",
-        "tracts_sha256": "95886e4490e145727f8dc6cfdb9fdeafc377f5d759721acd278b8b7d1f316759"
+        "manifest_sha256": "aed28fa2385c7610544d37a1c4d5d02656aabbd7ba5ca881db040b0005c18671",
+        "tracts_sha256": "c1f6c621f12a28be5098f5b22c69fbccaca7ddb7f21c49b1095b2bab31553afa"
       },
       "snapshot_steps": [
         {
@@ -85,13 +85,13 @@
         },
         {
           "name": "acs_tracts",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "variables checked: ['B01003_001E', 'B11001_001E', 'B19013_001E', 'B25003_003E']; 13 counties"
         },
         {
           "name": "business_patterns",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "10 NAICS codes x 2 states; no CBP rows (HTTP 204, empty) for ['44', '445131', '721199']: those codes are UNKNOWN (the CBP API's code variable is NAICS2017)"
         },
         {
           "name": "qcew_wages",
@@ -109,9 +109,19 @@
           "detail": "HPMS segments with AADT in 13 of 13 counties"
         },
         {
-          "name": "osm_pois",
-          "status": "failed",
-          "detail": "Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)"
+          "name": "roads_by_tract",
+          "status": "ok",
+          "detail": "76781 HPMS segments with AADT in 13 counties (44 pages; 0 without a shape skipped); 2209 of 2292 tract centroids have a segment within 0.5 miles"
+        },
+        {
+          "name": "overture_places",
+          "status": "ok",
+          "detail": "release 2026-09-23.1: 547020 places in the bbox; kept 79251 (mapped 85928, below confidence 4588, closed 2089); merged into a facility 1529 (airport 134, college_university 582, hospital 813), stored 77722; not counted by a reviewed row 4074; unmapped 410961 in 1489 categories (ignored); no taxonomy 46057; licenses of stored places (licenses of all the place's sources, sorted, joined with '+'): Apache-2.0+CDLA-Permissive-2.0 9883, CC0-1.0+CDLA-Permissive-2.0 1091, CDLA-Permissive-2.0 66748"
+        },
+        {
+          "name": "lehd_daytime_workers",
+          "status": "ok",
+          "detail": "LODES 8 WAC 2023 (S000, JT00, column C000) for IL, IN: 2281 of 2292 tracts have jobs; 11 tracts have no block in the file: 4 water-only tracts (Gazetteer land area 0) set to 0, 7 left UNKNOWN (not zero); files match the published SHA-256"
         },
         {
           "name": "enhancement:traffic_state:IL",
@@ -135,74 +145,79 @@
         }
       ],
       "coverage_threshold": 0.8,
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6812,
       "mode": "limited",
-      "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+      "mode_reason": "data coverage 0.68 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9159,
+          "mode": "full",
+          "mode_reason": "data coverage 0.92 meets the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9638,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
+              "reason": "96.3% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 76781 segments)"
             },
             {
               "factor": "households",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 2.4-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9856,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.8-mile ring of 100.0% of tracts lies inside the extract; 1 of 1 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.8-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -212,6 +227,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -259,57 +275,61 @@
           ]
         },
         "laundromat": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8978,
+          "mode": "full",
+          "mode_reason": "data coverage 0.90 meets the threshold 0.80",
           "factors": [
             {
               "factor": "renter_households",
               "scope": "tract",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 0.8-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9856,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 2 of 2 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -319,6 +339,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -366,57 +387,61 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.771,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.77 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9638,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
+              "reason": "96.3% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 76781 segments)"
             },
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 2.4-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.8-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.8-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -426,6 +451,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -473,69 +499,74 @@
           ]
         },
         "restaurant_cafe": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8729,
+          "mode": "full",
+          "mode_reason": "data coverage 0.87 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 0.8-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9791,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "97.9% of tracts have a known 0.8-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.6% of tracts have a value (7 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9856,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8571,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 6 of 7 tag filters mapped (not counted: tourism=attraction)"
             },
             {
               "factor": "commercial_rent",
@@ -545,6 +576,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -594,81 +626,87 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9382,
+          "mode": "full",
+          "mode_reason": "data coverage 0.94 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 0.8-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9791,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "97.9% of tracts have a known 0.8-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.6% of tracts have a value (7 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9638,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
+              "reason": "96.3% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 76781 segments)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9856,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -678,6 +716,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -725,21 +764,22 @@
           ]
         },
         "short_term_rental": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.6812,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.68 is below the threshold 0.80",
           "factors": [
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.8-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "str_comparables",
@@ -749,6 +789,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
@@ -757,37 +798,40 @@
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9856,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.4-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             }
           ],
           "metro_inputs": [
@@ -843,8 +887,8 @@
       "snapshot_date": "2026-10-13",
       "snapshot_fingerprint": {
         "snapshot_date": "2026-10-13",
-        "manifest_sha256": "2f75d8a325d366c41140aaff1c997d07cf6b5a354fc3c9eca0b9327675afcb33",
-        "tracts_sha256": "7086054816bac9cc1fbc7ff2fc6aa3917a31ac83b8b379e51844db4ce5e8b0cf"
+        "manifest_sha256": "def918a03577d27fae08623e95a278d57d7e073a1c549dacb971267d6918b18c",
+        "tracts_sha256": "7e74ef50595f9cc2cd51af36002a05a83f3ce7b8f8d227991bd1d8448ab52fea"
       },
       "snapshot_steps": [
         {
@@ -854,13 +898,13 @@
         },
         {
           "name": "acs_tracts",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "variables checked: ['B01003_001E', 'B11001_001E', 'B19013_001E', 'B25003_003E']; 11 counties"
         },
         {
           "name": "business_patterns",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "10 NAICS codes x 1 states; no CBP rows (HTTP 204, empty) for ['44', '445131']: those codes are UNKNOWN (the CBP API's code variable is NAICS2017)"
         },
         {
           "name": "qcew_wages",
@@ -878,9 +922,19 @@
           "detail": "HPMS segments with AADT in 11 of 11 counties"
         },
         {
-          "name": "osm_pois",
-          "status": "failed",
-          "detail": "Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)"
+          "name": "roads_by_tract",
+          "status": "ok",
+          "detail": "71975 HPMS segments with AADT in 11 counties (41 pages; 0 without a shape skipped); 1543 of 1704 tract centroids have a segment within 0.5 miles"
+        },
+        {
+          "name": "overture_places",
+          "status": "ok",
+          "detail": "release 2026-09-23.1: 449440 places in the bbox; kept 69189 (mapped 75874, below confidence 4827, closed 1858); merged into a facility 1137 (airport 160, college_university 380, hospital 597), stored 68052; not counted by a reviewed row 4056; unmapped 353507 in 1466 categories (ignored); no taxonomy 16003; licenses of stored places (licenses of all the place's sources, sorted, joined with '+'): Apache-2.0+CDLA-Permissive-2.0 7132, CC0-1.0+CDLA-Permissive-2.0 1955, CDLA-Permissive-2.0 58965"
+        },
+        {
+          "name": "lehd_daytime_workers",
+          "status": "ok",
+          "detail": "LODES 8 WAC 2023 (S000, JT00, column C000) for TX: 1704 of 1704 tracts have jobs; 0 tracts have no block in the file: 0 water-only tracts (Gazetteer land area 0) set to 0, 0 left UNKNOWN (not zero); files match the published SHA-256"
         },
         {
           "name": "enhancement:traffic_state:TX",
@@ -899,74 +953,79 @@
         }
       ],
       "coverage_threshold": 0.8,
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6826,
       "mode": "limited",
-      "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+      "mode_reason": "data coverage 0.68 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8965,
+          "mode": "full",
+          "mode_reason": "data coverage 0.90 meets the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9055,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
+              "reason": "90.5% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 71975 segments)"
             },
             {
               "factor": "households",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 4.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9953,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 1 of 1 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -976,6 +1035,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1025,57 +1085,61 @@
           ]
         },
         "laundromat": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8993,
+          "mode": "full",
+          "mode_reason": "data coverage 0.90 meets the threshold 0.80",
           "factors": [
             {
               "factor": "renter_households",
               "scope": "tract",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9953,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 2 of 2 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -1085,6 +1149,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1132,57 +1197,61 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.7564,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.76 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9055,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
+              "reason": "90.5% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 71975 segments)"
             },
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 4.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -1192,6 +1261,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1239,69 +1309,74 @@
           ]
         },
         "restaurant_cafe": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8781,
+          "mode": "full",
+          "mode_reason": "data coverage 0.88 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9953,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8571,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 6 of 7 tag filters mapped (not counted: tourism=attraction)"
             },
             {
               "factor": "commercial_rent",
@@ -1311,6 +1386,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1360,81 +1436,87 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9306,
+          "mode": "full",
+          "mode_reason": "data coverage 0.93 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9055,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
+              "reason": "90.5% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 71975 segments)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9953,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -1444,6 +1526,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1493,21 +1576,22 @@
           ]
         },
         "short_term_rental": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.6826,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.68 is below the threshold 0.80",
           "factors": [
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "str_comparables",
@@ -1517,6 +1601,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
@@ -1525,37 +1610,40 @@
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9953,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.5% of tracts have an ACS estimate"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             }
           ],
           "metro_inputs": [
@@ -1611,8 +1699,8 @@
       "snapshot_date": "2026-10-13",
       "snapshot_fingerprint": {
         "snapshot_date": "2026-10-13",
-        "manifest_sha256": "352ccb0bdc10cfc5d0c77b547385514fe6184a5947aa61a6094372ee5ea389f6",
-        "tracts_sha256": "669bf5d74ddfb66933871211cfa1599f7e4dbc166d27ba1340fad0da5c19c0e7"
+        "manifest_sha256": "7bc94228c72d552c6da0dbf976f7e69586c5a77098dddca7ac8649f83b9f029c",
+        "tracts_sha256": "df03cd9053d65a161d1abfcea8347e366cc35f3ca8f48b4ddeac50a19b19faf2"
       },
       "snapshot_steps": [
         {
@@ -1622,13 +1710,13 @@
         },
         {
           "name": "acs_tracts",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "variables checked: ['B01003_001E', 'B11001_001E', 'B19013_001E', 'B25003_003E']; 10 counties"
         },
         {
           "name": "business_patterns",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "10 NAICS codes x 1 states; no CBP rows (HTTP 204, empty) for ['44', '445131']: those codes are UNKNOWN (the CBP API's code variable is NAICS2017)"
         },
         {
           "name": "qcew_wages",
@@ -1646,9 +1734,19 @@
           "detail": "HPMS segments with AADT in 10 of 10 counties"
         },
         {
-          "name": "osm_pois",
-          "status": "failed",
-          "detail": "Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)"
+          "name": "roads_by_tract",
+          "status": "ok",
+          "detail": "58232 HPMS segments with AADT in 10 counties (33 pages; 0 without a shape skipped); 1389 of 1615 tract centroids have a segment within 0.5 miles"
+        },
+        {
+          "name": "overture_places",
+          "status": "ok",
+          "detail": "release 2026-09-23.1: 452031 places in the bbox; kept 67438 (mapped 74156, below confidence 5064, closed 1654); merged into a facility 1008 (airport 127, college_university 404, hospital 477), stored 66430; not counted by a reviewed row 3552; unmapped 330413 in 1446 categories (ignored); no taxonomy 43910; licenses of stored places (licenses of all the place's sources, sorted, joined with '+'): Apache-2.0+CDLA-Permissive-2.0 6121, CC0-1.0+CDLA-Permissive-2.0 2229, CDLA-Permissive-2.0 58080"
+        },
+        {
+          "name": "lehd_daytime_workers",
+          "status": "ok",
+          "detail": "LODES 8 WAC 2023 (S000, JT00, column C000) for TX: 1610 of 1615 tracts have jobs; 5 tracts have no block in the file: 3 water-only tracts (Gazetteer land area 0) set to 0, 2 left UNKNOWN (not zero); files match the published SHA-256"
         },
         {
           "name": "enhancement:traffic_state:TX",
@@ -1667,74 +1765,79 @@
         }
       ],
       "coverage_threshold": 0.8,
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6813,
       "mode": "limited",
-      "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+      "mode_reason": "data coverage 0.68 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8797,
+          "mode": "full",
+          "mode_reason": "data coverage 0.88 meets the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.8601,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
+              "reason": "86.0% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 58232 segments)"
             },
             {
               "factor": "households",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 4.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9864,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.6% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 1 of 1 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -1744,6 +1847,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1791,57 +1895,61 @@
           ]
         },
         "laundromat": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.898,
+          "mode": "full",
+          "mode_reason": "data coverage 0.90 meets the threshold 0.80",
           "factors": [
             {
               "factor": "renter_households",
               "scope": "tract",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9864,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.6% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 2 of 2 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -1851,6 +1959,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -1898,57 +2007,61 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.745,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.75 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.8601,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
+              "reason": "86.0% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 58232 segments)"
             },
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 4.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -1958,6 +2071,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2005,69 +2119,74 @@
           ]
         },
         "restaurant_cafe": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.876,
+          "mode": "full",
+          "mode_reason": "data coverage 0.88 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9938,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "99.3% of tracts have a known 1.5-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.8% of tracts have a value (2 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9864,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.6% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8571,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 6 of 7 tag filters mapped (not counted: tourism=attraction)"
             },
             {
               "factor": "commercial_rent",
@@ -2077,6 +2196,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2126,81 +2246,87 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9197,
+          "mode": "full",
+          "mode_reason": "data coverage 0.92 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.5-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9938,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "99.3% of tracts have a known 1.5-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.8% of tracts have a value (2 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.8601,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
+              "reason": "86.0% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 58232 segments)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9864,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.6% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -2210,6 +2336,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2259,21 +2386,22 @@
           ]
         },
         "short_term_rental": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.6813,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.68 is below the threshold 0.80",
           "factors": [
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.5-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "str_comparables",
@@ -2283,6 +2411,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
@@ -2291,37 +2420,40 @@
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9864,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.6% of tracts have an ACS estimate"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.75-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             }
           ],
           "metro_inputs": [
@@ -2377,8 +2509,8 @@
       "snapshot_date": "2026-10-13",
       "snapshot_fingerprint": {
         "snapshot_date": "2026-10-13",
-        "manifest_sha256": "50801da1d11c60af6d3d4319cb53508d5034361908378ec7d224b1c01b65fa0b",
-        "tracts_sha256": "6f4f29d466efcdaa59afa623bf14602a78d77643a9325cbf885fe31600ae47d5"
+        "manifest_sha256": "3897dcb255b02375b56edcea30e88fc9b5d9fed80a11052019aa9b7baca28359",
+        "tracts_sha256": "4adc044aa9d5f4f896ea569aae55671140d4e5142756e3bad2bea15655f07cd8"
       },
       "snapshot_steps": [
         {
@@ -2388,13 +2520,13 @@
         },
         {
           "name": "acs_tracts",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "variables checked: ['B01003_001E', 'B11001_001E', 'B19013_001E', 'B25003_003E']; 2 counties"
         },
         {
           "name": "business_patterns",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "10 NAICS codes x 1 states; no CBP rows (HTTP 204, empty) for ['44', '445131']: those codes are UNKNOWN (the CBP API's code variable is NAICS2017)"
         },
         {
           "name": "qcew_wages",
@@ -2412,9 +2544,19 @@
           "detail": "HPMS segments with AADT in 2 of 2 counties"
         },
         {
-          "name": "osm_pois",
-          "status": "failed",
-          "detail": "Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)"
+          "name": "roads_by_tract",
+          "status": "ok",
+          "detail": "109801 HPMS segments with AADT in 2 counties (56 pages; 0 without a shape skipped); 3005 of 3112 tract centroids have a segment within 0.5 miles"
+        },
+        {
+          "name": "overture_places",
+          "status": "ok",
+          "detail": "release 2026-09-23.1: 846119 places in the bbox; kept 120342 (mapped 131921, below confidence 7478, closed 4101); merged into a facility 1883 (airport 176, college_university 958, hospital 749), stored 118459; not counted by a reviewed row 6073; unmapped 652705 in 1551 categories (ignored); no taxonomy 55420; licenses of stored places (licenses of all the place's sources, sorted, joined with '+'): Apache-2.0+CDLA-Permissive-2.0 15717, CC0-1.0+CDLA-Permissive-2.0 1549, CDLA-Permissive-2.0 101193"
+        },
+        {
+          "name": "lehd_daytime_workers",
+          "status": "ok",
+          "detail": "LODES 8 WAC 2023 (S000, JT00, column C000) for CA: 3106 of 3112 tracts have jobs; 6 tracts have no block in the file: 4 water-only tracts (Gazetteer land area 0) set to 0, 2 left UNKNOWN (not zero); files match the published SHA-256"
         },
         {
           "name": "enhancement:traffic_state:CA",
@@ -2433,74 +2575,79 @@
         }
       ],
       "coverage_threshold": 0.8,
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6812,
       "mode": "limited",
-      "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+      "mode_reason": "data coverage 0.68 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9165,
+          "mode": "full",
+          "mode_reason": "data coverage 0.92 meets the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9656,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
+              "reason": "96.5% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 109801 segments)"
             },
             {
               "factor": "households",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 3.75-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9855,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.25-mile ring of 100.0% of tracts lies inside the extract; 1 of 1 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.25-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -2510,6 +2657,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2559,57 +2707,61 @@
           ]
         },
         "laundromat": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8978,
+          "mode": "full",
+          "mode_reason": "data coverage 0.90 meets the threshold 0.80",
           "factors": [
             {
               "factor": "renter_households",
               "scope": "tract",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.25-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9855,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 2 of 2 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -2619,6 +2771,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2668,57 +2821,61 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.7714,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.77 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9656,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
+              "reason": "96.5% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 109801 segments)"
             },
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 3.75-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.25-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.25-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -2728,6 +2885,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2777,69 +2935,74 @@
           ]
         },
         "restaurant_cafe": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8769,
+          "mode": "full",
+          "mode_reason": "data coverage 0.88 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.25-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.999,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "99.9% of tracts have a known 1.25-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.9% of tracts have a value (2 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9855,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8571,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 6 of 7 tag filters mapped (not counted: tourism=attraction)"
             },
             {
               "factor": "commercial_rent",
@@ -2849,6 +3012,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -2898,81 +3062,87 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9415,
+          "mode": "full",
+          "mode_reason": "data coverage 0.94 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "100.0% of tracts have a known 1.25-mile market-ring sum of an ACS estimate; 100.0% of tracts have a value (0 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.999,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "99.9% of tracts have a known 1.25-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.9% of tracts have a value (2 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9656,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
+              "reason": "96.5% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 109801 segments)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9855,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -2982,6 +3152,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -3031,21 +3202,22 @@
           ]
         },
         "short_term_rental": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.6812,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.68 is below the threshold 0.80",
           "factors": [
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.25-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "str_comparables",
@@ -3055,6 +3227,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
@@ -3063,37 +3236,40 @@
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9855,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "98.5% of tracts have an ACS estimate"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.625-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             }
           ],
           "metro_inputs": [
@@ -3151,8 +3327,8 @@
       "snapshot_date": "2026-10-13",
       "snapshot_fingerprint": {
         "snapshot_date": "2026-10-13",
-        "manifest_sha256": "1a44378a4ce3d9a655b6a46a2586c97aff387078c2844ffe0a1cace7af8c87d8",
-        "tracts_sha256": "25649ed7ed0c26c2a4299199fe6f2e84202250beab2d55b43bf1fe1bda28d54a"
+        "manifest_sha256": "c3a7d68b0cf51dfd7bf6a1da82491629f6cfda588022810ad4ea09eacc667574",
+        "tracts_sha256": "49dac39e2e53d9ed19b0c00a0810e8e160a0157c811ec9ba020e87f6d886f532"
       },
       "snapshot_steps": [
         {
@@ -3162,13 +3338,13 @@
         },
         {
           "name": "acs_tracts",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "variables checked: ['B01003_001E', 'B11001_001E', 'B19013_001E', 'B25003_003E']; 22 counties"
         },
         {
           "name": "business_patterns",
-          "status": "failed",
-          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+          "status": "ok",
+          "detail": "10 NAICS codes x 2 states; no CBP rows (HTTP 204, empty) for ['44', '445131', '721199']: those codes are UNKNOWN (the CBP API's code variable is NAICS2017)"
         },
         {
           "name": "qcew_wages",
@@ -3186,9 +3362,19 @@
           "detail": "HPMS segments with AADT in 22 of 22 counties"
         },
         {
-          "name": "osm_pois",
-          "status": "failed",
-          "detail": "Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)"
+          "name": "roads_by_tract",
+          "status": "ok",
+          "detail": "268745 HPMS segments with AADT in 22 counties (146 pages; 0 without a shape skipped); 4774 of 4928 tract centroids have a segment within 0.5 miles"
+        },
+        {
+          "name": "overture_places",
+          "status": "ok",
+          "detail": "release 2026-09-23.1: 1389782 places in the bbox; kept 223386 (mapped 244442, below confidence 14013, closed 7043); merged into a facility 3681 (airport 304, college_university 1901, hospital 1476), stored 219705; not counted by a reviewed row 16903; unmapped 1055909 in 1560 categories (ignored); no taxonomy 72528; licenses of stored places (licenses of all the place's sources, sorted, joined with '+'): Apache-2.0+CDLA-Permissive-2.0 29994, CC0-1.0+CDLA-Permissive-2.0 3238, CDLA-Permissive-2.0 186473"
+        },
+        {
+          "name": "lehd_daytime_workers",
+          "status": "ok",
+          "detail": "LODES 8 WAC 2023 (S000, JT00, column C000) for NJ, NY: 4894 of 4928 tracts have jobs; 34 tracts have no block in the file: 11 water-only tracts (Gazetteer land area 0) set to 0, 23 left UNKNOWN (not zero); files match the published SHA-256"
         },
         {
           "name": "enhancement:traffic_state:NY",
@@ -3212,74 +3398,79 @@
         }
       ],
       "coverage_threshold": 0.8,
-      "min_coverage_share": 0.0,
+      "min_coverage_share": 0.6779,
       "mode": "limited",
-      "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+      "mode_reason": "data coverage 0.68 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9142,
+          "mode": "full",
+          "mode_reason": "data coverage 0.91 meets the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9688,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
+              "reason": "96.8% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 268745 segments)"
             },
             {
               "factor": "households",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9913,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.1% of tracts have a known 1.8-mile market-ring sum of an ACS estimate; 99.7% of tracts have a value (14 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9639,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "96.3% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.6-mile ring of 100.0% of tracts lies inside the extract; 1 of 1 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.6-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -3289,6 +3480,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -3338,57 +3530,61 @@
           ]
         },
         "laundromat": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8935,
+          "mode": "full",
+          "mode_reason": "data coverage 0.89 meets the threshold 0.80",
           "factors": [
             {
               "factor": "renter_households",
               "scope": "tract",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.997,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.6% of tracts have a known 0.6-mile market-ring sum of an ACS estimate; 99.7% of tracts have a value (14 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9639,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "96.3% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 2 of 2 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -3398,6 +3594,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -3445,57 +3642,61 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.7722,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.77 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9688,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
+              "reason": "96.8% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 268745 segments)"
             },
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.3,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 1.8-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.6-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.6-mile ring of 100.0% of tracts lies inside the extract; 4 of 5 tag filters mapped (not counted: highway=motorway_junction)"
             },
             {
               "factor": "commercial_rent",
@@ -3505,6 +3706,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -3552,69 +3754,74 @@
           ]
         },
         "restaurant_cafe": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.8675,
+          "mode": "full",
+          "mode_reason": "data coverage 0.87 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.25,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.997,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.6% of tracts have a known 0.6-mile market-ring sum of an ACS estimate; 99.7% of tracts have a value (14 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9667,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "96.6% of tracts have a known 0.6-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.5% of tracts have a value (23 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9639,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "96.3% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.8571,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 6 of 7 tag filters mapped (not counted: tourism=attraction)"
             },
             {
               "factor": "commercial_rent",
@@ -3624,6 +3831,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -3673,81 +3881,87 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.0,
-          "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "coverage_share": 0.9346,
+          "mode": "full",
+          "mode_reason": "data coverage 0.93 meets the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
               "scope": "tract",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.997,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "99.6% of tracts have a known 0.6-mile market-ring sum of an ACS estimate; 99.7% of tracts have a value (14 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "daytime_workers",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9667,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "lehd_lodes8_wac",
               "freshness": "2026-10-13",
-              "reason": "daytime population source not built yet"
+              "reason": "96.6% of tracts have a known 0.6-mile market-ring sum of LODES WAC 2023 jobs (jobs located in the tract, not distinct people); 99.5% of tracts have a value (23 without one, and one tract without a value makes every ring sum that includes it UNKNOWN)"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9688,
               "share_basis": "tracts",
-              "live_per_site": true,
+              "live_per_site": false,
+              "definition_share": 1.0,
               "source": "fhwa_hpms",
               "freshness": "2026-10-13",
-              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
+              "reason": "96.8% of tract centroids have an HPMS segment with AADT within 0.5 miles (snapshot road layer, 268745 segments)"
             },
             {
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9639,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "96.3% of tracts have an ACS estimate"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.2,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 4 of 4 tag filters mapped"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.1,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "commercial_rent",
@@ -3757,6 +3971,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
@@ -3806,21 +4021,22 @@
           ]
         },
         "short_term_rental": {
-          "coverage_share": 0.0,
+          "coverage_share": 0.6779,
           "mode": "limited",
-          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.68 is below the threshold 0.80",
           "factors": [
             {
               "factor": "tourism",
               "scope": "poi_layer",
               "weight": 0.35,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 0.6667,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.6-mile ring of 100.0% of tracts lies inside the extract; 4 of 6 tag filters mapped (not counted: tourism=attraction, tourism=viewpoint)"
             },
             {
               "factor": "str_comparables",
@@ -3830,6 +4046,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": null,
               "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
@@ -3838,37 +4055,40 @@
               "factor": "median_household_income",
               "scope": "tract",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 0.9639,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "census_acs5",
               "freshness": "2026-10-13",
-              "reason": "0% of tracts have an ACS estimate"
+              "reason": "96.3% of tracts have an ACS estimate"
             },
             {
               "factor": "anchors",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 5 of 5 tag filters mapped"
             },
             {
               "factor": "competition",
               "scope": "poi_layer",
               "weight": 0.15,
-              "status": "UNKNOWN",
-              "share_of_tracts": 0.0,
+              "status": "DATA",
+              "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
-              "source": null,
+              "definition_share": 1.0,
+              "source": "overture_places",
               "freshness": "2026-10-13",
-              "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
+              "reason": "Overture places release 2026-09-23.1: the 0.3-mile ring of 100.0% of tracts lies inside the extract; 3 of 3 tag filters mapped"
             }
           ],
           "metro_inputs": [
@@ -3942,6 +4162,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tract centroids have a road with AADT within 0.5 mi"
@@ -3954,6 +4175,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -3966,6 +4188,7 @@
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -3978,6 +4201,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3990,6 +4214,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4002,6 +4227,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
@@ -4063,6 +4289,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4075,6 +4302,7 @@
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4087,6 +4315,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4099,6 +4328,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4111,6 +4341,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
@@ -4172,6 +4403,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tract centroids have a road with AADT within 0.5 mi"
@@ -4184,6 +4416,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4196,6 +4429,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4208,6 +4442,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4220,6 +4455,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
@@ -4281,6 +4517,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4293,6 +4530,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4305,6 +4543,7 @@
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4317,6 +4556,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4329,6 +4569,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4341,6 +4582,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
@@ -4402,6 +4644,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4414,6 +4657,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4426,6 +4670,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tract centroids have a road with AADT within 0.5 mi"
@@ -4438,6 +4683,7 @@
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4450,6 +4696,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4462,6 +4709,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4474,6 +4722,7 @@
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
@@ -4535,6 +4784,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4547,6 +4797,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4559,6 +4810,7 @@
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4571,6 +4823,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4583,6 +4836,7 @@
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
               "live_per_site": false,
+              "definition_share": 1.0,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4635,9 +4889,9 @@
     }
   },
   "provenance": {
-    "git_sha": "1df0e0aab3f9d8135c328361f7abea280a7090b3",
+    "git_sha": "a634325fc5a6bf961b1812bde3fed9f951a4f6d9",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-13T03:52:39+00:00",
+    "generated_at_utc": "2026-10-13T15:50:50+00:00",
     "generated_by": "scripts/studio_metro_coverage.py",
     "prompts": {},
     "corpus_checksum": "not applicable (no retrieval corpus is used)",
@@ -4647,28 +4901,28 @@
       "studio_snapshots": {
         "chicago_il_in": {
           "snapshot_date": "2026-10-13",
-          "manifest_sha256": "7a8baba2d44ad94a9de61e29e9e0fa71d40e3e39e7692d978f5b07c145c7f52a",
-          "tracts_sha256": "95886e4490e145727f8dc6cfdb9fdeafc377f5d759721acd278b8b7d1f316759"
+          "manifest_sha256": "aed28fa2385c7610544d37a1c4d5d02656aabbd7ba5ca881db040b0005c18671",
+          "tracts_sha256": "c1f6c621f12a28be5098f5b22c69fbccaca7ddb7f21c49b1095b2bab31553afa"
         },
         "dallas_fort_worth_tx": {
           "snapshot_date": "2026-10-13",
-          "manifest_sha256": "2f75d8a325d366c41140aaff1c997d07cf6b5a354fc3c9eca0b9327675afcb33",
-          "tracts_sha256": "7086054816bac9cc1fbc7ff2fc6aa3917a31ac83b8b379e51844db4ce5e8b0cf"
+          "manifest_sha256": "def918a03577d27fae08623e95a278d57d7e073a1c549dacb971267d6918b18c",
+          "tracts_sha256": "7e74ef50595f9cc2cd51af36002a05a83f3ce7b8f8d227991bd1d8448ab52fea"
         },
         "houston_tx": {
           "snapshot_date": "2026-10-13",
-          "manifest_sha256": "352ccb0bdc10cfc5d0c77b547385514fe6184a5947aa61a6094372ee5ea389f6",
-          "tracts_sha256": "669bf5d74ddfb66933871211cfa1599f7e4dbc166d27ba1340fad0da5c19c0e7"
+          "manifest_sha256": "7bc94228c72d552c6da0dbf976f7e69586c5a77098dddca7ac8649f83b9f029c",
+          "tracts_sha256": "df03cd9053d65a161d1abfcea8347e366cc35f3ca8f48b4ddeac50a19b19faf2"
         },
         "los_angeles_ca": {
           "snapshot_date": "2026-10-13",
-          "manifest_sha256": "50801da1d11c60af6d3d4319cb53508d5034361908378ec7d224b1c01b65fa0b",
-          "tracts_sha256": "6f4f29d466efcdaa59afa623bf14602a78d77643a9325cbf885fe31600ae47d5"
+          "manifest_sha256": "3897dcb255b02375b56edcea30e88fc9b5d9fed80a11052019aa9b7baca28359",
+          "tracts_sha256": "4adc044aa9d5f4f896ea569aae55671140d4e5142756e3bad2bea15655f07cd8"
         },
         "new_york_ny_nj_pa": {
           "snapshot_date": "2026-10-13",
-          "manifest_sha256": "1a44378a4ce3d9a655b6a46a2586c97aff387078c2844ffe0a1cace7af8c87d8",
-          "tracts_sha256": "25649ed7ed0c26c2a4299199fe6f2e84202250beab2d55b43bf1fe1bda28d54a"
+          "manifest_sha256": "c3a7d68b0cf51dfd7bf6a1da82491629f6cfda588022810ad4ea09eacc667574",
+          "tracts_sha256": "49dac39e2e53d9ed19b0c00a0810e8e160a0157c811ec9ba020e87f6d886f532"
         }
       }
     },
@@ -4690,14 +4944,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        1.6,
-        1.6,
-        2.15
+        1.16,
+        1.06,
+        1.06
       ],
       "load_average_end": [
-        1.55,
-        1.59,
-        2.14
+        1.15,
+        1.06,
+        1.06
       ]
     }
   }

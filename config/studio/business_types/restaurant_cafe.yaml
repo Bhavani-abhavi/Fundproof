@@ -8,20 +8,48 @@ display_name: Restaurant / cafe / dessert shop (ice cream, coffee, bakery)
 naics:
   - code: "722511"
     title: Full-service restaurants
-    verified: false
-    note: Written from the author's knowledge; confirm against the Census NAICS reference (https://www.census.gov/naics/).
+    verified: true
+    verification:
+      publisher: U.S. Bureau of Labor Statistics, Quarterly Census of Employment and Wages
+      list_name: QCEW industry titles (industry_titles.csv)
+      url: https://data.bls.gov/cew/doc/titles/industry/industry_titles.csv
+      retrieved_at_utc: "2026-10-13T14:31:09+00:00"
+      sha256: facc122ef582f3efdbb5294f103331894d8fdab694de38e4ee7bff1b941ab8e1
+      published_title: NAICS 722511 Full-service restaurants
+    note: Code and title found in the BLS QCEW industry titles list (scripts/studio_verify_naics.py -> results/studio_naics_check.json). The list confirms the code exists with this title; choosing it for this business type is the author's judgement.
   - code: "722513"
     title: Limited-service restaurants
-    verified: false
-    note: Same as above.
+    verified: true
+    verification:
+      publisher: U.S. Bureau of Labor Statistics, Quarterly Census of Employment and Wages
+      list_name: QCEW industry titles (industry_titles.csv)
+      url: https://data.bls.gov/cew/doc/titles/industry/industry_titles.csv
+      retrieved_at_utc: "2026-10-13T14:31:09+00:00"
+      sha256: facc122ef582f3efdbb5294f103331894d8fdab694de38e4ee7bff1b941ab8e1
+      published_title: NAICS 722513 Limited-service restaurants
+    note: Code and title found in the BLS QCEW industry titles list (scripts/studio_verify_naics.py -> results/studio_naics_check.json). The list confirms the code exists with this title; choosing it for this business type is the author's judgement.
   - code: "722515"
-    title: Snack and nonalcoholic beverage bars (coffee, ice cream)
-    verified: false
-    note: Same as above.
+    title: Snack and nonalcoholic beverage bars
+    verified: true
+    verification:
+      publisher: U.S. Bureau of Labor Statistics, Quarterly Census of Employment and Wages
+      list_name: QCEW industry titles (industry_titles.csv)
+      url: https://data.bls.gov/cew/doc/titles/industry/industry_titles.csv
+      retrieved_at_utc: "2026-10-13T14:31:09+00:00"
+      sha256: facc122ef582f3efdbb5294f103331894d8fdab694de38e4ee7bff1b941ab8e1
+      published_title: NAICS 722515 Snack and nonalcoholic beverage bars
+    note: Code and title found in the BLS QCEW industry titles list (scripts/studio_verify_naics.py -> results/studio_naics_check.json). The list confirms the code exists with this title; choosing it for this business type is the author's judgement. The profile uses this code for coffee and ice cream shops (the author's reading of the title; the list gives the title only).
   - code: "311811"
     title: Retail bakeries
-    verified: false
-    note: Same as above.
+    verified: true
+    verification:
+      publisher: U.S. Bureau of Labor Statistics, Quarterly Census of Employment and Wages
+      list_name: QCEW industry titles (industry_titles.csv)
+      url: https://data.bls.gov/cew/doc/titles/industry/industry_titles.csv
+      retrieved_at_utc: "2026-10-13T14:31:09+00:00"
+      sha256: facc122ef582f3efdbb5294f103331894d8fdab694de38e4ee7bff1b941ab8e1
+      published_title: NAICS 311811 Retail bakeries
+    note: Code and title found in the BLS QCEW industry titles list (scripts/studio_verify_naics.py -> results/studio_naics_check.json). The list confirms the code exists with this title; choosing it for this business type is the author's judgement.
 
 demand_unit: covers/day
 demand:

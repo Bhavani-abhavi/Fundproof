@@ -2,7 +2,8 @@
 
 Why DuckDB: Overture publishes the places theme as Parquet files on S3 (about 11 GB per release). DuckDB reads only
 the columns and the row groups a query needs, using each row group's min/max statistics of the bbox columns
-("predicate pushdown"), so one metro's places come down in seconds without downloading the release.
+("predicate pushdown"), so one metro's places are read without downloading the whole release (how long that takes
+is not measured by a script).
 
 Setup, step by step (a step is skipped when it is not needed):
 1. LOAD httpfs. If it is not installed, INSTALL it from DuckDB's extension repository.

@@ -1,6 +1,7 @@
 """Record the Studio test fixtures that can be recorded from live, KEYLESS hosts (run by hand; never in CI).
 
     uv run python tests/studio/fixtures/record_fixtures.py
+    uv run python tests/studio/fixtures/record_fixtures.py --only overture,lodes,hpms_pages,industry_titles
 
 Each fixture is a JSON file with the response body as text plus:
 - fixture_origin: "recorded from the live API on <UTC date> by tests/studio/fixtures/record_fixtures.py", or, for a
@@ -14,10 +15,13 @@ reachable". No fixture holds personal data: addresses are public buildings, and 
 counts by category only.
 """
 
+import argparse
 import csv
+import gzip
 import hashlib
 import io
 import json
+import re
 import sys
 import tempfile
 import zipfile
@@ -63,6 +67,38 @@ DELINEATION = (
 )
 PEP = "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/metro/totals/cbsa-est2025-alldata.csv"
 FIVE_CBSAS = {"35620", "31080", "16980", "19100", "26420"}
+OVERTURE_BASE = "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com"
+OVERTURE_PREFIX = "release/2026-09-23.1/theme=places/type=place/"
+# xmin, xmax, ymin, ymax: a small box in central Houston around the Gazetteer excerpt's tracts. Only places whose
+# first source is licensed CC0-1.0 (AllThePlaces) are kept, and only the fields Studio reads (no names, ids,
+# addresses, phones or websites). Their later source entries name Overture's own CDLA-Permissive-2.0 contributions,
+# so the CDLA Permissive 2.0 text is saved next to the sample (its section 2.1 asks for that when data is shared).
+OVERTURE_SAMPLE_BOX = (-95.40, -95.33, 29.73, 29.82)
+OVERTURE_SAMPLE_ROWS = 60
+CDLA_TEXT = "https://raw.githubusercontent.com/Community-Data-License-Agreements/Releases/main/CDLA-Permissive-2.0.txt"
+LODES_BASE = "https://lehd.ces.census.gov/data/lodes/LODES8/il"
+LODES_WAC = f"{LODES_BASE}/wac/il_wac_S000_JT00_2023.csv.gz"
+LODES_COUNTY = "17031"
+LODES_SAMPLE_ROWS = 40
+INDUSTRY_TITLES = "https://data.bls.gov/cew/doc/titles/industry/industry_titles.csv"
+INDUSTRY_CODES_KEPT = {
+    "10",
+    "44-45",
+    "333244",
+    "445131",
+    "531110",
+    "721110",
+    "721199",
+    "722511",
+    "722513",
+    "722515",
+    "311811",
+    "811192",
+    "812310",
+}
+
+
+RECORDED_PREFIX = "recorded from the live API on "
 
 
 def sha256_text(text: str) -> str:
@@ -301,21 +337,140 @@ def record_city_categories(client: httpx.Client) -> None:
         )
 
 
-def main() -> int:
-    """Record every keyless fixture."""
+def record_overture(client: httpx.Client) -> None:
+    """The release's places listing, and a tiny CC0 sample of places (Studio-read fields only) as Parquet."""
+    sys.path.insert(0, str(FIXTURES.parents[2] / "src"))
+    from uwcopilot.studio.data import duckdb_http
+
+    params = {"list-type": "2", "prefix": OVERTURE_PREFIX}
+    response = fetch(client, f"{OVERTURE_BASE}/", params)
+    save("overture/listing.json", f"{OVERTURE_BASE}/", params, response, response.text)
+    keys = [key for key in re.findall(r"<Key>([^<]+)</Key>", response.text) if key.endswith(".parquet")]
+    urls = [f"{OVERTURE_BASE}/{key}" for key in keys]
+    target = FIXTURES / "overture" / "places_sample_cc0.parquet"
+    query = (
+        "SELECT bbox, {'primary': taxonomy.primary, 'hierarchy': taxonomy.hierarchy} AS taxonomy, confidence, "
+        "operating_status, list_transform(sources, s -> {'dataset': s.dataset, 'license': s.license}) AS sources "
+        "FROM read_parquet(?) WHERE bbox.xmin BETWEEN ? AND ? AND bbox.ymin BETWEEN ? AND ? "
+        "AND sources[1].license = 'CC0-1.0' ORDER BY bbox.ymin, bbox.xmin, taxonomy.primary LIMIT ?"
+    )
+    connection = duckdb_http.connect(https=True)
+    try:
+        connection.execute(f"CREATE TABLE sample AS {query}", [urls, *OVERTURE_SAMPLE_BOX, OVERTURE_SAMPLE_ROWS])
+        rows = connection.execute("SELECT * FROM sample").fetchall()
+        columns = [item[0] for item in connection.description]
+        connection.execute(f"COPY sample TO '{target.as_posix()}' (FORMAT parquet)")
+    finally:
+        connection.close()
+    body = json.dumps({"columns": columns, "rows": rows}, indent=1, default=str)
+    record = {
+        "fixture_origin": (
+            f"{RECORDED_PREFIX}{today()} by {SCRIPT}: a DuckDB query (below) of the Overture release files over "
+            "HTTPS; the same rows are in places_sample_cc0.parquet (body = the rows as JSON, for reading)"
+        ),
+        "url": f"{OVERTURE_BASE}/{OVERTURE_PREFIX}",
+        "params": {
+            "query": query,
+            "bbox_xmin_xmax_ymin_ymax": ",".join(str(value) for value in OVERTURE_SAMPLE_BOX),
+            "limit": str(OVERTURE_SAMPLE_ROWS),
+            "files_read": str(len(urls)),
+        },
+        "release": "2026-09-23.1",
+        "license_note": (
+            "every kept row's first source is licensed CC0-1.0 (AllThePlaces), per the row itself; the rows' later "
+            "source entries are Overture contributions licensed CDLA-Permissive-2.0, so the CDLA Permissive 2.0 "
+            "text (downloaded from cdla_text_url) is kept next to this file, as its section 2.1 asks"
+        ),
+        "cdla_text_url": CDLA_TEXT,
+        "recorded_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "content_type": "application/json (rows) and application/vnd.apache.parquet (file)",
+        "body_sha256": sha256_text(body),
+        "file": target.name,
+        "file_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+        "body": body,
+    }
+    (FIXTURES / "overture" / "places_sample_cc0.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    response = fetch(client, CDLA_TEXT)
+    (FIXTURES / "overture" / "CDLA-Permissive-2.0.txt").write_bytes(response.content)
+    print(f"wrote overture/{target.name} ({len(rows)} rows) and overture/CDLA-Permissive-2.0.txt")
+
+
+def record_lodes(client: httpx.Client) -> None:
+    """Illinois LODES files: version.txt, the WAC lines of the checksum list, and the first Cook County WAC rows."""
+    response = fetch(client, f"{LODES_BASE}/version.txt")
+    save("lodes/il_version.json", f"{LODES_BASE}/version.txt", {}, response, response.text)
+    url = f"{LODES_BASE}/lodes_il.sha256sum"
+    response = fetch(client, url)
+    lines = [line for line in response.text.splitlines() if "_wac_S000_JT00_" in line]
+    save("lodes/il_sha256sum.json", url, {}, response, "\n".join(lines) + "\n", "lines kept: *_wac_S000_JT00_*")
+    response = fetch(client, LODES_WAC)
+    text = gzip.decompress(response.content).decode("utf-8")
+    rows = text.splitlines()
+    kept = [rows[0]] + [line for line in rows[1:] if line.startswith(LODES_COUNTY)][:LODES_SAMPLE_ROWS]
+    save(
+        "lodes/il_wac_excerpt.json",
+        LODES_WAC,
+        {},
+        response,
+        "\n".join(kept) + "\n",
+        f"the decompressed CSV's header and its first {LODES_SAMPLE_ROWS} rows with w_geocode starting {LODES_COUNTY}",
+    )
+
+
+def record_hpms_pages(client: httpx.Client) -> None:
+    """The first two 5-segment pages of Harris County's segments, with the connector's own county query."""
+    sys.path.insert(0, str(FIXTURES.parents[2] / "src"))
+    from uwcopilot.studio.data.traffic_hpms import county_segments_request
+
+    for page in (0, 1):
+        params = county_segments_request("201", page * 5, 5)
+        response = fetch(client, HPMS_TX, params)
+        save(f"hpms/county_201_page{page}.json", HPMS_TX, params, response, response.text)
+
+
+def record_industry_titles(client: httpx.Client) -> None:
+    """The BLS QCEW industry titles rows of the profile codes, plus a few rows that show each title form."""
+    response = fetch(client, INDUSTRY_TITLES)
+    body = csv_excerpt(response.text, lambda row: row["industry_code"] in INDUSTRY_CODES_KEPT)
+    save(
+        "bls/industry_titles_excerpt.json",
+        INDUSTRY_TITLES,
+        {},
+        response,
+        body,
+        f"rows kept: industry_code in {sorted(INDUSTRY_CODES_KEPT)}",
+    )
+
+
+STEPS: dict[str, Callable[[httpx.Client], None]] = {
+    "geocoder": record_geocoder,
+    "fred": record_fred,
+    "hpms": record_hpms,
+    "acs_variables": record_acs_variables,
+    "qcew": record_qcew,
+    "gazetteer": record_gazetteer,
+    "delineation": record_delineation,
+    "pep": record_pep,
+    "city_categories": record_city_categories,
+    "overture": record_overture,
+    "lodes": record_lodes,
+    "hpms_pages": record_hpms_pages,
+    "industry_titles": record_industry_titles,
+}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Record every keyless fixture, or only the steps named with --only (comma-separated)."""
+    parser = argparse.ArgumentParser(description="Record the Studio test fixtures from keyless live hosts.")
+    parser.add_argument("--only", default="", help=f"comma-separated steps out of: {', '.join(STEPS)}")
+    args = parser.parse_args(argv)
+    chosen = [name.strip() for name in args.only.split(",") if name.strip()] or list(STEPS)
+    unknown = sorted(set(chosen) - set(STEPS))
+    if unknown:
+        parser.error(f"unknown steps {unknown}")
     with httpx.Client(timeout=TIMEOUT_S, follow_redirects=True, trust_env=True) as client:
-        for step in (
-            record_geocoder,
-            record_fred,
-            record_hpms,
-            record_acs_variables,
-            record_qcew,
-            record_gazetteer,
-            record_delineation,
-            record_pep,
-            record_city_categories,
-        ):
-            step(client)
+        for name in chosen:
+            STEPS[name](client)
     return 0
 
 

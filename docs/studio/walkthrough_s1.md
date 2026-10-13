@@ -1,8 +1,9 @@
 # Walkthrough: Studio S1, profiles, metros and the data fabric
 
 Written on 2026-10-12 and updated on 2026-10-13 (verify-and-fix pass: rejected answers are no longer cached, the
-Census key problem is named, coverage no longer counts live-only layers, derived wages are labeled) so that both
-Rahul Vajja and Bhavani Adula can explain this phase in their own words.
+Census key problem is named, coverage no longer counts live-only layers, derived wages are labeled; later the same
+day: Overture places, the HPMS road layer and LODES daytime workers, see section 7) so that both Rahul Vajja and
+Bhavani Adula can explain this phase in their own words.
 
 **What S1 is.** S1 builds the data foundation of Founder Studio: one config file per business type (what drives its
 demand, its costs, its risks), one config file per metro (which counties it covers), the connectors that fetch public
@@ -16,14 +17,15 @@ factors are backed by data and which are not.
   the Census population estimates file; 12 connectors (9 national, 3 metro enhancements) with a shared polite client, cache and provenance record; the
   SYNTHETIC city with hidden true demand; the data fabric; `make studio-data` snapshots for the five real metros using
   the keyless sources; the coverage report; tests with recorded and labeled hand-written fixtures.
-- Not done: ACS tract data and County Business Patterns. All five keys (`CENSUS_API_KEY`, `BLS_API_KEY`,
-  `FRED_API_KEY`, `HUD_USER_TOKEN`, `ORS_API_KEY`) are now set in the environment, but on 2026-10-13 api.census.gov
-  answered the Census key with a redirect to `invalid_key.html` (without a key it redirects to `missing_key.html`
-  instead), so Census refuses this key: most likely it has not been activated through the link Census emails after
-  sign-up, or it was copied wrong. The snapshot step now says exactly that (`InvalidApiKey`). Also not done:
-  OpenStreetMap places (overpass-api.de reset every connection from this environment), state DOT traffic adapters
-  (no documented dataset recorded yet), Inside Airbnb coverage (the site answered 403). The prime rate now comes from
-  the FRED API (key set). All five real metros therefore run in **limited mode**.
+- Update 2026-10-13 (section 7): api.census.gov refused the Census key as invalid_key earlier on 2026-10-13 and
+  accepted it (HTTP 200) later the same day, so ACS tract data and County Business Patterns now load (CBP answered "no rows" for "44" and "445131" in every metro, and for "721199" in at least one state of
+  the Chicago and New York metros; those counts are UNKNOWN). Places now come from an Overture Maps extract per metro (OpenStreetMap is
+  optional: overpass-api.de reset every connection from this environment), traffic from an HPMS road layer stored in
+  the snapshot, daytime workers from Census LEHD LODES. Every step of all five 2026-10-13 snapshots succeeded.
+- Still not done: state DOT traffic adapters (no documented dataset recorded yet) and Inside Airbnb coverage (the site
+  answered 403), so short-term rental comparables are UNKNOWN. All five real metros still run in **limited mode**:
+  the metro's mode uses its lowest business type (short-term rental, 0.6779 to 0.6826; motel, 0.745 to 0.7722),
+  see section 4.
 - No profile number is SOURCED. Every rate, price, cost ratio and curve is the project author's labeled ASSUMPTION with
   a wide range and a note naming the source that should replace it.
 
@@ -157,40 +159,47 @@ From `results/studio_metro_ranking.json` (PEP file `cbsa-est2025-alldata.csv`, c
 | 4 | 19100 | Dallas-Fort Worth-Arlington, TX | 8477157 |
 | 5 | 26420 | Houston-Pasadena-The Woodlands, TX | 7904627 |
 
-From `results/studio_metro_coverage.json` (snapshots of 2026-10-13; Census refused the key, so no ACS or CBP data):
+From `results/studio_metro_coverage.json`, rerun on 2026-10-13 after the section 7 layers were added and after the
+verify-and-fix pass (every snapshot step succeeded; summed tract values now count the tracts whose market-ring sum
+is known, see section 7). Coverage share per business type (weighted share of required factors backed by data):
 
-| Metro | Counties | Tracts | Mode | Lowest coverage share (any business type) |
-|---|---|---|---|---|
-| new_york_ny_nj_pa | 22 | 4928 | limited | 0.0 |
-| los_angeles_ca | 2 | 3112 | limited | 0.0 |
-| chicago_il_in | 13 | 2292 | limited | 0.0 |
-| dallas_fort_worth_tx | 11 | 1704 | limited | 0.0 |
-| houston_tx | 10 | 1615 | limited | 0.0 |
-| synthetic_metro | - | 300 | synthetic | 0.896 |
+| Metro | Tracts | Mode | Car wash | Laundromat | Motel | Restaurant/cafe | Retail | Short-term rental |
+|---|---|---|---|---|---|---|---|---|
+| new_york_ny_nj_pa | 4928 | limited | 0.9142 | 0.8935 | 0.7722 | 0.8675 | 0.9346 | 0.6779 |
+| los_angeles_ca | 3112 | limited | 0.9165 | 0.8978 | 0.7714 | 0.8769 | 0.9415 | 0.6812 |
+| chicago_il_in | 2292 | limited | 0.9159 | 0.8978 | 0.771 | 0.8729 | 0.9382 | 0.6812 |
+| dallas_fort_worth_tx | 1704 | limited | 0.8965 | 0.8993 | 0.7564 | 0.8781 | 0.9306 | 0.6826 |
+| houston_tx | 1615 | limited | 0.8797 | 0.898 | 0.745 | 0.876 | 0.9197 | 0.6813 |
+| synthetic_metro | 300 | synthetic | 0.9473 | 0.896 | 0.9 | 0.8973 | 0.9473 | 0.996 |
 
-In every real metro every business type has coverage 0.0: ACS failed (Census refused the key), OpenStreetMap was
-unreachable, and traffic is no longer counted as tract coverage (it is flagged `live_per_site`, since HPMS has
-segments with traffic counts in every county but no tract has a value in the snapshot). The earlier report (0.35 for
-car wash, 0.25 for motel, 0.2 for retail) counted "some segment somewhere in each county" as covering every tract,
-which overstated coverage. QCEW disclosed a wage for 1 (Chicago), 2 (Houston), 3 (Dallas-Fort Worth, New York) and 6
+Before the update (same file, earlier run on 2026-10-13) every real metro had 0.0 for every business type. What is
+still missing: commercial rent is an ASSUMPTION everywhere (counts 0); short-term rental comparables are UNKNOWN
+(Inside Airbnb not verified); three profile tags have no Overture category, so anchors count 0.8 (car wash, motel)
+or 0.857 (restaurant) of their weight and tourism 0.667 (`definition_share`); traffic, income, residents and daytime
+workers miss a few tracts each (for New York: traffic 0.9688 and income 0.9639 of tracts; residents 0.997 and daytime
+workers 0.9667 of tracts have a known market-ring sum for restaurant/cafe). A real metro runs in full mode only when every business type reaches its threshold (0.80), so the
+short-term rental and motel rows keep all five in limited mode. The earlier report (0.35 for car wash, 0.25 for
+motel, 0.2 for retail) counted "some segment somewhere in each county" as covering every tract, which overstated
+coverage. QCEW disclosed a wage for 1 (Chicago), 2 (Houston), 3 (Dallas-Fort Worth, New York) and 6
 (Los Angeles) of the six business types, each labeled DATA_X_ASSUMPTION; the others stay UNKNOWN. The prime rate is
 DATA (FRED DPRIME, observation of 2026-10-02, value 7.0) in every snapshot. The SYNTHETIC metro's lowest share is
 0.896 (laundromat) because rent is an ASSUMPTION range and counts 0.
 
 ## 5. Limitations
 
-- Real metros cannot leave limited mode until Census accepts `CENSUS_API_KEY` (activate it from the Census email or
-  re-check it) and OpenStreetMap places are reachable; then `make studio-data METRO=all && make studio-coverage`
-  refreshes them (refused answers are never cached; `make studio-data-refresh METRO=all` refetches everything).
-- Even with ACS data, traffic and POI factors have no per-tract values in a snapshot (they are looked up live for one
-  site), so car wash, motel and retail cannot reach the threshold, and SiteIQ cannot rank tracts on those factors,
-  until a snapshot step stores per-tract nearest-road AADT and POI counts. Not built yet.
-- Daytime workers have no real source yet (ACS tract tables count residents); restaurant and retail coverage stays
-  below the threshold until a source such as the Census LEHD origin-destination files is added and cited.
-- License and terms of every source are still "to verify" in each SourceRecord's `license_note`.
+- Real metros stay in limited mode while the metro's mode is the minimum over business types: short-term rental has
+  no comparables source (Inside Airbnb not verified) and motel's tourism and anchor tags are partly unmapped. Limited
+  mode is a note on results (scores and suggestions still run where the data allows); a per-business-type mode is an
+  open design question.
+- The Overture release is pinned to 2026-09-23.1; Overture keeps a release public for at most 60 days, so the pin
+  must move (and the extracts be re-made) before `make studio-data-refresh` runs after the release is removed. The
+  cached extracts keep working.
+- License and terms are recorded for Overture places and the LEHD citation (data_sources.md 2c); every other source is
+  still "to verify" in its SourceRecord's `license_note`.
 - The HUD entity-id format and the Inside Airbnb column names were written from the author's knowledge, are marked so,
   and are tested only with hand-written fixtures.
-- NAICS codes in the profiles are `verified: false`; the Census NAICS site returned 403 here.
+- NAICS codes: 9 of 10 are `verified: true` against the BLS QCEW industry titles list (the Census NAICS site returned
+  403 here); "44" is not in that list ("44-45" is).
 - Commercial rent has no free source; it stays an ASSUMPTION range until the founder enters a quote.
 
 ## 6. Likely interview questions
@@ -218,12 +227,13 @@ DATA (FRED DPRIME, observation of 2026-10-02, value 7.0) in every snapshot. The 
 6. **How do you keep API keys out of logs and fixtures?** Keys are read by name only when needed; the client removes
    them from the cache key, stored request, logs and errors; `SourceRecord` refuses secret parameter names; a test
    scans every fixture for key-like parameters.
-7. **Why is a car wash in Houston at coverage 0.0 when HPMS has traffic counts in every county?** Coverage measures
-   the share of tracts with a value. The snapshot stores no traffic value per tract (a site's nearest road is looked
-   up live), so tracts cannot be ranked on traffic: it is UNKNOWN with `live_per_site: true`. Households and income
-   are UNKNOWN because Census refused the key, competition and anchors because OpenStreetMap was unreachable, and rent
-   is an ASSUMPTION. An earlier version reported 0.35 by counting "some segment in each county" as full coverage; that
-   overstated it and was fixed.
+7. **Why was a car wash in Houston at coverage 0.0 when HPMS has traffic counts in every county, and why is it
+   0.8797 now?** Coverage measures the share of tracts with a value. The first snapshots stored no traffic value per
+   tract (a site's nearest road was looked up live), Census refused the key and OpenStreetMap was unreachable, so
+   every factor was UNKNOWN. Now the snapshot stores the HPMS road layer and each tract's nearest segment (86% of
+   Houston's tract centroids have one within 0.5 miles), ACS loads, and Overture gives competitors and anchors. Rent is
+   still an ASSUMPTION and one of five anchor tags has no Overture category, which is why it is not higher. An earlier
+   version reported 0.35 by counting "some segment in each county" as full coverage; that overstated it and was fixed.
 8. **Why does New York have no Pennsylvania county?** The July 2023 Census delineation lists CBSA 35620 with New York
    and New Jersey counties only; the config follows the file. We kept the id `new_york_ny_nj_pa` to avoid breaking
    references, and the PA adapter is disabled with a note.
@@ -234,3 +244,75 @@ DATA (FRED DPRIME, observation of 2026-10-02, value 7.0) in every snapshot. The 
     SHA-256 and the original request date; reading it recomputes the checksum and refuses a mismatch. Snapshots record
     those checksums, and results record the SHA-256 of the snapshot files they used, so a number can be traced to the
     exact response.
+
+## 7. Update 2026-10-13: the layers that let a real metro rank every tract
+
+Written so that both Rahul Vajja and Bhavani Adula can explain it. Before this update a real metro could not rank its
+tracts: there was no place layer (overpass-api.de reset every connection), traffic and places were looked up live for
+one site only (so SiteIQ's metro-wide reference had no values for them), daytime workers had no source, and Census
+refused the key (invalid_key earlier on 2026-10-13; HTTP 200 later the same day, measured here). This update adds
+three snapshot steps.
+
+### 7.1 Files
+
+| File | What it does | Design choice and why |
+|---|---|---|
+| `config/studio/overture_places.yaml` | The ONE pinned Overture release (2026-09-23.1, dated 2026-09-25, schema v2.0.0), the extraction settings (confidence >= 0.5, permanently closed places excluded: DESIGN_CHOICE values with reasons), the license facts read from the Overture attribution page, the places guide and the CDLA text, and Overture's retention policy (public for at most 60 days, for GDPR "right to be forgotten" reasons), each page with URL, retrieval time and SHA-256. | One pinned release makes an extract reproducible; the license and retention facts live next to the code that uses them so every SourceRecord carries them. After the 60 days the code refuses to build or reuse an extract of the pin. |
+| `config/studio/overture_category_map.yaml` | One reviewed row per Overture category: which profile tag it counts as (for example `car_wash` -> `amenity=car_wash`), with a note; rows with no tags mean "reviewed, not counted"; three profile tags without a category are listed with a reason. Facility rows (airport, hospital, college_university) carry a merge distance. A second review added rows for generic lodging, resorts, lodges, dessert and beverage places, food trucks, warehouse clubs and kindergartens. | A crosswalk is a judgement, so it is a reviewed table, not code. The most specific category decides, so a motel is not also counted as a hotel. |
+| `studio/data/overture_config.py` | Typed models for the two YAML files and the mapping rule (`CategoryMap.tags_for`). | A typo in the YAML fails loudly (unknown keys are refused). |
+| `studio/data/duckdb_http.py` | A DuckDB connection with the httpfs extension, the proxy and the CA bundle set, memory and threads capped. | DuckDB reads only the needed columns and row groups of the release's Parquet files over HTTPS (bbox predicate pushdown), so the release (about 11 GB) is never downloaded whole. How long an extract takes is not measured by a script. |
+| `studio/data/overture_places.py` | Lists the release files from the public S3 bucket, queries the metro's box twice (category-path counts for the accounting, then the mapped places), checks the two answers agree, merges the places of one facility (facility rows), and caches the extract with its SHA-256, request date and release id. Only category, position, confidence, the first source's dataset and the licenses of all the place's sources are read; never names. | Every place in the box is accounted for: kept, below confidence, closed, merged into a facility, "not counted" by a reviewed row, unmapped (ignored and counted), or without a category. The cache key includes the code's format, rules version and the SHA-256 of the queries, and rows are sorted on every stored field, so a code change never reuses an old extract and the same inputs give the same bytes. |
+| `studio/data/places_layer.py` | The extract as arrays: places near a point (nearest first) and counts around many points, with OpenStreetMap-style tag matching; reports filters that no category maps to. | Places matching the filters are sorted by latitude once, so a metro-wide count only measures nearby candidates. |
+| `studio/data/lodes.py` | LEHD LODES 8 WAC 2023 (S000, JT00, column C000) per state: checks the decompressed file against the state's published SHA-256 list, reads the vintage from `version.txt`, sums jobs per tract. | A tract with no block in the file stays UNKNOWN, not zero: the documentation does not say a missing block means zero jobs. The one exception is a water-only tract (land area 0 in the Gazetteer), which gets 0 with that reason recorded per tract (`snapshot_layers.daytime_values`). |
+| `studio/data/traffic_hpms.py` (extended) | `fetch_county_segments`: every segment with AADT of a county, page by page (2,000 per page, ordered by objectid, shapes simplified by 0.0001 degrees). | The download must equal the layer's own count for the county, or the step fails; a partial road layer is never used. |
+| `studio/data/road_layer.py` | The metro's segments as arrays in `roads.npz`: nearest segment within a distance for any point, distance to a given segment, save and load without pickles. Each segment remembers which HPMS page returned it. | Same nearest-road rule as the live lookup and the SYNTHETIC city, so a site and the reference are measured the same way. |
+| `studio/data/snapshot_layers.py` | Builds the three layers: places (extract plus per-tract counts per business type and factor, in SiteIQ's rings), roads (all counties plus each tract centroid's nearest segment), daytime workers (LODES jobs per tract). | The extract's box is every tract centroid widened by the largest market ring plus the 3 miles a site may be from its centroid, so no ring reaches past the box. |
+| `studio/data/snapshot_files.py` | The layer file names and a reader that checks each file against the SHA-256 in the manifest. | A changed file is refused and the layer is UNKNOWN with the reason. |
+| `studio/data/snapshot.py` (extended) | Runs the new steps `roads_by_tract`, `overture_places`, `lehd_daytime_workers`; writes the layer files and their SHA-256 in the manifest's `files`; Overpass only with `--with-overpass`. | Overture is the default place source (reasons in data_sources.md 2c); OpenStreetMap stays optional. |
+| `studio/data/fabric_snapshot.py`, `snapshot_coverage.py` | The real-metro fabric answers places and roads from the stored layers (tract centroids from the stored per-tract answers, computed with the same rule), daytime workers from LODES; a place search that reaches outside the extract's box is UNKNOWN, not a partial count. Coverage counts each layer's share of tracts; for the values SiteIQ sums (residents, daytime workers, households, renters) it is the share of tracts whose market-ring sum is known. Percentages in reasons are rounded down. | Coverage of a place factor is multiplied by the share of its tag filters that are mapped (`definition_share`), so an unmapped tag lowers coverage instead of being "none found". One tract without a value makes every ring sum that includes it UNKNOWN, so counting tracts one by one would overstate what SiteIQ can rank. |
+| `studio/metros/rings.py` | The ring helpers (profile rings x metro multiplier; near and market ring) and the 3-mile own-tract distance, moved here from SiteIQ and re-exported there. | The data layer must measure places in exactly SiteIQ's rings without importing SiteIQ. |
+| `studio/profiles/naics_check.py`, `scripts/studio_verify_naics.py` (`make studio-naics`) | Look every profile NAICS code up in the BLS QCEW industry titles file and write `results/studio_naics_check.json`. | www.census.gov/naics answered 403. A code is `verified: true` only when the list has it with the current "NAICS " prefix and the same title; the profile keeps the list's URL, date, SHA-256 and published title. |
+| `studio/data/business_patterns.py` (fix) | County Business Patterns answers HTTP 204 with an empty body for a code without rows (seen for "44" and "445131", NAICS2017); that is now "no rows for this code", not a failed step. | One code without rows should not discard the other codes' counts. |
+| tests (`test_data_overture.py`, `test_data_places_layer.py`, `test_data_road_layer.py`, `test_data_lodes.py`, `test_data_snapshot_coverage.py`, `test_profiles_naics.py`, `test_data_business_patterns_empty.py`, `test_data_snapshot.py`) | Recorded fixtures (an Overture listing and a 60-row CC0 sample as Parquet with the CDLA text, Illinois LODES files, two HPMS county pages, BLS title rows), mapping-table rules, accounting, hand-built geometry with hand-checkable distances, coverage accounting, and a check that SiteIQ measures exactly the per-tract counts the snapshot stores. | No test touches the network; `make studio-layer-fixtures` re-records the fixtures. |
+
+### 7.2 Likely interview questions on this update
+
+1. **Why Overture instead of OpenStreetMap?** Overpass reset every connection from this environment on two days; a
+   metro-wide extract gives the per-tract counts the metro-wide ranking needs, which one-site Overpass queries cannot;
+   one pinned release makes the result reproducible; and the places theme has no ODbL share-alike obligations. The
+   OpenStreetMap connector is still there as an optional source.
+2. **What licenses apply to the places?** They are mixed by source: CDLA Permissive 2.0 (most providers), Apache 2.0
+   (Foursquare) and CC0 1.0 (AllThePlaces), per Overture's attribution page. A single place usually mixes two: its
+   provider's license plus CDLA Permissive 2.0 for Overture's own contributions, which are listed after the provider
+   in its sources. So each stored place keeps the set of all its sources' licenses (for example
+   `Apache-2.0+CDLA-Permissive-2.0`) and every extract counts places per license set. CDLA asks that its text travel
+   with shared data; the per-tract counts are "Results", which it does not restrict.
+3. **How do you know the mapping from Overture categories to our tags is right?** It is a reviewed table with a note
+   per row, not a claim of an official crosswalk; approximate rows say so. Places whose category has no row are
+   counted as unmapped, and tags with no category lower coverage instead of being treated as "none nearby".
+4. **Why read the bbox columns instead of the geometry?** DuckDB can skip whole row groups using the bbox column
+   statistics (predicate pushdown) and the geometry column is never downloaded; for a point the bbox corners are the
+   point, as the Overture places guide's own example uses.
+5. **Why is a tract with no LODES block UNKNOWN and not zero, and does LODES count people?** The LODES
+   documentation does not say that a missing block means zero jobs, so filling zero would be a guess; UNKNOWN keeps
+   the gap visible, the market-ring sums that include such a tract stay UNKNOWN, and coverage counts exactly those
+   ring sums. The one exception is a water-only tract (land area 0): it has no land for a workplace, so it gets 0
+   with that reason. LODES counts jobs at workplaces (JT00 = all jobs), not people; one person can hold two jobs, so
+   Studio calls it "jobs located in the tract".
+6. **Why are airport, hospital and university places merged?** Overture files many places of one airport or campus
+   under the same category (terminals, departments, buildings), while the profiles' tags mean one feature per
+   facility, so a big campus outranked several distinct anchors. Facility rows merge places within a set distance of
+   an already kept place (1 mile for airports, 0.25 miles for hospitals and universities; design choices), from the
+   highest confidence down and never chained; each extract counts what was merged.
+7. **Why store the whole HPMS road layer instead of one value per tract?** A scored site is anywhere, not only at a
+   centroid. With the layer stored, a site and every tract centroid are measured by the same rule offline; the
+   per-tract values are also stored, and the tests check they equal a fresh search.
+8. **How do you know a stored layer was not changed?** The manifest records each layer file's SHA-256; the fabric
+   refuses a file that no longer matches and marks the layer UNKNOWN with the reason. The results files record the
+   manifest's SHA-256, which pins the layer files too.
+9. **What does "verified" mean for a NAICS code?** That the BLS QCEW industry titles list has the code with the
+   current-vintage prefix and the same title. It does not prove the code is the right one for the business; that is
+   still the author's choice, and "44" stays unverified because the list has "44-45".
+10. **Why did County Business Patterns fail even after the key worked?** For a code without rows the API answers HTTP
+    204 with an empty body, which the old code read as "not JSON" and failed the whole step. Now that answer means
+    "no rows for this code" and the step lists the codes without rows.

@@ -10,12 +10,20 @@ fails (a host is unreachable or a free API key is missing). A failed step never 
 written with what succeeded, and the command exits with status 1 and a summary naming every unreachable host and
 every missing key variable. The data fabric (fabric.py) reads the snapshot and marks whatever is missing UNKNOWN.
 
+Three steps store layers that let SiteIQ rank every tract (snapshot_layers.py): "roads_by_tract" (HPMS segments with
+AADT, roads.npz, and each tract centroid's nearest segment), "overture_places" (the Overture places extract,
+places.json, and place counts around every tract centroid, poi_counts.json) and "lehd_daytime_workers" (LODES jobs
+per tract). Places come from Overture Maps by default. The OpenStreetMap Overpass check ("osm_pois") runs only with
+--with-overpass: overpass-api.de reset every connection from the build environment (2026-10-12 and 2026-10-13), and
+per-site Overpass queries cannot give the per-tract counts the metro-wide ranking needs (docs/studio/data_sources.md).
+
 Answers come from the response cache when the same request was made before. A rejected answer (an error page, a key
 the host refused) is never cached, so fixing a key and rerunning is enough; --refresh fetches every answer again.
 A rerun on the same day replaces that day's snapshot folder; results files therefore record the SHA-256 of the
 snapshot files they used (fabric_snapshot.Snapshot.fingerprint), so a replaced snapshot is detectable.
 
-Layout: data/studio/snapshots/<metro id>/<snapshot date>/manifest.json and tracts.json (gitignored).
+Layout: data/studio/snapshots/<metro id>/<snapshot date>/manifest.json, tracts.json and the layer files listed in
+the manifest's "files" with their SHA-256 (snapshot_files.py) (all gitignored).
 The SYNTHETIC metro has nothing to download: its city is generated from its seed.
 """
 
@@ -28,8 +36,16 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from uwcopilot.studio.data import business_patterns, census_acs, census_geography, rates, traffic_hpms, wages
-from uwcopilot.studio.data.cache import write_atomic
+from uwcopilot.studio.data import (
+    business_patterns,
+    census_acs,
+    census_geography,
+    rates,
+    snapshot_layers,
+    traffic_hpms,
+    wages,
+)
+from uwcopilot.studio.data.cache import sha256_bytes, write_atomic
 from uwcopilot.studio.data.city_open_data import DATASETS as CITY_DATASETS
 from uwcopilot.studio.data.errors import (
     HostUnreachable,
@@ -43,8 +59,10 @@ from uwcopilot.studio.data.fabric import FactorValue
 from uwcopilot.studio.data.http import PoliteClient
 from uwcopilot.studio.data.keys import key_status, require_key
 from uwcopilot.studio.data.osm import OVERPASS_URL
+from uwcopilot.studio.data.overture_places import PlacesReader
 from uwcopilot.studio.data.paths import SNAPSHOTS_DIR
 from uwcopilot.studio.data.provenance import SourceRecord
+from uwcopilot.studio.data.snapshot_files import PLACES_FILE, POI_COUNTS_FILE, ROADS_FILE
 from uwcopilot.studio.data.str_comps import VERIFIED_COVERAGE
 from uwcopilot.studio.data.traffic_state import adapter_for
 from uwcopilot.studio.metros.loader import list_metros, load_metro
@@ -87,6 +105,7 @@ class SnapshotBuild:
     tracts: dict[str, dict[str, Any]] = field(default_factory=dict)
     layers: dict[str, Any] = field(default_factory=dict)
     metro_inputs: dict[str, Any] = field(default_factory=lambda: {"local_wages": {}, "prime_rate": None})
+    files: dict[str, bytes] = field(default_factory=dict)
 
     def failures(self) -> list[str]:
         """One line per failed step (each names the host or the missing key variable)."""
@@ -145,14 +164,22 @@ def business_patterns_step(build: SnapshotBuild, client: PoliteClient, profiles:
         state_fips = sorted({county.state_fips for county in build.metro.counties})
         metro_counties = set(build.metro.county_geoids())
         codes = sorted({item.code for profile in profiles.values() for item in profile.naics})
+        no_rows: set[str] = set()
         for naics in codes:
             for state in state_fips:
                 result = business_patterns.fetch_county_counts(client, state, naics)
                 step.sources.append(result.source)
+                if result.no_rows:
+                    no_rows.add(naics)
                 kept = {geoid: n for geoid, n in result.counts.items() if geoid in metro_counties}
                 counts.setdefault(naics, {}).update(kept)
         build.layers["business_patterns"] = counts
         step.detail = f"{len(codes)} NAICS codes x {len(state_fips)} states"
+        if no_rows:
+            step.detail += (
+                f"; no CBP rows (HTTP 204, empty) for {sorted(no_rows)}: those codes are UNKNOWN (the CBP API's "
+                "code variable is NAICS2017)"
+            )
 
     return action
 
@@ -272,6 +299,52 @@ def state_postal_by_fips(build: SnapshotBuild) -> dict[str, str]:
     return dict(mapping)
 
 
+def layer_step(
+    build: SnapshotBuild, layer_name: str, make: Callable[[], snapshot_layers.LayerOutput]
+) -> Callable[[StepResult], None]:
+    """A step that stores one snapshot_layers output: per-tract values, layer facts, files, sources and detail."""
+
+    def action(step: StepResult) -> None:
+        output = make()
+        for geoid, values in output.tract_values.items():
+            build.tracts.setdefault(geoid, {}).update(values)
+        build.layers[layer_name] = output.layer_info
+        build.files.update(output.files)
+        step.sources += output.sources
+        step.detail = output.detail
+
+    return action
+
+
+def roads_by_tract_step(build: SnapshotBuild, client: PoliteClient) -> Callable[[StepResult], None]:
+    """HPMS segments of every county and each tract centroid's nearest one (snapshot_layers.build_roads_layer)."""
+    return layer_step(
+        build,
+        "road_layer",
+        lambda: snapshot_layers.build_roads_layer(client, build.metro, build.tracts, state_postal_by_fips(build)),
+    )
+
+
+def overture_places_step(
+    build: SnapshotBuild, client: PoliteClient, profiles: dict[str, Profile], reader: PlacesReader | None
+) -> Callable[[StepResult], None]:
+    """The Overture places extract and per-tract place counts (snapshot_layers.build_places_layer)."""
+    return layer_step(
+        build,
+        "places",
+        lambda: snapshot_layers.build_places_layer(client, build.metro, build.tracts, profiles, reader),
+    )
+
+
+def daytime_workers_step(build: SnapshotBuild, client: PoliteClient) -> Callable[[StepResult], None]:
+    """LODES jobs per tract (snapshot_layers.build_daytime_workers)."""
+    return layer_step(
+        build,
+        "daytime_workers",
+        lambda: snapshot_layers.build_daytime_workers(client, build.metro, build.tracts, state_postal_by_fips(build)),
+    )
+
+
 def osm_step(client: PoliteClient) -> Callable[[StepResult], None]:
     """Whether the Overpass API answers (POIs are then queried live per site)."""
 
@@ -303,9 +376,18 @@ def enhancement_steps(build: SnapshotBuild) -> None:
 
 
 def build_snapshot(
-    metro: MetroConfig, client: PoliteClient, profiles: dict[str, Profile], today: date
+    metro: MetroConfig,
+    client: PoliteClient,
+    profiles: dict[str, Profile],
+    today: date,
+    places_reader: PlacesReader | None = None,
+    include_overpass: bool = False,
 ) -> SnapshotBuild:
-    """Run every step for one real metro and return what was collected."""
+    """Run every step for one real metro and return what was collected.
+
+    places_reader replaces the DuckDB reader of the Overture files (tests pass a local one); include_overpass adds
+    the optional OpenStreetMap Overpass reachability check.
+    """
     if metro.data_label != "PUBLIC":
         raise ValueError(f"{metro.id} is SYNTHETIC; there is nothing to download")
     if not metro.verified:
@@ -317,15 +399,28 @@ def build_snapshot(
     run_step(build, "qcew_wages", wages_step(build, client, profiles))
     run_step(build, "prime_rate", prime_rate_step(build, client))
     run_step(build, "hpms_roads", roads_step(build, client))
-    run_step(build, "osm_pois", osm_step(client))
+    run_step(build, "roads_by_tract", roads_by_tract_step(build, client))
+    run_step(build, "overture_places", overture_places_step(build, client, profiles, places_reader))
+    run_step(build, "lehd_daytime_workers", daytime_workers_step(build, client))
+    if include_overpass:
+        run_step(build, "osm_pois", osm_step(client))
     enhancement_steps(build)
     return build
 
 
 def write_snapshot(build: SnapshotBuild, snapshots_dir: Path = SNAPSHOTS_DIR) -> Path:
-    """Write manifest.json and tracts.json; return the snapshot folder."""
+    """Write manifest.json, tracts.json and the layer files; return the snapshot folder.
+
+    Layer files from an earlier run of the same day that this run did not produce are deleted, so the folder never
+    mixes two runs.
+    """
     folder = snapshots_dir / build.metro.id / build.snapshot_date.isoformat()
     folder.mkdir(parents=True, exist_ok=True)
+    for name in (PLACES_FILE, POI_COUNTS_FILE, ROADS_FILE):
+        if name not in build.files and (folder / name).is_file():
+            (folder / name).unlink()
+    for name, body in build.files.items():
+        write_atomic(folder / name, body)
     manifest = {
         "metro_id": build.metro.id,
         "snapshot_date": build.snapshot_date.isoformat(),
@@ -337,6 +432,7 @@ def write_snapshot(build: SnapshotBuild, snapshots_dir: Path = SNAPSHOTS_DIR) ->
         "steps": [step.as_json() for step in build.steps],
         "layers": build.layers,
         "metro_inputs": build.metro_inputs,
+        "files": {name: sha256_bytes(body) for name, body in sorted(build.files.items())},
     }
     write_atomic(folder / "manifest.json", (json.dumps(manifest, indent=2) + "\n").encode("utf-8"))
     tracts = {"tracts": build.tracts}
@@ -352,6 +448,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--refresh", action="store_true", help="ignore cached answers: fetch every answer again and overwrite the cache"
     )
+    parser.add_argument(
+        "--with-overpass", action="store_true", help="also check the optional OpenStreetMap Overpass API (osm_pois)"
+    )
     args = parser.parse_args(argv)
     if args.offline and args.refresh:
         parser.error("--offline and --refresh cannot be combined")
@@ -365,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
         if metro.data_label == "SYNTHETIC":
             print(f"{metro_id}: SYNTHETIC metro, generated from its seed; nothing to download")
             continue
-        build = build_snapshot(metro, client, profiles, today)
+        build = build_snapshot(metro, client, profiles, today, include_overpass=args.with_overpass)
         folder = write_snapshot(build)
         print(f"{metro_id}: snapshot written to {folder}")
         for step in build.steps:

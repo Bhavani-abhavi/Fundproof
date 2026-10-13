@@ -8,10 +8,11 @@ in the same way, at every tract centroid of the metro. The percentile is the mid
 so a site exactly in the middle of the metro scores 50 and ties share a percentile. Because every metro is ranked
 against itself, a score of 80 means "better than most locations in this metro", in New York or in Houston alike.
 
-Real metros: tract factors come from the snapshot for every tract. POI and road layers are looked up live per site,
-so for the reference they are measured only when they are local (SYNTHETIC city, or no live client: then UNKNOWN)
-or, with a live client, at a seeded sample of tract centroids (live_sample, default 0 = none). A factor with fewer
-than MIN_REFERENCE_VALUES reference values is not normalized: its score is left out, never guessed.
+Real metros: tract factors come from the snapshot for every tract. Places and roads come from the snapshot's stored
+layers (Overture places and the HPMS road layer, see data/snapshot_layers.py), so they are measured at every tract
+centroid exactly as at a site. Only when a snapshot lacks those layers and a live client is given are the layers
+live per site; they are then measured at a seeded sample of tract centroids (live_sample, default 0 = none). A factor
+with fewer than MIN_REFERENCE_VALUES reference values is not normalized: its score is left out, never guessed.
 """
 
 import hashlib

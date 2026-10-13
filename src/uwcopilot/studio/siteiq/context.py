@@ -1,5 +1,7 @@
 """MetroContext: one metro's data fabric plus the things SiteIQ computes once per metro and reuses.
 
+OWN_TRACT_MAX_MILES (metros/rings.py) is how far a site may be from its nearest tract centroid.
+
 Scoring a site ranks its values against every tract location in the metro (reference.py), so the tract table, the
 road lookups and the per-profile reference distributions are computed once and kept here. Build one context per
 metro and pass it to score_site / suggest_areas; metro_context() keeps one per (metro id, seed) for offline use.
@@ -11,14 +13,12 @@ from typing import Any
 
 import numpy as np
 
-from uwcopilot.studio.data.fabric import TRACT_FACTORS, DataFabric, RoadResult, SyntheticFabric, get_fabric
+from uwcopilot.studio.data.fabric import TRACT_FACTORS, DataFabric, RoadResult, get_fabric
 from uwcopilot.studio.data.geo import haversine_miles_array
 from uwcopilot.studio.data.http import PoliteClient
 from uwcopilot.studio.metros.loader import load_metro
 from uwcopilot.studio.metros.models import MetroConfig, MetroMode
-
-# A site farther than this from every tract centroid is outside the metro (the fabric's tract_at default).
-OWN_TRACT_MAX_MILES = 3.0
+from uwcopilot.studio.metros.rings import OWN_TRACT_MAX_MILES
 
 
 class SiteOutsideMetro(ValueError):
@@ -72,8 +72,9 @@ class MetroContext:
 
     @property
     def point_layers_local(self) -> bool:
-        """True when POI and road lookups are answered without the network (SYNTHETIC city, or no live client)."""
-        return isinstance(self.fabric, SyntheticFabric) or getattr(self.fabric, "live", None) is None
+        """True when POI and road lookups are answered without the network: the SYNTHETIC city, a snapshot that
+        stores its places and road layers, or a real metro with no live client (lookups are then UNKNOWN)."""
+        return self.fabric.point_layers_local
 
     def own_tract(self, lat: float, lon: float) -> int | None:
         """Index of the tract whose centroid is nearest the site, or None when none is within OWN_TRACT_MAX_MILES."""
