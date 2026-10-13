@@ -22,10 +22,12 @@ from datetime import date
 from typing import Any
 
 from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
-from uwcopilot.studio.data.http import FetchResult, PoliteClient
+from uwcopilot.studio.data.http import FetchResult, PoliteClient, expect_json
 from uwcopilot.studio.data.keys import require_key
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
+BLS_HOST = "api.bls.gov"
+QCEW_HOST = "data.bls.gov"
 QCEW_BASE = "https://data.bls.gov/cew/data/api"
 AREA_TITLES_URL = "https://data.bls.gov/cew/doc/titles/area/area_titles.csv"
 BLS_V2_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
@@ -97,9 +99,15 @@ def area_code_for_cbsa(cbsa_code: str) -> str:
     return "C" + cbsa_code[:4]
 
 
+def check_qcew_csv(fetched: FetchResult) -> None:
+    """Accept a QCEW file only when it is a CSV whose header has area_fips (an http.Accept check)."""
+    if "html" in fetched.content_type.lower() or "area_fips" not in fetched.body[:500].decode("utf-8", "replace"):
+        raise UpstreamError(QCEW_HOST, "answer is not a QCEW CSV file (no area_fips column)")
+
+
 def verify_area_code(client: PoliteClient, area_code: str, expected_title_start: str) -> str:
     """The QCEW title of an area code; raises UpstreamError when it is missing or names another place."""
-    fetched = client.get(AREA_TITLES_URL)
+    fetched = client.get(AREA_TITLES_URL, accept=check_qcew_csv)
     for row in csv.DictReader(io.StringIO(fetched.text())):
         if row.get("area_fips") == area_code:
             title = row.get("area_title", "")
@@ -172,7 +180,7 @@ def published_quarters(
     found: list[QcewQuarter] = []
     for _ in range(max_back):
         try:
-            fetched = client.get(area_url(year, quarter, area_code))
+            fetched = client.get(area_url(year, quarter, area_code), accept=check_qcew_csv)
         except UpstreamError as exc:
             if exc.status_code != 404:
                 raise
@@ -216,7 +224,7 @@ def bls_series_payload(series_ids: list[str], start_year: int, end_year: int) ->
 def parse_bls_series(data: dict[str, Any]) -> dict[str, list[tuple[str, str, float | None]]]:
     """{series id: [(year, period, value)]}; a value of '-' (not available) becomes None."""
     if data.get("status") != "REQUEST_SUCCEEDED":
-        raise UpstreamError("api.bls.gov", f"status {data.get('status')!r}: {data.get('message')}")
+        raise UpstreamError(BLS_HOST, f"status {data.get('status')!r}: {data.get('message')}")
     series: dict[str, list[tuple[str, str, float | None]]] = {}
     for item in data.get("Results", {}).get("series", []):
         points = []
@@ -228,11 +236,23 @@ def parse_bls_series(data: dict[str, Any]) -> dict[str, list[tuple[str, str, flo
     return series
 
 
+def check_bls_answer(fetched: FetchResult) -> None:
+    """Accept a BLS API v2 answer only when it is JSON with status REQUEST_SUCCEEDED (an http.Accept check).
+
+    BLS answers a refused key or an exhausted quota with HTTP 200 and another status, so the status is checked
+    before the answer is cached.
+    """
+    data = expect_json(fetched, BLS_HOST)
+    if not isinstance(data, dict):
+        raise UpstreamError(BLS_HOST, "expected a JSON object")
+    parse_bls_series(data)
+
+
 def fetch_bls_series(
     client: PoliteClient, series_ids: list[str], start_year: int, end_year: int
 ) -> tuple[dict[str, list[tuple[str, str, float | None]]], SourceRecord]:
     """BLS API v2 time series. Needs BLS_API_KEY (raises MissingApiKey without it)."""
     key = require_key("BLS_API_KEY")
     payload = {**bls_series_payload(series_ids, start_year, end_year), "registrationkey": key}
-    fetched = client.post_json(BLS_V2_URL, payload, secret_fields=["registrationkey"])
+    fetched = client.post_json(BLS_V2_URL, payload, secret_fields=["registrationkey"], accept=check_bls_answer)
     return parse_bls_series(fetched.json()), BLS_V2_SOURCE.record(fetched, vintage=f"{start_year}-{end_year}")

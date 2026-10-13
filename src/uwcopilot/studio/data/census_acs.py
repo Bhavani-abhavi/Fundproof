@@ -1,8 +1,12 @@
 """Census ACS 5-year tract tables: population, households, renter households and median household income.
 
-Data requests need a free key (CENSUS_API_KEY): without one, api.census.gov redirects to a "missing key" page. The
-variable metadata endpoint (variables/<id>.json) answers without a key, so verify_variables() can check that every
-variable below still means what this module says before a snapshot uses it.
+Data requests need a free key (CENSUS_API_KEY). api.census.gov answers a bad key with a redirect to an HTML page:
+/data/missing_key.html when no key was received, /data/invalid_key.html when the key is not valid (for example not
+yet activated through the link Census emails after sign-up). check_census_answer() reads the redirect target (and,
+for older cache entries, the page title) and raises InvalidApiKey naming CENSUS_API_KEY and the reason; such an
+answer is never cached (http.PoliteClient `accept`), so a fixed key works on the next run. The variable metadata
+endpoint (variables/<id>.json) answers without a key, so verify_variables() can check that every variable below
+still means what this module says before a snapshot uses it.
 
 Daytime workers are NOT in these tables: the ACS tract tables count residents. A daytime-population source (for
 example the Census LEHD origin-destination files) is not built yet, so `daytime_workers` stays UNKNOWN for real metros.
@@ -14,13 +18,18 @@ that cannot be negative, so any negative value is read as "no estimate" (None), 
 from dataclasses import dataclass
 from typing import Any
 
-from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.errors import InvalidApiKey, NotAvailable, UpstreamError
+from uwcopilot.studio.data.http import FetchResult, PoliteClient, expect_json
 from uwcopilot.studio.data.keys import require_key
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
 HOST = "api.census.gov"
 DEFAULT_YEAR = 2024
+# The pages api.census.gov redirects to when it refuses a key: {page name: reason, page title}.
+KEY_PAGES: dict[str, tuple[str, bytes]] = {
+    "invalid_key.html": ("invalid_key", b"<title>Invalid Key</title>"),
+    "missing_key.html": ("missing_key", b"<title>Missing Key</title>"),
+}
 # Location factor -> (ACS variable, the label the variable metadata endpoint must return).
 ACS_VARIABLES: dict[str, tuple[str, str]] = {
     "resident_population": ("B01003_001E", "Estimate!!Total"),
@@ -81,13 +90,40 @@ def parse_tract_rows(rows: list[list[Any]]) -> dict[str, dict[str, float | None]
     return table
 
 
+def key_page_reason(fetched: FetchResult) -> str | None:
+    """'invalid_key' or 'missing_key' when the answer is Census's key-refused page; None otherwise."""
+    page = fetched.final_url.rsplit("/", 1)[-1]
+    for name, (reason, title) in KEY_PAGES.items():
+        if page == name or ("html" in fetched.content_type.lower() and title in fetched.body[:2000]):
+            return reason
+    return None
+
+
+def check_census_answer(fetched: FetchResult) -> None:
+    """Accept a Census data answer only when it is a JSON array of arrays (an http.Accept check).
+
+    Raises InvalidApiKey (naming CENSUS_API_KEY and Census's reason) for the key-refused pages, UpstreamError for
+    any other HTML page or a body that is not a table.
+    """
+    reason = key_page_reason(fetched)
+    if reason is not None:
+        raise InvalidApiKey("CENSUS_API_KEY", HOST, reason)
+    rows = expect_json(fetched, HOST)
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], list):
+        raise UpstreamError(HOST, "expected a JSON array of arrays with a header row")
+
+
+def check_metadata_answer(fetched: FetchResult) -> None:
+    """Accept a variable-metadata answer only when it is a JSON object (an http.Accept check)."""
+    if not isinstance(expect_json(fetched, HOST), dict):
+        raise UpstreamError(HOST, "expected a JSON object describing the variable")
+
+
 def fetch_tracts(client: PoliteClient, state_fips: str, county_fips: str, year: int = DEFAULT_YEAR) -> AcsTractTable:
-    """Every tract of one county. Needs CENSUS_API_KEY (raises MissingApiKey without it)."""
+    """Every tract of one county. Needs CENSUS_API_KEY (MissingApiKey without it, InvalidApiKey when refused)."""
     key = require_key("CENSUS_API_KEY")
     url, params = tract_request(year, state_fips, county_fips)
-    fetched = client.get(url, {**params, "key": key}, secret_params=["key"])
-    if "html" in fetched.content_type.lower():
-        raise UpstreamError(HOST, "answered with an HTML page instead of data (is CENSUS_API_KEY valid?)")
+    fetched = client.get(url, {**params, "key": key}, secret_params=["key"], accept=check_census_answer)
     values = parse_tract_rows(fetched.json())
     if not values:
         raise NotAvailable(f"the ACS returned no tracts for county {state_fips}{county_fips}")
@@ -112,6 +148,6 @@ def verify_variables(client: PoliteClient, year: int = DEFAULT_YEAR) -> dict[str
     """{variable: label} for every variable used, checked against the keyless metadata endpoint."""
     labels: dict[str, str] = {}
     for variable, expected in ACS_VARIABLES.values():
-        fetched = client.get(variable_request(year, variable))
+        fetched = client.get(variable_request(year, variable), accept=check_metadata_answer)
         labels[variable] = check_variable_label(fetched.json(), variable, expected)
     return labels

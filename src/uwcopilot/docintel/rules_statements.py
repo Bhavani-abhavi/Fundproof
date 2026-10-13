@@ -10,17 +10,27 @@ lines that do not (memo lines and their continuations, "Number of transactions")
 - the table amounts (printed with two decimals) are found by pattern; the LAST one is the running balance and the
   one before it is the transaction amount; a row with a single amount is a balance only when that amount sits
   nearer the Balance column than the amount columns;
-- the description is the words between the date and the first amount;
+- the description is the words between the date and the first amount (trailing OCR noise trimmed);
+- deposit and withdrawal amounts are printed without a sign, so a stray minus read by OCR is dropped;
+- a row date whose month OCR misread ("44/03/2025") is repaired from the statement period: every row of a monthly
+  statement is dated inside its period, so when the period covers one calendar month, the row's own day and year
+  are read and the period's month is used (repair_row_date). The day is never invented: a row whose day cannot be
+  read is skipped;
 - deposit or withdrawal: the amount goes to whichever of the Withdrawals / Deposits columns has its right edge
   (amounts are right-aligned) nearest the amount's right edge. When the header titles cannot be read (OCR), the
   running balance decides: previous balance + amount = balance means a deposit, previous balance - amount = balance
   a withdrawal (previous balance = the row above, or the opening balance for the first row). If neither holds,
-  the amount is left out rather than guessed.
+  the amount is left out rather than guessed;
+- a lost minus sign: OCR often drops the thin minus of a negative balance ("-42,645.01" read as "42,645.01"). When
+  the previous balance and the row amount give exactly the read balance with the opposite sign, the sign is
+  restored (fix_balance_sign). No other value is ever changed by arithmetic.
 """
+
+from datetime import date
 
 from uwcopilot.docintel.classify import Segment
 from uwcopilot.docintel.layout import Word
-from uwcopilot.docintel.parsing import fix_ocr_digits, parse_date, parse_money, parse_text, strip_edges
+from uwcopilot.docintel.parsing import fix_ocr_digits, parse_amount, parse_date, parse_text, strip_edges
 from uwcopilot.docintel.rules_common import (
     LineRef,
     amount_words,
@@ -29,6 +39,7 @@ from uwcopilot.docintel.rules_common import (
     find_value,
     header_index,
     title_box,
+    trim_noise,
     value_after_label,
     words_text,
 )
@@ -65,7 +76,8 @@ def letterhead(refs: list[LineRef], doc_id: str) -> Cited:
     """The bank name: the first line of the statement."""
     if not refs:
         return Cited()
-    return cite_words(refs[0], refs[0].words, parse_text(refs[0].text), doc_id)
+    words = trim_noise(refs[0].words)
+    return cite_words(refs[0], words, parse_text(words_text(words)), doc_id)
 
 
 def amount_columns(header: LineRef | None) -> dict[str, float]:
@@ -80,16 +92,46 @@ def amount_columns(header: LineRef | None) -> dict[str, float]:
     return columns
 
 
-def row_date(ref: LineRef) -> tuple[Word | None, int]:
-    """The date word of a transaction row (within its first two words) and its index, or (None, -1)."""
+def repair_row_date(text: str, period: tuple[date, date] | None) -> date | None:
+    """A row date with an unreadable month, rebuilt from its day and year and the period's month, or None.
+
+    Only for a period inside one calendar month and a date printed as MM/DD/YYYY or DD-Mon-YYYY whose year is the
+    period's year; the result must fall inside the period.
+    """
+    if period is None or period[0].month != period[1].month or period[0].year != period[1].year:
+        return None
+    cleaned = strip_edges(text).rstrip(".,")
+    if "/" in cleaned:
+        parts = cleaned.split("/")
+        day_text, year_text = (parts[1], parts[2]) if len(parts) == 3 else ("", "")
+    else:
+        parts = cleaned.split("-")
+        day_text, year_text = (parts[0], parts[2]) if len(parts) == 3 else ("", "")
+    day_text, year_text = fix_ocr_digits(day_text), fix_ocr_digits(year_text)
+    if not day_text.isdigit() or year_text != str(period[0].year):
+        return None
+    try:
+        repaired = date(period[0].year, period[0].month, int(day_text))
+    except ValueError:
+        return None
+    return repaired if period[0] <= repaired <= period[1] else None
+
+
+def row_date(ref: LineRef, period: tuple[date, date] | None) -> tuple[Word | None, date | None, int]:
+    """(date word, date, index) of a transaction row (its first two words), or (None, None, -1)."""
     for index, word in enumerate(ref.words[:2]):
-        if parse_date(word.text) is not None:
-            return word, index
-    return None, -1
+        value = parse_date(word.text)
+        if value is not None:
+            return word, value, index
+    for index, word in enumerate(ref.words[:1]):
+        value = repair_row_date(word.text, period)
+        if value is not None:
+            return word, value, index
+    return None, None, -1
 
 
 def side_by_column(amount: Word, columns: dict[str, float]) -> str | None:
-    """"deposit" or "withdrawal" by the nearest amount column, or None when either column is unknown."""
+    """ "deposit" or "withdrawal" by the nearest amount column, or None when either column is unknown."""
     if "deposit" not in columns or "withdrawal" not in columns:
         return None
     to_deposit = abs(columns["deposit"] - amount.x1)
@@ -98,13 +140,25 @@ def side_by_column(amount: Word, columns: dict[str, float]) -> str | None:
 
 
 def side_by_balance(amount: float, balance: float | None, previous: float | None) -> str | None:
-    """"deposit" or "withdrawal" from the running balance arithmetic, or None when it does not decide."""
+    """ "deposit" or "withdrawal" from the running balance arithmetic, or None when it does not decide."""
     if balance is None or previous is None:
         return None
     if abs(previous + amount - balance) <= BALANCE_TOLERANCE:
         return "deposit"
     if abs(previous - amount - balance) <= BALANCE_TOLERANCE:
         return "withdrawal"
+    return None
+
+
+def fix_balance_sign(side: str | None, amount: float, balance: float | None, previous: float | None) -> float | None:
+    """The balance with its sign restored when the running balance proves OCR lost it, else None (no change)."""
+    if side is None or balance is None or previous is None or balance == 0:
+        return None
+    expected = previous + amount if side == "deposit" else previous - amount
+    if abs(expected - balance) <= BALANCE_TOLERANCE:
+        return None
+    if abs(expected + balance) <= BALANCE_TOLERANCE:
+        return -balance
     return None
 
 
@@ -123,37 +177,43 @@ def split_amounts(amounts: list[Word], columns: dict[str, float]) -> tuple[Word 
 
 
 def parse_transaction(
-    ref: LineRef, columns: dict[str, float], previous: float | None, doc_id: str
+    ref: LineRef, columns: dict[str, float], previous: float | None, period: tuple[date, date] | None, doc_id: str
 ) -> Transaction | None:
     """One transaction row, or None when the line is not a row (see the module docstring)."""
-    date_word, date_index = row_date(ref)
+    date_word, posted, date_index = row_date(ref, period)
     if date_word is None:
         return None
     rest = ref.words[date_index + 1 :]
     amounts = amount_words(rest)
     amount_word, balance_word = split_amounts(amounts, columns)
     first_amount = amounts[0] if amounts else None
-    description = [word for word in rest if first_amount is None or word.x1 < first_amount.x0]
-    transaction = Transaction(posted_date=cite_words(ref, [date_word], parse_date(date_word.text), doc_id))
+    description = trim_noise([word for word in rest if first_amount is None or word.x1 < first_amount.x0])
+    transaction = Transaction(posted_date=cite_words(ref, [date_word], posted, doc_id))
     if description:
         transaction.description = cite_words(ref, description, parse_text(words_text(description)), doc_id)
-    balance = None if balance_word is None else parse_money(balance_word.text)
+    balance = None if balance_word is None else parse_amount(balance_word.text)
     if balance_word is not None and balance is not None:
         transaction.balance = cite_words(ref, [balance_word], balance, doc_id)
     if amount_word is None:
         return transaction
-    amount = parse_money(amount_word.text)
+    amount = parse_amount(amount_word.text)
     if amount is None:
         return transaction
+    amount = abs(amount)
     side = side_by_column(amount_word, columns) or side_by_balance(amount, balance, previous)
     if side == "deposit":
         transaction.deposit = cite_words(ref, [amount_word], amount, doc_id)
     elif side == "withdrawal":
         transaction.withdrawal = cite_words(ref, [amount_word], amount, doc_id)
+    fixed = fix_balance_sign(side, amount, balance, previous)
+    if fixed is not None and balance_word is not None:
+        transaction.balance = cite_words(ref, [balance_word], fixed, doc_id)
     return transaction
 
 
-def transactions(refs: list[LineRef], opening: float | None, doc_id: str) -> list[Transaction]:
+def transactions(
+    refs: list[LineRef], opening: float | None, period: tuple[date, date] | None, doc_id: str
+) -> list[Transaction]:
     """Every transaction row after the table header (see the module docstring)."""
     start = header_index(refs, TABLE_TITLES, 3)
     if start is None:
@@ -162,7 +222,7 @@ def transactions(refs: list[LineRef], opening: float | None, doc_id: str) -> lis
     rows = []
     previous = opening
     for ref in refs[start + 1 :]:
-        row = parse_transaction(ref, columns, previous, doc_id)
+        row = parse_transaction(ref, columns, previous, period, doc_id)
         if row is None:
             continue
         rows.append(row)
@@ -175,7 +235,8 @@ def extract_statement(segment: Segment) -> BankStatement:
     refs = document_lines(segment)
     doc_id = segment.doc_id
     start, end = period_values(refs, doc_id)
-    opening = find_value(refs, ("Opening balance",), parse_money, doc_id)
+    period = (start.value, end.value) if start.found and end.found else None
+    opening = find_value(refs, ("Opening balance",), parse_amount, doc_id)
     return BankStatement(
         doc_id=doc_id,
         bank_name=letterhead(refs, doc_id),
@@ -184,8 +245,8 @@ def extract_statement(segment: Segment) -> BankStatement:
         period_start=start,
         period_end=end,
         opening_balance=opening,
-        total_deposits=find_value(refs, ("Total deposits",), parse_money, doc_id),
-        total_withdrawals=find_value(refs, ("Total withdrawals",), parse_money, doc_id),
-        closing_balance=find_value(refs, ("Closing balance",), parse_money, doc_id),
-        transactions=transactions(refs, opening.value, doc_id),
+        total_deposits=find_value(refs, ("Total deposits",), parse_amount, doc_id),
+        total_withdrawals=find_value(refs, ("Total withdrawals",), parse_amount, doc_id),
+        closing_balance=find_value(refs, ("Closing balance",), parse_amount, doc_id),
+        transactions=transactions(refs, opening.value, period, doc_id),
     )

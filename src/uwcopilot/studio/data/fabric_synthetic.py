@@ -1,4 +1,9 @@
-"""SyntheticFabric: the data fabric over the generated SYNTHETIC city (synthetic_city.py)."""
+"""SyntheticFabric: the data fabric over the generated SYNTHETIC city (synthetic_city.py).
+
+Rent and wages are NOT generated data: they are the profile's ASSUMPTION ranges scaled by the city's SYNTHETIC rent
+and wage indexes. They keep the status ASSUMPTION (the index is named in the reason), exactly like a real metro's
+rent range, so they never count as data coverage (Studio rules D and G). The prime rate is generated: SYNTHETIC.
+"""
 
 import hashlib
 import json
@@ -12,6 +17,7 @@ from uwcopilot.studio.data.fabric_base import (
     ROAD_SEARCH_MILES,
     DataFabric,
     FactorCoverage,
+    FactorStatus,
     FactorValue,
     ListingSearch,
     PoiSearch,
@@ -142,7 +148,7 @@ class SyntheticFabric(DataFabric):
         rent_low, rent_high = rent.bounds()
         wage_low, wage_high = wage.bounds()
         city = self.city
-        note = "SYNTHETIC metro index applied to the profile's ASSUMPTION range"
+        note = "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index"
         return {
             "commercial_rent": FactorValue(
                 factor="commercial_rent",
@@ -150,7 +156,7 @@ class SyntheticFabric(DataFabric):
                 low=rent_low * city.rent_index,
                 high=rent_high * city.rent_index,
                 unit=rent.unit,
-                status="SYNTHETIC",
+                status="ASSUMPTION",
                 reason=f"{note} (rent index {city.rent_index}); a founder's quote replaces it",
                 assumptions=[f"profile rent.monthly_rent is an ASSUMPTION: {rent.note}"],
                 source=self.record,
@@ -161,7 +167,7 @@ class SyntheticFabric(DataFabric):
                 low=wage_low * city.wage_index,
                 high=wage_high * city.wage_index,
                 unit=wage.unit,
-                status="SYNTHETIC",
+                status="ASSUMPTION",
                 reason=f"{note} (wage index {city.wage_index})",
                 assumptions=[f"profile labor.hourly_wage is an ASSUMPTION: {wage.note}"],
                 source=self.record,
@@ -180,9 +186,13 @@ class SyntheticFabric(DataFabric):
         rows: list[FactorCoverage] = []
         table = self.tract_table()
         freshness = f"generated from seed {self.city.seed}"
+        inputs = self.metro_inputs(profile)
         for factor, weight in required_factors(profile).items():
             scope = LOCATION_FACTORS[factor].scope
-            if scope == "tract":
+            status: FactorStatus = "SYNTHETIC"
+            if factor in inputs and inputs[factor].status != "SYNTHETIC":
+                status, share, reason = inputs[factor].status, 0.0, inputs[factor].reason
+            elif scope == "tract":
                 share = sum(values[factor] is not None for values in table.values()) / max(len(table), 1)
                 reason = f"{share:.0%} of SYNTHETIC tracts have a value"
             elif scope == "road_layer":
@@ -196,7 +206,7 @@ class SyntheticFabric(DataFabric):
                     factor=factor,
                     scope=scope,
                     weight=weight,
-                    status="SYNTHETIC",
+                    status=status,
                     share_of_tracts=round(share, 4),
                     share_basis=share_basis_for(scope, real_metro=False),
                     source=f"synthetic_city (seed {self.city.seed})",

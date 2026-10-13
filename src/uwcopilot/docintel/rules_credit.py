@@ -24,10 +24,11 @@ from uwcopilot.docintel.normalize import canonical_name
 from uwcopilot.docintel.parsing import (
     code_from_label,
     normalize_fein,
+    parse_amount,
     parse_bool,
     parse_date,
+    parse_identifier,
     parse_int,
-    parse_money,
     parse_percent,
     parse_text,
 )
@@ -71,13 +72,13 @@ APPLICATION_FIELDS: tuple[tuple[str, tuple[str, ...], object], ...] = (
     ("industry", ("Industry",), code_from_label),
     ("business_address", ("Business address",), parse_text),
     ("application_date", ("Application date",), parse_date),
-    ("requested_amount", ("Requested amount",), parse_money),
+    ("requested_amount", ("Requested amount",), parse_amount),
     ("product", ("Product",), code_from_label),
     ("term_months", ("Term (months)",), parse_int),
     ("note_rate_pct", ("Note rate",), parse_percent),
     ("rate_type", ("Rate type",), code_from_label),
     ("purpose", ("Purpose",), code_from_label),
-    ("stated_annual_revenue", ("Stated annual revenue",), parse_money),
+    ("stated_annual_revenue", ("Stated annual revenue",), parse_amount),
     ("largest_customer_revenue_pct", ("Largest customer share of revenue",), parse_percent),
     ("tax_lien_unresolved", ("Unresolved tax lien",), parse_bool),
 )
@@ -99,7 +100,8 @@ def first_line_text(refs: list[LineRef], doc_id: str) -> Cited:
     """The first line of a document as text (the business name heading of the financial statements)."""
     if not refs:
         return Cited()
-    return cite_words(refs[0], refs[0].words, parse_text(refs[0].text), doc_id)
+    words = trim_noise(refs[0].words)
+    return cite_words(refs[0], words, parse_text(words_text(words)), doc_id)
 
 
 def last_date_on(refs: list[LineRef], phrase: str, doc_id: str) -> Cited:
@@ -138,13 +140,13 @@ def extract_profit_and_loss(segment: Segment) -> ProfitAndLoss:
         doc_id=doc_id,
         business_name=first_line_text(refs, doc_id),
         period_end=last_date_on(refs, "Profit and Loss", doc_id),
-        revenue=find_value(refs, ("Revenue",), parse_money, doc_id),
-        cost_of_goods_sold=find_value(refs, ("Cost of goods sold",), parse_money, doc_id),
-        operating_expenses=find_value(refs, ("Operating expenses",), parse_money, doc_id),
-        ebitda=find_value(refs, ("EBITDA",), parse_money, doc_id),
-        depreciation_amortization=find_value(refs, ("Depreciation and amortization",), parse_money, doc_id),
-        interest_expense=find_value(refs, ("Interest expense",), parse_money, doc_id),
-        net_income=find_value(refs, ("Net income",), parse_money, doc_id),
+        revenue=find_value(refs, ("Revenue",), parse_amount, doc_id),
+        cost_of_goods_sold=find_value(refs, ("Cost of goods sold",), parse_amount, doc_id),
+        operating_expenses=find_value(refs, ("Operating expenses",), parse_amount, doc_id),
+        ebitda=find_value(refs, ("EBITDA",), parse_amount, doc_id),
+        depreciation_amortization=find_value(refs, ("Depreciation and amortization",), parse_amount, doc_id),
+        interest_expense=find_value(refs, ("Interest expense",), parse_amount, doc_id),
+        net_income=find_value(refs, ("Net income",), parse_amount, doc_id),
     )
 
 
@@ -156,13 +158,13 @@ def extract_balance_sheet(segment: Segment) -> BalanceSheet:
         doc_id=doc_id,
         business_name=first_line_text(refs, doc_id),
         as_of=last_date_on(refs, "Balance Sheet as of", doc_id),
-        cash=find_value(refs, ("Cash",), parse_money, doc_id),
-        accounts_receivable=find_value(refs, ("Accounts receivable",), parse_money, doc_id),
-        inventory=find_value(refs, ("Inventory",), parse_money, doc_id),
-        total_assets=find_value(refs, ("Total assets",), parse_money, doc_id),
-        total_liabilities=find_value(refs, ("Total liabilities",), parse_money, doc_id),
-        long_term_debt=find_value(refs, ("Long-term debt",), parse_money, doc_id),
-        equity=find_value(refs, ("Owners' equity", "Equity"), parse_money, doc_id),
+        cash=find_value(refs, ("Cash",), parse_amount, doc_id),
+        accounts_receivable=find_value(refs, ("Accounts receivable",), parse_amount, doc_id),
+        inventory=find_value(refs, ("Inventory",), parse_amount, doc_id),
+        total_assets=find_value(refs, ("Total assets",), parse_amount, doc_id),
+        total_liabilities=find_value(refs, ("Total liabilities",), parse_amount, doc_id),
+        long_term_debt=find_value(refs, ("Long-term debt",), parse_amount, doc_id),
+        equity=find_value(refs, ("Owners' equity", "Equity"), parse_amount, doc_id),
     )
 
 
@@ -188,8 +190,8 @@ def parse_debt_row(ref: LineRef, type_x: float | None, doc_id: str) -> DebtItem 
     if len(amounts) < 2:
         return None
     item = DebtItem(
-        balance=cite_words(ref, [amounts[0]], parse_money(amounts[0].text), doc_id),
-        monthly_payment=cite_words(ref, [amounts[1]], parse_money(amounts[1].text), doc_id),
+        balance=cite_words(ref, [amounts[0]], parse_amount(amounts[0].text), doc_id),
+        monthly_payment=cite_words(ref, [amounts[1]], parse_amount(amounts[1].text), doc_id),
     )
     after = [word for word in words if word.x0 > amounts[1].x1]
     for word in after:
@@ -212,8 +214,8 @@ def extract_debt_schedule(segment: Segment) -> DebtSchedule:
     schedule = DebtSchedule(
         doc_id=doc_id,
         business_name=first_line_text(refs, doc_id),
-        total_balance=find_value(refs, ("Total balance",), parse_money, doc_id),
-        total_monthly_payment=find_value(refs, ("Total monthly payment",), parse_money, doc_id),
+        total_balance=find_value(refs, ("Total balance",), parse_amount, doc_id),
+        total_monthly_payment=find_value(refs, ("Total monthly payment",), parse_amount, doc_id),
     )
     start = header_index(refs, DEBT_TITLES, 3)
     if start is None:
@@ -235,7 +237,7 @@ def extract_photo_id(segment: Segment) -> PhotoId:
         doc_id=doc_id,
         name=find_value(refs, ("Name",), parse_text, doc_id),
         date_of_birth=find_value(refs, ("Date of birth",), parse_date, doc_id),
-        id_number=find_value(refs, ("ID number",), parse_text, doc_id),
+        id_number=find_value(refs, ("ID number",), parse_identifier, doc_id),
         expiry_date=find_value(refs, ("Expires",), parse_date, doc_id),
         address=find_value(refs, ("Address",), parse_text, doc_id),
     )
@@ -329,7 +331,7 @@ def extract_tax_returns(segment: Segment) -> list[TaxReturnSummary]:
                 business_name=name,
                 fein=fein,
                 tax_year=cite_words(ref, [ref.words[0]], year, doc_id),
-                gross_receipts=cite_words(ref, [amounts[0]], parse_money(amounts[0].text), doc_id),
+                gross_receipts=cite_words(ref, [amounts[0]], parse_amount(amounts[0].text), doc_id),
             )
         )
     return results
@@ -342,6 +344,6 @@ def extract_collateral(segment: Segment) -> CollateralValuation:
     return CollateralValuation(
         doc_id=doc_id,
         collateral_type=find_value(refs, ("Collateral type",), code_from_label, doc_id),
-        value=find_value(refs, ("Value",), parse_money, doc_id),
+        value=find_value(refs, ("Value",), parse_amount, doc_id),
         valuation_date=find_value(refs, ("Valuation date",), parse_date, doc_id),
     )

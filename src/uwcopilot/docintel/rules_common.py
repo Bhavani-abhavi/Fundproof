@@ -13,6 +13,10 @@ find_value() tries every label synonym (longest first, so "Paid to date" is trie
 scope and returns the first value its parser accepts. The parser sees the value words joined; when that fails
 (OCR may leave a stray mark after a number), each value word is tried alone.
 
+Trailing OCR noise (trim_noise): a scan's specks are sometimes read as a short word at the end of a line ("Larkspur
+Valley Bank elec"). On an OCR line, trailing words with confidence below TRAILING_NOISE_CONF that are a single
+character, or at most four characters with a lower-case letter, are dropped from a value (never its last word).
+
 Citations (cite_words): page and line of the line, bbox = union of the value words' boxes, confidence = the line's
 confidence (1.0 for a text-layer line, the mean Tesseract word confidence for an OCR line), source_text = the
 line's text.
@@ -30,6 +34,7 @@ from uwcopilot.docintel.parsing import is_table_amount, parse_date
 from uwcopilot.docintel.schemas import Cited
 
 LABEL_MIN_SCORE = 85.0
+TRAILING_NOISE_CONF = 0.45
 FOOTER_TEXT = "synthetic for demonstration only"
 
 Parser = Callable[[str], Any]
@@ -133,8 +138,26 @@ def value_after_label(line: Line, label: str, fuzzy: bool) -> list[Word] | None:
     return None
 
 
+def is_trailing_noise(word: Word) -> bool:
+    """True for a low-confidence short word that is most likely a speck read as text (see the module docstring)."""
+    if word.conf >= TRAILING_NOISE_CONF:
+        return False
+    alphanumeric = [character for character in word.text if character.isalnum()]
+    has_lower = any(character.islower() for character in alphanumeric)
+    return len(alphanumeric) <= 1 or (len(alphanumeric) <= 4 and has_lower)
+
+
+def trim_noise(words: list[Word]) -> list[Word]:
+    """The words without trailing OCR noise words (at least one word is kept)."""
+    trimmed = list(words)
+    while len(trimmed) > 1 and is_trailing_noise(trimmed[-1]):
+        trimmed.pop()
+    return trimmed
+
+
 def parse_value_words(words: list[Word], parser: Parser) -> tuple[Any, list[Word]]:
     """(value, words used): the joined words first, then each word alone; (None, []) when nothing parses."""
+    words = trim_noise(words)
     if not words:
         return None, []
     value = parser(words_text(words))

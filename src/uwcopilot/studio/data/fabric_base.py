@@ -16,7 +16,10 @@ from uwcopilot.studio.metros.models import MetroConfig, MetroMode
 from uwcopilot.studio.profiles.factors import DEMAND_FORMULAS, LOCATION_FACTORS
 from uwcopilot.studio.profiles.models import Profile
 
-FactorStatus = Literal["DATA", "SYNTHETIC", "ASSUMPTION", "UNKNOWN"]
+# DATA_X_ASSUMPTION: a public data value converted with a labeled assumption (for example a QCEW weekly wage divided
+# by assumed weekly hours). The data part is real, but the value and its range depend on the assumption, so it is
+# never shown as plain DATA (Studio rule D) and does not count as data coverage.
+FactorStatus = Literal["DATA", "SYNTHETIC", "ASSUMPTION", "DATA_X_ASSUMPTION", "UNKNOWN"]
 TRACT_FACTORS: tuple[str, ...] = tuple(name for name, item in LOCATION_FACTORS.items() if item.scope == "tract")
 # A site is "on" a road when the nearest segment with traffic counts is within this distance (a design choice).
 ROAD_SEARCH_MILES = 0.5
@@ -39,7 +42,7 @@ class FactorValue(BaseModel):
 
     @property
     def known(self) -> bool:
-        """True when a value is present (DATA, SYNTHETIC or ASSUMPTION)."""
+        """True when a value is present (any status except UNKNOWN)."""
         return self.value is not None
 
 
@@ -87,15 +90,18 @@ class ListingSearch:
     source: SourceRecord | None = None
 
 
-ShareBasis = Literal["tracts", "counties", "whole metro"]
+ShareBasis = Literal["tracts", "whole metro"]
 
 
 def share_basis_for(scope: str, real_metro: bool) -> ShareBasis:
-    """What a factor's coverage share is measured over, from its scope (see FactorCoverage.share_basis)."""
-    if scope == "tract":
+    """What a factor's coverage share is measured over, from its scope (see FactorCoverage.share_basis).
+
+    Tract, road and POI layers are measured over tracts: a layer that can only be looked up live for one site has
+    no per-tract values, so its tract share is 0 (it is flagged live_per_site instead). real_metro is kept so callers
+    state which kind of metro they describe.
+    """
+    if scope in ("tract", "road_layer", "poi_layer"):
         return "tracts"
-    if scope == "road_layer":
-        return "counties" if real_metro else "tracts"
     return "whole metro"
 
 
@@ -111,8 +117,13 @@ class FactorCoverage(BaseModel):
     share_of_tracts: float = Field(ge=0, le=1, description="Share covered (0 if none); share_basis says of what")
     share_basis: ShareBasis = Field(
         default="tracts",
-        description="What the share is measured over: tracts; counties (real-metro road layer, queried per site); "
-        "or the whole metro (a layer or a metro-level value that exists or not)",
+        description="What the share is measured over: tracts, or the whole metro (a metro-level value that exists "
+        "or not)",
+    )
+    live_per_site: bool = Field(
+        default=False,
+        description="True when the layer has no per-tract values but can be looked up live for one site (a real "
+        "metro's road or POI layer). Such a layer is UNKNOWN for ranking tracts and counts 0 in the coverage share",
     )
     source: str | None
     freshness: str | None

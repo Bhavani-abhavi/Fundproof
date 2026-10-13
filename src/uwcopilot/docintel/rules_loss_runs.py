@@ -20,7 +20,7 @@ from rapidfuzz import fuzz
 
 from uwcopilot.docintel.classify import Segment, normalize_for_match
 from uwcopilot.docintel.layout import Word
-from uwcopilot.docintel.parsing import parse_date, parse_int, parse_money, parse_text
+from uwcopilot.docintel.parsing import parse_amount, parse_date, parse_identifier, parse_int, parse_text
 from uwcopilot.docintel.rules_common import (
     LineRef,
     amount_words,
@@ -30,18 +30,19 @@ from uwcopilot.docintel.rules_common import (
     find_value,
     header_index,
     title_box,
+    trim_noise,
 )
 from uwcopilot.docintel.rules_tables import premium_cells
 from uwcopilot.docintel.schemas import Cited, LossRun, LossRunClaim, LossRunSummary, LossRunYear
 
 SUMMARY_LABELS: dict[str, tuple[tuple[str, ...], object]] = {
     "claim_count": (("Number of claims", "Claims reported", "Total claims", "Claim count", "Claims"), parse_int),
-    "total_paid": (("Total paid loss", "Paid to date", "Total paid", "Paid"), parse_money),
+    "total_paid": (("Total paid loss", "Paid to date", "Total paid", "Paid"), parse_amount),
     "total_reserve": (
         ("Total O/S reserve", "Outstanding reserve", "Total reserve", "Outstanding", "Reserve"),
-        parse_money,
+        parse_amount,
     ),
-    "total_incurred": (("Total incurred", "Incurred"), parse_money),
+    "total_incurred": (("Total incurred", "Incurred"), parse_amount),
 }
 SUMMARY_LINES = 6
 YEAR_TITLES = ("Policy year start", "Property", "General liability")
@@ -113,7 +114,7 @@ def money_order(header: LineRef | None) -> list[str]:
 
 def order_by_arithmetic(amounts: list[Word]) -> list[str]:
     """Amount names when the header is unreadable: incurred = paid + reserve, the other two paid then reserve."""
-    values = [parse_money(word.text) or 0.0 for word in amounts]
+    values = [parse_amount(word.text) or 0.0 for word in amounts]
     for index in range(CLAIM_AMOUNTS):
         others = [values[other] for other in range(CLAIM_AMOUNTS) if other != index]
         if abs(sum(others) - values[index]) <= 1.0:
@@ -164,7 +165,7 @@ def parse_claim(ref: LineRef, order: list[str], doc_id: str) -> LossRunClaim | N
     names = order or order_by_arithmetic(amounts)
     claim = LossRunClaim(date_of_loss=cite_words(ref, [dates[0]], parse_date(dates[0].text), doc_id))
     for name, word in zip(names, amounts, strict=True):
-        setattr(claim, name, cite_words(ref, [word], parse_money(word.text), doc_id))
+        setattr(claim, name, cite_words(ref, [word], parse_amount(word.text), doc_id))
     others = [word for word in ref.words if word not in amounts and word is not dates[0]]
     code, line_words = claim_line(others)
     if code is not None:
@@ -178,7 +179,7 @@ def parse_claim(ref: LineRef, order: list[str], doc_id: str) -> LossRunClaim | N
         if word in line_words or word is status_word:
             continue
         if any(character.isdigit() for character in word.text):
-            claim.claim_number = cite_words(ref, [word], parse_text(word.text), doc_id)
+            claim.claim_number = cite_words(ref, [word], parse_identifier(word.text), doc_id)
             break
     return claim
 
@@ -201,7 +202,8 @@ def letterhead(refs: list[LineRef], doc_id: str) -> Cited:
     """The carrier name: the first line of the loss run."""
     if not refs:
         return Cited()
-    return cite_words(refs[0], refs[0].words, parse_text(refs[0].text), doc_id)
+    words = trim_noise(refs[0].words)
+    return cite_words(refs[0], words, parse_text(words_text(words)), doc_id)
 
 
 def extract_loss_run(segment: Segment) -> LossRun:
@@ -212,7 +214,7 @@ def extract_loss_run(segment: Segment) -> LossRun:
         doc_id=doc_id,
         carrier=letterhead(refs, doc_id),
         insured_name=find_value(refs, ("Insured",), parse_text, doc_id),
-        policy_number=find_value(refs, ("Policy number",), parse_text, doc_id),
+        policy_number=find_value(refs, ("Policy number",), parse_identifier, doc_id),
         valued_as_of=find_value(refs, ("Valued as of",), parse_date, doc_id),
         years=premium_years(refs, doc_id),
         claims=claims(refs, doc_id),

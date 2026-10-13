@@ -18,7 +18,8 @@ from uwcopilot.studio.data.provenance import SourceRecord
 from uwcopilot.studio.metros.models import MetroMode
 
 # FOUNDER_INPUT: a value the founder typed in for this site (for example a rent quote). It is not checked by Studio.
-SiteStatus = Literal["DATA", "SYNTHETIC", "ASSUMPTION", "UNKNOWN", "FOUNDER_INPUT"]
+# SOURCED: a profile rate taken from a cited publication (shown as SOURCED, never as tract DATA).
+SiteStatus = Literal["DATA", "SYNTHETIC", "ASSUMPTION", "SOURCED", "UNKNOWN", "FOUNDER_INPUT"]
 # Statuses that count as "backed by data" for the coverage score and for the overall score.
 COVERED_STATUSES: tuple[str, ...] = ("DATA", "SYNTHETIC", "FOUNDER_INPUT")
 TradeAreaMethod = Literal["rings", "drive_time"]
@@ -103,9 +104,18 @@ class DemandEstimate(Frozen):
     formula: str
     formula_description: str
     unit: str
-    low: float | None
-    mode: float | None
-    high: float | None
+    low: float | None = Field(description="Every rate at its low end at once: a hard bound, not a percentile")
+    mode: float | None = Field(description="Every rate at its mode")
+    high: float | None = Field(description="Every rate at its high end at once: a hard bound, not a percentile")
+    p10: float | None = None
+    p50: float | None = None
+    p90: float | None = None
+    percentiles: list[float] | None = Field(
+        default=None,
+        description="Percentiles 0, 1, ..., 100 (studio.PERCENTILE_LEVELS) of the demand with each rate sampled "
+        "independently from its range; what the simulator samples (sample_method says how they were computed)",
+    )
+    sample_method: str | None = None
     basis: Literal["data x ASSUMPTION rates", "ASSUMPTION rates only", "UNKNOWN"]
     complete: bool = Field(description="False when a term of the formula was left out because its data is UNKNOWN")
     missing: list[str] = Field(default_factory=list)

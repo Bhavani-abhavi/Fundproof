@@ -16,7 +16,7 @@ from datetime import date
 from typing import Any
 
 from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.http import Accept, FetchResult, PoliteClient, expect_json
 from uwcopilot.studio.data.keys import read_key
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
@@ -76,16 +76,33 @@ def parse_api(data: dict[str, Any]) -> list[tuple[date, float]]:
     ]
 
 
+def check_api_answer(fetched: FetchResult) -> None:
+    """Accept a FRED API answer only when it is JSON with observations (an http.Accept check)."""
+    data = expect_json(fetched, "api.stlouisfed.org")
+    if not isinstance(data, dict):
+        raise UpstreamError("api.stlouisfed.org", "expected a JSON object")
+    parse_api(data)
+
+
+def csv_check(series_id: str) -> Accept:
+    """An http.Accept check for the keyless CSV: it must have a column for the series."""
+
+    def check(fetched: FetchResult) -> None:
+        parse_csv(fetched.text(), series_id)
+
+    return check
+
+
 def latest_rate(client: PoliteClient, start: date, series_id: str = PRIME_SERIES) -> RateObservation:
     """The newest observation since start: the API when FRED_API_KEY is set, otherwise the keyless CSV."""
     key = read_key("FRED_API_KEY")
     if key is not None:
         url, params = api_request(series_id, start)
-        fetched = client.get(url, {**params, "api_key": key}, secret_params=["api_key"])
+        fetched = client.get(url, {**params, "api_key": key}, secret_params=["api_key"], accept=check_api_answer)
         points = parse_api(fetched.json())
     else:
         url, params = csv_request(series_id, start)
-        fetched = client.get(url, params)
+        fetched = client.get(url, params, accept=csv_check(series_id))
         points = parse_csv(fetched.text(), series_id)
     if not points:
         raise NotAvailable(f"FRED returned no {series_id} observations since {start.isoformat()}")

@@ -333,6 +333,7 @@ def real_metro_sanity(metro_id: str, profiles: dict[str, Profile]) -> dict[str, 
         "mode_reason": mode_reason,
         "tracts_in_snapshot": len(fabric.tract_ids()),
         "snapshot_date": snapshot.snapshot_date.isoformat() if snapshot is not None else None,
+        "snapshot_fingerprint": snapshot.fingerprint() if snapshot is not None else None,
         "snapshot_steps_not_ok": steps_not_ok(snapshot),
         "by_business_type": rows,
     }

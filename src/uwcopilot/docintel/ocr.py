@@ -20,7 +20,8 @@ Steps for one page:
 6. Keep the run with the higher mean word confidence (ties keep psm 6). The page records the psm it kept.
 
 Noise words are dropped before lines are built (is_noise_word): a word with no letter or digit, or a word with
-confidence below NOISE_MAX_CONF that has at most two letters or digits and is not a number. Line numbers follow
+confidence below NOISE_MAX_CONF that has at most two letters or digits and is neither a number nor all capital
+letters (state and country codes such as "TX" or "US" are kept). Line numbers follow
 Tesseract's line order, so they can differ from the printed row numbers when Tesseract splits or merges a row.
 
 tesseract_version() records the version string for the provenance of results. When the tesseract binary is not
@@ -153,7 +154,8 @@ def is_noise_word(text: str, conf: float) -> bool:
     if not alphanumeric:
         return True
     is_number = all(character.isdigit() for character in alphanumeric)
-    return conf < NOISE_MAX_CONF and len(alphanumeric) <= 2 and not is_number
+    is_capitals = all(character.isupper() for character in alphanumeric)
+    return conf < NOISE_MAX_CONF and len(alphanumeric) <= 2 and not is_number and not is_capitals
 
 
 def tsv_word(fields: list[str], scale: float) -> Word | None:

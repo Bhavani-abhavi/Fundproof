@@ -12,12 +12,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.http import PoliteClient, json_object_check
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
 BASE_URL = "https://geocoding.geo.census.gov/geocoder/geographies"
 BENCHMARK = "Public_AR_Current"
 VINTAGE = "Current_Current"
+HOST = "geocoding.geo.census.gov"
+ACCEPT = json_object_check(HOST, "result")  # an error page is never cached
 TRACT_LAYER = "Census Tracts"
 SOURCE = SourceInfo(
     source_id="census_geocoder",
@@ -106,7 +108,7 @@ def parse_coordinates_response(data: dict[str, Any]) -> tuple[dict[str, Any], st
 def geocode_address(client: PoliteClient, address: str) -> GeocodeMatch:
     """Look up a one-line address. Raises NotAvailable when the geocoder has no match."""
     url, params = address_request(address)
-    fetched = client.get(url, params)
+    fetched = client.get(url, params, accept=ACCEPT)
     lat, lon, tract, matched, vintage = parse_address_response(fetched.json())
     return GeocodeMatch(
         lat=lat,
@@ -122,7 +124,7 @@ def geocode_address(client: PoliteClient, address: str) -> GeocodeMatch:
 def tract_for_point(client: PoliteClient, lat: float, lon: float) -> GeocodeMatch:
     """The census tract containing a latitude/longitude pin."""
     url, params = coordinates_request(lat, lon)
-    fetched = client.get(url, params)
+    fetched = client.get(url, params, accept=ACCEPT)
     tract, vintage = parse_coordinates_response(fetched.json())
     return GeocodeMatch(
         lat=lat,

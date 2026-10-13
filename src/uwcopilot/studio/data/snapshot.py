@@ -2,12 +2,18 @@
 
     uv run python -m uwcopilot.studio.data.snapshot --metro houston_tx
     uv run python -m uwcopilot.studio.data.snapshot --metro all
+    uv run python -m uwcopilot.studio.data.snapshot --metro all --refresh   # ignore cached answers
 
 The national layer runs first for every metro, one step per source. Each step either succeeds (its values and
 SourceRecords go into the snapshot), is "not_available" (no documented dataset, e.g. a state traffic adapter), or
 fails (a host is unreachable or a free API key is missing). A failed step never stops the others; the snapshot is
 written with what succeeded, and the command exits with status 1 and a summary naming every unreachable host and
 every missing key variable. The data fabric (fabric.py) reads the snapshot and marks whatever is missing UNKNOWN.
+
+Answers come from the response cache when the same request was made before. A rejected answer (an error page, a key
+the host refused) is never cached, so fixing a key and rerunning is enough; --refresh fetches every answer again.
+A rerun on the same day replaces that day's snapshot folder; results files therefore record the SHA-256 of the
+snapshot files they used (fabric_snapshot.Snapshot.fingerprint), so a replaced snapshot is detectable.
 
 Layout: data/studio/snapshots/<metro id>/<snapshot date>/manifest.json and tracts.json (gitignored).
 The SYNTHETIC metro has nothing to download: its city is generated from its seed.
@@ -25,7 +31,14 @@ from typing import Any
 from uwcopilot.studio.data import business_patterns, census_acs, census_geography, rates, traffic_hpms, wages
 from uwcopilot.studio.data.cache import write_atomic
 from uwcopilot.studio.data.city_open_data import DATASETS as CITY_DATASETS
-from uwcopilot.studio.data.errors import HostUnreachable, MissingApiKey, NotAvailable, StudioDataError, UpstreamError
+from uwcopilot.studio.data.errors import (
+    HostUnreachable,
+    InvalidApiKey,
+    MissingApiKey,
+    NotAvailable,
+    StudioDataError,
+    UpstreamError,
+)
 from uwcopilot.studio.data.fabric import FactorValue
 from uwcopilot.studio.data.http import PoliteClient
 from uwcopilot.studio.data.keys import key_status, require_key
@@ -87,7 +100,7 @@ def run_step(build: SnapshotBuild, name: str, action: Callable[[StepResult], Non
         action(step)
     except NotAvailable as exc:
         step.status, step.detail = "not_available", exc.reason
-    except (MissingApiKey, HostUnreachable, UpstreamError) as exc:
+    except (MissingApiKey, InvalidApiKey, HostUnreachable, UpstreamError) as exc:
         step.status, step.detail = "failed", str(exc)
     except StudioDataError as exc:
         step.status, step.detail = "failed", f"{type(exc).__name__}: {exc}"
@@ -180,7 +193,11 @@ def profile_wage(quarters: list[wages.QcewQuarter], area: str, profile: Profile)
 
 
 def wage_factor(wage: wages.QcewWage) -> FactorValue:
-    """A QCEW wage as the local_wages FactorValue (DATA, with the hours assumption listed)."""
+    """A QCEW wage as the local_wages FactorValue.
+
+    Status DATA_X_ASSUMPTION: the weekly wage is DATA, but the hourly value and its whole low-high range come from
+    the HOURS_PER_WEEK assumption, so the hourly figure is never labeled plain DATA (Studio rule D).
+    """
     low, mode, high = wage.hourly_range()
     hours = wages.HOURS_PER_WEEK
     return FactorValue(
@@ -189,11 +206,12 @@ def wage_factor(wage: wages.QcewWage) -> FactorValue:
         low=round(low, 2),
         high=round(high, 2),
         unit="USD/hour",
-        status="DATA",
+        status="DATA_X_ASSUMPTION",
         reason=(
-            f"BLS QCEW {wage.year} Q{wage.quarter} private average weekly wage {wage.avg_weekly_wage:.0f} USD "
-            f"for NAICS {wage.used_naics} (requested {wage.requested_naics}) in {wage.area_code}, "
-            "divided by assumed weekly hours"
+            f"DATA: BLS QCEW {wage.year} Q{wage.quarter} private average weekly wage {wage.avg_weekly_wage:.0f} USD "
+            f"for NAICS {wage.used_naics} (requested {wage.requested_naics}) in {wage.area_code}; "
+            f"x ASSUMPTION: divided by {hours['low']:g}-{hours['high']:g} paid hours per week "
+            f"(mode {hours['mode']:g}), which sets the hourly value and its whole range"
         ),
         assumptions=[
             f"hours per week {hours['low']:g}-{hours['high']:g} (mode {hours['mode']:g}): ASSUMPTION; {hours['note']}"
@@ -331,10 +349,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Download Studio data snapshots (national layer, then enhancements).")
     parser.add_argument("--metro", required=True, help="a metro id, or 'all' for every real metro")
     parser.add_argument("--offline", action="store_true", help="answer only from the cache; never call the network")
+    parser.add_argument(
+        "--refresh", action="store_true", help="ignore cached answers: fetch every answer again and overwrite the cache"
+    )
     args = parser.parse_args(argv)
+    if args.offline and args.refresh:
+        parser.error("--offline and --refresh cannot be combined")
     metro_ids = list_metros() if args.metro == "all" else [args.metro]
     profiles = load_all_profiles()
-    client = PoliteClient(offline=args.offline)
+    client = PoliteClient(offline=args.offline, refresh=args.refresh)
     today = datetime.now(UTC).date()
     failures: list[str] = []
     for metro_id in metro_ids:

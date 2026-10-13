@@ -14,7 +14,7 @@ from typing import Any
 
 from uwcopilot.studio.data.errors import UpstreamError
 from uwcopilot.studio.data.geo import haversine_miles
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.http import PoliteClient, json_object_check
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 from uwcopilot.studio.profiles.models import OSM_TAG
 
@@ -101,7 +101,7 @@ def pois_near(
 ) -> tuple[list[Poi], SourceRecord]:
     """Every POI with any of the tags within radius_miles of the site, nearest first, with provenance."""
     query = build_query(lat, lon, radius_miles, tags)
-    fetched = client.get(OVERPASS_URL, {"data": query})
+    fetched = client.get(OVERPASS_URL, {"data": query}, accept=json_object_check("overpass-api.de", "elements"))
     record = SOURCE.record(
         fetched, vintage="live OpenStreetMap data at the request date", geography=f"{lat:.5f},{lon:.5f}"
     )

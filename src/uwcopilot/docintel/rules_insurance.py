@@ -24,10 +24,11 @@ from uwcopilot.docintel.parsing import (
     code_from_label,
     fix_ocr_digits,
     normalize_fein,
+    parse_amount,
     parse_bool,
     parse_date,
+    parse_identifier,
     parse_int,
-    parse_money,
     parse_percent,
     parse_text,
     strip_edges,
@@ -65,18 +66,18 @@ APPLICATION_FIELDS: tuple[tuple[str, tuple[str, ...], object], ...] = (
     ("years_in_business", ("Years in business",), parse_int),
     ("business_class", ("Business class",), code_from_label),
     ("coverage", ("Coverage",), code_from_label),
-    ("gl_limit_per_occurrence", ("GL limit per occurrence",), parse_money),
-    ("gl_limit_aggregate", ("GL limit aggregate",), parse_money),
+    ("gl_limit_per_occurrence", ("GL limit per occurrence",), parse_amount),
+    ("gl_limit_aggregate", ("GL limit aggregate",), parse_amount),
     ("application_date", ("Application date",), parse_date),
     ("proposed_effective_date", ("Proposed effective date",), parse_date),
-    ("stated_tiv", ("Total insured value (all locations)", "Total insured value"), parse_money),
-    ("annual_revenue", ("Annual revenue",), parse_money),
-    ("annual_payroll", ("Annual payroll",), parse_money),
+    ("stated_tiv", ("Total insured value (all locations)", "Total insured value"), parse_amount),
+    ("annual_revenue", ("Annual revenue",), parse_amount),
+    ("annual_payroll", ("Annual payroll",), parse_amount),
     ("subcontracted_work_pct", ("Subcontracted work",), parse_percent),
     ("has_subcontractor_coi_tracking", ("Subcontractor certificates tracked",), parse_bool),
     ("foreign_products", ("Foreign products sold",), parse_bool),
     ("stated_claim_count", ("Number of claims",), parse_int),
-    ("stated_total_incurred", ("Total incurred losses",), parse_money),
+    ("stated_total_incurred", ("Total incurred losses",), parse_amount),
 )
 OWNER_TITLES = ("Name", "Type", "Title", "Ownership", "Control person", "Country")
 CARRIER_TITLES = ("Carrier", "Policy number", "Policy year start", "Property premium", "GL premium")
@@ -94,7 +95,7 @@ EMAIL_HEADER_LINES = 6
 def policy_number_index(words: list[Word]) -> int | None:
     """Index of the policy-number word ("ABC-1234567") in a prior-carrier row, or None."""
     for index, word in enumerate(words):
-        text = strip_edges(word.text)
+        text = parse_identifier(word.text) or ""
         prefix, _, digits = text.partition("-")
         if POLICY_NUMBER.match(f"{prefix}-{fix_ocr_digits(digits)}"):
             return index
@@ -113,7 +114,7 @@ def parse_prior_carrier(ref: LineRef, columns: dict[str, float], doc_id: str) ->
     carrier = words[:policy_at]
     row = PriorCarrier(
         carrier=cite_words(ref, carrier, parse_text(words_text(carrier)), doc_id),
-        policy_number=cite_words(ref, [words[policy_at]], parse_text(words[policy_at].text), doc_id),
+        policy_number=cite_words(ref, [words[policy_at]], parse_identifier(words[policy_at].text), doc_id),
         policy_year_start=cite_words(ref, [words[policy_at + 1]], start, doc_id),
     )
     cells = premium_cells(ref, words[policy_at + 2 :], ("property", "gl"), columns, doc_id)
@@ -160,7 +161,7 @@ def extract_application(segment: Segment) -> InsuranceApplicationForm:
 
 
 def location_id_word(word: Word) -> str | None:
-    """"L1" from a location-id word (an OCR "Ll" or "LI" is fixed), or None."""
+    """ "L1" from a location-id word (an OCR "Ll" or "LI" is fixed), or None."""
     text = strip_edges(word.text)
     if not text[:1] == "L":
         return None
@@ -188,7 +189,7 @@ def parse_location(ref: LineRef, doc_id: str) -> ScheduleLocation | None:
     amounts = amounts[-len(SCHEDULE_AMOUNTS) :]
     location = ScheduleLocation(location_id=cite_words(ref, [words[0]], location_id, doc_id))
     for name, word in zip(SCHEDULE_AMOUNTS, amounts, strict=True):
-        setattr(location, name, cite_words(ref, [word], parse_money(word.text), doc_id))
+        setattr(location, name, cite_words(ref, [word], parse_amount(word.text), doc_id))
     middle = [word for word in words[1:] if word.x1 < amounts[0].x0]
     numbers = list(reversed(middle[-len(SCHEDULE_NUMBERS) :]))
     if len(middle) > len(SCHEDULE_NUMBERS):
@@ -214,7 +215,7 @@ def extract_property_schedule(segment: Segment) -> PropertySchedule:
     schedule = PropertySchedule(
         doc_id=doc_id,
         insured_name=find_value(refs, ("Insured",), parse_text, doc_id),
-        total_tiv=find_value(refs, ("Total TIV (all locations)", "Total TIV"), parse_money, doc_id),
+        total_tiv=find_value(refs, ("Total TIV (all locations)", "Total TIV"), parse_amount, doc_id),
     )
     for index, ref in enumerate(refs):
         location = parse_location(ref, doc_id)
@@ -282,4 +283,3 @@ def extract_inspection_report(segment: Segment) -> InspectionReport:
             report.location_id = cite_words(ref, [words[0]], location_id_word(words[0]), doc_id)
             break
     return report
-

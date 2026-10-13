@@ -15,7 +15,7 @@ shifts and both bank layouts:
 from rapidfuzz import fuzz
 
 from uwcopilot.docintel.layout import Word
-from uwcopilot.docintel.parsing import code_from_label, parse_bool, parse_money, parse_percent, parse_text
+from uwcopilot.docintel.parsing import code_from_label, parse_amount, parse_bool, parse_percent, parse_text
 from uwcopilot.docintel.rules_common import LineRef, cite_words, nearest_column, words_text
 from uwcopilot.docintel.schemas import Cited, ExtractedOwner
 
@@ -24,7 +24,7 @@ TYPE_MIN_SCORE = 80.0
 
 
 def entity_type_of(word: Word) -> str | None:
-    """"person" / "organization" when the word spells one (approximately), else None."""
+    """ "person" / "organization" when the word spells one (approximately), else None."""
     text = word.text.strip(".,:;").casefold()
     for entity_type in ENTITY_TYPES:
         if text == entity_type or fuzz.ratio(text, entity_type) >= TYPE_MIN_SCORE:
@@ -92,7 +92,7 @@ def premium_cells(
         pairs = []
     result: dict[str, Cited] = {}
     for name, word in pairs:
-        value = parse_money(word.text)
+        value = parse_amount(word.text)
         if name is not None and value is not None and name not in result:
             result[name] = cite_words(ref, [word], value, doc_id)
     return result

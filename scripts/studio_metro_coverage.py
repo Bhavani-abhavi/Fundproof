@@ -105,6 +105,7 @@ def metro_block(metro: MetroConfig, profiles: dict[str, Profile], snapshots_dir:
         "counties": len(metro.counties),
         "tracts": len(fabric.tract_ids()),
         "snapshot_date": snapshot_date.isoformat() if snapshot_date else None,
+        "snapshot_fingerprint": snapshot.fingerprint() if snapshot else None,
         "snapshot_steps": [
             {"name": step["name"], "status": step["status"], "detail": step["detail"]}
             for step in (snapshot.manifest.get("steps", []) if snapshot else [])
@@ -157,7 +158,9 @@ def main(argv: list[str] | None = None) -> int:
     run = RunProvenance.start(GENERATED_BY)
     report = build_report()
     snapshots = {
-        item["metro_id"]: item["snapshot_date"] for item in report["summary"] if item["data_label"] == "PUBLIC"
+        metro_id: block["snapshot_fingerprint"]
+        for metro_id, block in report["metros"].items()
+        if block["data_label"] == "PUBLIC"
     }
     report["provenance"] = run.finish(
         corpus_checksum="not applicable (no retrieval corpus is used)",

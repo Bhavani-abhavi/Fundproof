@@ -14,7 +14,7 @@ from typing import Any
 
 from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
 from uwcopilot.studio.data.geo import point_to_polyline_miles
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.http import FetchResult, PoliteClient, expect_json
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
 HOST = "geo.dot.gov"
@@ -128,11 +128,23 @@ def nearest_segment(segments: list[RoadSegment], lat: float, lon: float) -> tupl
     return segments[best], distances[best]
 
 
+def check_arcgis_answer(fetched: FetchResult) -> None:
+    """Accept a FeatureServer answer only when it is a JSON object without an 'error' (an http.Accept check).
+
+    ArcGIS reports query errors with HTTP 200 and {"error": ...}, so this runs before the answer is cached.
+    """
+    data = expect_json(fetched, HOST)
+    if not isinstance(data, dict) or "error" in data:
+        detail = data.get("error") if isinstance(data, dict) else "not a JSON object"
+        raise UpstreamError(HOST, str(detail))
+
+
 def nearest_road(
     client: PoliteClient, state: str, lat: float, lon: float, radius_miles: float = 0.25, year: int = DEFAULT_YEAR
 ) -> NearestRoad:
     """The nearest HPMS segment with AADT within radius_miles of the site."""
-    fetched = client.get(layer_url(state, year), segments_near_request(lat, lon, radius_miles))
+    params = segments_near_request(lat, lon, radius_miles)
+    fetched = client.get(layer_url(state, year), params, accept=check_arcgis_answer)
     segment, distance = nearest_segment(parse_segments(fetched.json()), lat, lon)
     record = SOURCE.record(fetched, vintage=f"HPMS {year}", geography=f"{lat:.5f},{lon:.5f}")
     return NearestRoad(segment=segment, distance_miles=distance, source=record)
@@ -142,7 +154,7 @@ def county_segment_count(
     client: PoliteClient, state: str, county_fips: str, year: int = DEFAULT_YEAR
 ) -> tuple[int, SourceRecord]:
     """How many segments with AADT > 0 the HPMS layer has in one county (used by the coverage report)."""
-    fetched = client.get(layer_url(state, year), county_count_request(county_fips))
+    fetched = client.get(layer_url(state, year), county_count_request(county_fips), accept=check_arcgis_answer)
     data = fetched.json()
     if "count" not in data:
         raise UpstreamError(HOST, str(data.get("error", "no count in the answer")))

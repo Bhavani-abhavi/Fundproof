@@ -30,6 +30,24 @@ class MissingApiKey(StudioDataError):
         self.variable = variable
 
 
+class InvalidApiKey(StudioDataError):
+    """The host rejected a key that IS set (for example Census redirects to invalid_key.html).
+
+    reason is the host's own word for it ("invalid_key" or "missing_key"); the key's value is never included.
+    """
+
+    def __init__(self, variable: str, host: str, reason: str) -> None:
+        message = (
+            f"{host} rejected {variable} ({reason}): the key is set but the host says it is not valid. "
+            "Check that the key was activated (Census sends an activation link by email after sign-up) and copied "
+            "exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
+        )
+        super().__init__(message)
+        self.variable = variable
+        self.host = host
+        self.reason = reason
+
+
 class HostUnreachable(StudioDataError):
     """The host could not be reached after the retries (blocked network, DNS failure, timeout, reset)."""
 

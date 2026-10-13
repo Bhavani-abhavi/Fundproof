@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from uwcopilot.studio.data.errors import NotAvailable, UpstreamError
-from uwcopilot.studio.data.http import PoliteClient
+from uwcopilot.studio.data.http import PoliteClient, json_object_check
 from uwcopilot.studio.data.keys import require_key
 from uwcopilot.studio.data.provenance import SourceInfo, SourceRecord
 
@@ -65,6 +65,7 @@ def fetch_fmr(client: PoliteClient, entity_id: str, year: int) -> FairMarketRent
         {"year": str(year)},
         headers={"Authorization": f"Bearer {token}"},
         secret_headers=["Authorization"],
+        accept=json_object_check("www.huduser.gov", "data"),
     )
     area, data_year, rents = parse_fmr(fetched.json())
     record = SOURCE.record(fetched, vintage=f"FY{data_year or year}", geography=entity_id)

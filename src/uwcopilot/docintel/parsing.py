@@ -6,17 +6,21 @@ and anything still not matching the pattern returns None.
 
 OCR digit fix (fix_ocr_digits): Tesseract sometimes reads a digit as a similar letter. Inside a NUMERIC token only
 (a token with at least one digit whose other characters are digits, number punctuation or these letters), the
-letters are replaced: O/o -> 0, l/I/| -> 1, S -> 5, B -> 8. A token such as "SPC119411619" (an ID number) or
+letters are replaced: O/o -> 0, l/I/| -> 1, S/\u00a7 -> 5, B -> 8. A token such as "SPC119411619" (an ID number) or
 "LIG-5203550" (a policy number) has other letters, so it is left alone.
 
 Formats the parsers accept:
 - money: "$1,234.56", "1,234.56", "-$1,234.56", "$-1,234.56", "(1,234.56)", "1234.56", "$1,234" (stray quote or
-  bracket characters that OCR puts around a number are stripped first);
+  bracket characters that OCR puts around a number are stripped first). OCR sometimes reads a thousands comma as a
+  space ("$2,806 792.54"): pieces after a space that start with three digits are joined back with a comma;
+- printed amounts (parse_amount): money printed with exactly two decimals, as every amount on these documents is,
+  so a fragment such as "$2,806" is never taken for a whole amount;
 - dates: "03/14/2026" (month first), "2026-03-14", "14-Mar-2026" (also "14 Mar 2026");
 - percent: "8.75%", "50.0 %", "8.75";
 - integers: "48", "10,311";
 - yes/no: Yes / No / Y / N / X (a ticked box) / True / False;
 - FEIN: 9 digits, printed "NN-NNNNNNN";
+- identifiers (policy, claim, ID numbers): spaces and non-alphanumeric edge characters removed;
 - codes: a printed label back to its code by the generator's rule (casefold, spaces and punctuation to "_"):
   "Line of credit" -> "line_of_credit", "LLC" -> "llc".
 """
@@ -38,7 +42,7 @@ MONTHS: dict[str, int] = {
     "nov": 11,
     "dec": 12,
 }
-OCR_DIGIT_FIXES: dict[str, str] = {"O": "0", "o": "0", "l": "1", "I": "1", "|": "1", "S": "5", "B": "8"}
+OCR_DIGIT_FIXES: dict[str, str] = {"O": "0", "o": "0", "l": "1", "I": "1", "|": "1", "S": "5", "\u00a7": "5", "B": "8"}
 NUMBER_PUNCTUATION = set("$,.-()%/+")
 # Characters OCR often leaves around a number (quotes, guillemets, brackets, stray marks).
 STRAY_EDGE_CHARACTERS = "\"'`‘’“”«»[]{}|:;*~_^!?"
@@ -96,11 +100,22 @@ def clean_number_text(text: str) -> str:
     return fix_ocr_digits(cleaned)
 
 
+def join_thousands_groups(text: str) -> str:
+    """Rejoin a number that OCR split at a thousands separator ("$2,806 792.54" -> "$2,806,792.54")."""
+    pieces = text.split()
+    if len(pieces) < 2:
+        return text
+    rest = [piece.lstrip(",") for piece in pieces[1:]]
+    if all(re.match(r"^\d{3}(?:\D|$)", piece) for piece in rest):
+        return ",".join([pieces[0].rstrip(","), *rest])
+    return text
+
+
 def parse_money(text: str | None) -> float | None:
     """A dollar amount (see the module docstring for the accepted forms), or None."""
     if text is None:
         return None
-    cleaned = clean_number_text(text)
+    cleaned = clean_number_text(join_thousands_groups(strip_edges(text)))
     negative = False
     if cleaned.startswith("(") and cleaned.endswith(")"):
         negative = True
@@ -131,6 +146,16 @@ def is_table_amount(text: str) -> bool:
     if cleaned.startswith("(") and cleaned.endswith(")"):
         cleaned = cleaned[1:-1]
     return TABLE_AMOUNT_PATTERN.match(cleaned) is not None
+
+
+def parse_amount(text: str | None) -> float | None:
+    """A printed amount with exactly two decimals ("$70,000.00"), or None (see the module docstring)."""
+    if text is None:
+        return None
+    joined = join_thousands_groups(strip_edges(text))
+    if not is_table_amount(joined):
+        return None
+    return parse_money(joined)
 
 
 def valid_date(year: int, month: int, day: int) -> date | None:
@@ -216,6 +241,21 @@ def code_from_label(text: str | None) -> str | None:
         return None
     code = re.sub(r"[^0-9a-z]+", "_", strip_edges(text).casefold()).strip("_")
     return code or None
+
+
+def parse_identifier(text: str | None) -> str | None:
+    """An identifier (policy, claim, ID or account number): spaces removed and any character that is not a letter
+    or digit stripped from both ends ("BWC-3962642\u00b0" -> "BWC-3962642"); None if nothing is left."""
+    if text is None:
+        return None
+    cleaned = "".join(text.split())
+    start = 0
+    end = len(cleaned)
+    while start < end and not cleaned[start].isalnum():
+        start += 1
+    while end > start and not cleaned[end - 1].isalnum():
+        end -= 1
+    return cleaned[start:end] or None
 
 
 def parse_text(text: str | None) -> str | None:

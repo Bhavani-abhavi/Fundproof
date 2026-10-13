@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from uwcopilot.studio.data.cache import sha256_bytes
 from uwcopilot.studio.data.errors import StudioDataError
 from uwcopilot.studio.data.fabric_base import (
     ROAD_SEARCH_MILES,
@@ -35,11 +36,17 @@ from uwcopilot.studio.profiles.models import Profile
 
 @dataclass
 class Snapshot:
-    """A real metro's snapshot as written by snapshot.py: manifest plus the tract table."""
+    """A real metro's snapshot as written by snapshot.py: manifest plus the tract table.
+
+    manifest_sha256 / tracts_sha256 are the SHA-256 of the two files as they were read. A same-day rerun of
+    `make studio-data` replaces the folder, so results files record these (fingerprint()) to pin the exact data.
+    """
 
     folder: Path
     manifest: dict[str, Any]
     tracts: dict[str, dict[str, Any]]
+    manifest_sha256: str = ""
+    tracts_sha256: str | None = None
 
     @property
     def snapshot_date(self) -> date:
@@ -60,6 +67,14 @@ class Snapshot:
                 return str(item.get("status")), str(item.get("detail", ""))
         return "missing", f"step {step!r} is not in this snapshot"
 
+    def fingerprint(self) -> dict[str, str | None]:
+        """{snapshot_date, manifest_sha256, tracts_sha256}: what a results file records to pin this snapshot."""
+        return {
+            "snapshot_date": self.snapshot_date.isoformat(),
+            "manifest_sha256": self.manifest_sha256,
+            "tracts_sha256": self.tracts_sha256,
+        }
+
 
 def latest_snapshot(metro_id: str, snapshots_dir: Path = SNAPSHOTS_DIR, pinned: date | None = None) -> Snapshot | None:
     """The pinned snapshot, or the newest one on disk for the metro; None when there is none."""
@@ -72,10 +87,16 @@ def latest_snapshot(metro_id: str, snapshots_dir: Path = SNAPSHOTS_DIR, pinned: 
     if not candidates:
         return None
     chosen = candidates[-1]
-    manifest = json.loads((chosen / "manifest.json").read_text(encoding="utf-8"))
+    manifest_bytes = (chosen / "manifest.json").read_bytes()
     tracts_file = chosen / "tracts.json"
-    tracts = json.loads(tracts_file.read_text(encoding="utf-8"))["tracts"] if tracts_file.is_file() else {}
-    return Snapshot(folder=chosen, manifest=manifest, tracts=tracts)
+    tracts_bytes = tracts_file.read_bytes() if tracts_file.is_file() else None
+    return Snapshot(
+        folder=chosen,
+        manifest=json.loads(manifest_bytes.decode("utf-8")),
+        tracts=json.loads(tracts_bytes.decode("utf-8"))["tracts"] if tracts_bytes is not None else {},
+        manifest_sha256=sha256_bytes(manifest_bytes),
+        tracts_sha256=sha256_bytes(tracts_bytes) if tracts_bytes is not None else None,
+    )
 
 
 @dataclass
@@ -236,7 +257,7 @@ class SnapshotFabric(DataFabric):
         inputs = self.metro_inputs(profile) if any(f in METRO_LEVEL_INPUTS for f in required_factors(profile)) else {}
         for factor, weight in required_factors(profile).items():
             scope = LOCATION_FACTORS[factor].scope
-            status, share, source, reason = self.factor_status(factor, scope, table, inputs)
+            status, share, source, reason, live = self.factor_status(factor, scope, table, inputs)
             rows.append(
                 FactorCoverage(
                     factor=factor,
@@ -245,6 +266,7 @@ class SnapshotFabric(DataFabric):
                     status=status,
                     share_of_tracts=round(share, 4),
                     share_basis=share_basis_for(scope, real_metro=True),
+                    live_per_site=live,
                     source=source,
                     freshness=snapshot_date,
                     reason=reason,
@@ -254,34 +276,50 @@ class SnapshotFabric(DataFabric):
 
     def factor_status(
         self, factor: str, scope: str, table: dict[str, dict[str, float | None]], inputs: dict[str, FactorValue]
-    ) -> tuple[FactorStatus, float, str | None, str]:
-        """(status, share of tracts, source, reason) for one factor of this metro."""
+    ) -> tuple[FactorStatus, float, str | None, str, bool]:
+        """(status, share of tracts, source, reason, available live per site) for one factor of this metro.
+
+        Road and POI layers are not stored per tract in a snapshot (they are looked up live for one site), so they
+        are UNKNOWN for ranking tracts and count 0 here even when the live lookup works (Studio rule G).
+        """
         if self.snapshot is None:
-            return "UNKNOWN", 0.0, None, self.no_snapshot_reason()
+            return "UNKNOWN", 0.0, None, self.no_snapshot_reason(), False
         if scope == "tract":
             share = sum(values.get(factor) is not None for values in table.values()) / max(len(table), 1)
             if factor == "daytime_workers":
-                return "UNKNOWN", 0.0, None, "daytime population source not built yet"
+                return "UNKNOWN", 0.0, None, "daytime population source not built yet", False
             status: FactorStatus = "DATA" if share > 0 else "UNKNOWN"
-            return status, share if table else 0.0, "census_acs5", f"{share:.0%} of tracts have an ACS estimate"
+            reason = f"{share:.0%} of tracts have an ACS estimate"
+            return status, share if table else 0.0, "census_acs5", reason, False
         if scope == "road_layer":
-            roads = self.snapshot.manifest.get("layers", {}).get("roads") or {}
-            total = roads.get("counties_total") or 0
-            share = (roads.get("counties_with_aadt") or 0) / total if total else 0.0
-            status = "DATA" if share > 0 else "UNKNOWN"
-            reason = (
-                f"HPMS segments with AADT in {roads.get('counties_with_aadt', 0)} of {total} counties (live per site)"
-            )
-            return status, share, "fhwa_hpms", reason
+            return self.road_layer_status()
         if scope == "metro":
             value = inputs.get(factor)
             if value is None or value.status == "UNKNOWN":
-                return "UNKNOWN", 0.0, None, value.reason if value else "not in the snapshot"
+                return "UNKNOWN", 0.0, None, value.reason if value else "not in the snapshot", False
             source_id = value.source.source_id if value.source else None
-            return value.status, 1.0 if value.status == "DATA" else 0.0, source_id, value.reason
+            return value.status, 1.0 if value.status == "DATA" else 0.0, source_id, value.reason, False
         if factor == "str_comparables":
-            return "UNKNOWN", 0.0, None, "Inside Airbnb coverage not verified for this metro"
+            return "UNKNOWN", 0.0, None, "Inside Airbnb coverage not verified for this metro", False
         poi_status, detail = self.snapshot.step_status("osm_pois")
         if poi_status == "ok":
-            return "DATA", 1.0, "osm_overpass", "OpenStreetMap reachable; queried live per site"
-        return "UNKNOWN", 0.0, None, f"OpenStreetMap layer unavailable ({poi_status}: {detail})"
+            reason = (
+                "no per-tract place counts in the snapshot, so tracts cannot be ranked on it (UNKNOWN); "
+                "available for one site through a live OpenStreetMap lookup"
+            )
+            return "UNKNOWN", 0.0, "osm_overpass", reason, True
+        return "UNKNOWN", 0.0, None, f"OpenStreetMap layer unavailable ({poi_status}: {detail})", False
+
+    def road_layer_status(self) -> tuple[FactorStatus, float, str | None, str, bool]:
+        """Coverage of traffic counts: never per tract in a snapshot; live per site where HPMS has segments."""
+        roads = (self.snapshot.manifest.get("layers", {}) if self.snapshot else {}).get("roads") or {}
+        with_aadt, total = roads.get("counties_with_aadt") or 0, roads.get("counties_total") or 0
+        if with_aadt == 0:
+            status, detail = self.snapshot.step_status("hpms_roads") if self.snapshot else ("missing", "")
+            reason = f"no HPMS road layer in the snapshot (hpms_roads step: {status}; {detail})"
+            return "UNKNOWN", 0.0, None, reason, False
+        reason = (
+            "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); "
+            f"available for one site through a live HPMS lookup (segments with AADT in {with_aadt} of {total} counties)"
+        )
+        return "UNKNOWN", 0.0, "fhwa_hpms", reason, True

@@ -4,18 +4,25 @@ What "polite" means here (Studio addendum rule F):
 - a minimum interval between two requests to the same host (HostPolicy.min_interval_s);
 - retries with exponential backoff on network errors and on HTTP 429/500/502/503/504, honoring Retry-After;
 - explicit timeouts on every request;
-- identical requests are answered from the on-disk cache (cache.ResponseCache) with the original request date.
+- identical requests are answered from the on-disk cache (cache.ResponseCache) with the original request date;
+- a connector can pass `accept`, a check of the answer (for example "this is JSON, not an Invalid Key page"). An
+  answer the check rejects is never cached, and a cached answer it rejects is deleted and fetched again, so a bad
+  answer (an error page, a rejected key) cannot be replayed after the cause is fixed;
+- refresh=True ignores cached answers (they are fetched again and overwritten), for `--refresh` runs.
 
 What "safe" means here:
 - trust_env=True, so the machine's proxy and CA-bundle settings apply (the build environment's agent proxy needs it);
 - secret query parameters, JSON fields and headers are named by the caller; they are removed from the cache key,
   from the stored URL and parameters, from log lines and from error messages. Their values never leave the request.
+  httpx itself logs every request URL at INFO level; a filter on the "httpx" logger replaces the value of any
+  secret-named query parameter (SECRET_PARAM_NAMES) with *** before the line is written.
 
 Tests pass an httpx.MockTransport and a fake sleep, so they never touch the network or wait.
 """
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -26,13 +33,40 @@ from urllib.parse import urlsplit
 import httpx
 
 from uwcopilot.studio.data.cache import CachedResponse, ResponseCache, request_key, sha256_bytes
-from uwcopilot.studio.data.errors import HostUnreachable, UpstreamError
+from uwcopilot.studio.data.errors import HostUnreachable, StudioDataError, UpstreamError
+from uwcopilot.studio.data.provenance import SECRET_PARAM_NAMES
 
 LOGGER = logging.getLogger(__name__)
 RETRY_STATUSES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 USER_AGENT = "uwcopilot-studio/0.1 (portfolio project; public data; https://github.com/vajja1405/Underwriting-Copilot-)"
 MAX_BACKOFF_S = 60.0
 REDACTED = "***"
+# "?key=abc" or "&api_key=abc" in a logged URL: group 1 keeps the name, the value is replaced.
+SECRET_QUERY_VALUE = re.compile(
+    r"([?&](?:" + "|".join(sorted(SECRET_PARAM_NAMES)) + r")=)[^&\s\"']+", flags=re.IGNORECASE
+)
+
+
+class RedactSecretQueryValues(logging.Filter):
+    """A logging filter: replace secret query-parameter values in a log line with *** (the line is still logged)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Rewrite the record's message when it contains a secret-named query parameter."""
+        message = record.getMessage()
+        redacted = SECRET_QUERY_VALUE.sub(r"\1" + REDACTED, message)
+        if redacted != message:
+            record.msg, record.args = redacted, ()
+        return True
+
+
+def install_log_redaction(logger_name: str = "httpx") -> None:
+    """Attach RedactSecretQueryValues to a library logger once (httpx logs each request URL at INFO level)."""
+    target = logging.getLogger(logger_name)
+    if not any(isinstance(item, RedactSecretQueryValues) for item in target.filters):
+        target.addFilter(RedactSecretQueryValues())
+
+
+install_log_redaction()
 
 
 @dataclass(frozen=True)
@@ -67,6 +101,7 @@ class FetchResult:
     status_code: int
     content_type: str
     from_cache: bool
+    final_url: str = ""  # the URL that answered after redirects, without its query string
 
     def text(self) -> str:
         """The body decoded as UTF-8 (a byte-order mark is dropped)."""
@@ -75,6 +110,42 @@ class FetchResult:
     def json(self) -> Any:
         """The body parsed as JSON."""
         return json.loads(self.text())
+
+
+# A check of an answer: returns None to accept it, raises a StudioDataError to reject it (it is then not cached).
+Accept = Callable[[FetchResult], None]
+
+
+def expect_json(fetched: FetchResult, host: str) -> Any:
+    """The body as JSON; UpstreamError when it is an HTML page or not JSON (use inside an Accept check)."""
+    if "html" in fetched.content_type.lower():
+        raise UpstreamError(host, "answered with an HTML page instead of data")
+    try:
+        return fetched.json()
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UpstreamError(host, f"answer is not JSON ({type(exc).__name__})") from exc
+
+
+def json_object_check(host: str, required_key: str) -> Accept:
+    """An Accept check: the answer must be a JSON object with required_key (not an HTML or error page)."""
+
+    def check(fetched: FetchResult) -> None:
+        data = expect_json(fetched, host)
+        if not isinstance(data, dict) or required_key not in data:
+            raise UpstreamError(host, f"answer has no {required_key!r} field")
+
+    return check
+
+
+def rejection(result: FetchResult, accept: Accept | None) -> StudioDataError | None:
+    """The error an Accept check raises for this answer, or None when it is accepted (or there is no check)."""
+    if accept is None:
+        return None
+    try:
+        accept(result)
+    except StudioDataError as exc:
+        return exc
+    return None
 
 
 @dataclass
@@ -87,6 +158,7 @@ class PoliteClient:
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
     offline: bool = False
+    refresh: bool = False
     last_request_at: dict[str, float] = field(default_factory=dict)
 
     def policy_for(self, host: str) -> HostPolicy:
@@ -102,8 +174,11 @@ class PoliteClient:
         headers: Mapping[str, str] | None = None,
         secret_headers: Sequence[str] = (),
         use_cache: bool = True,
+        accept: Accept | None = None,
     ) -> FetchResult:
-        """GET url?params. secret_params / secret_headers name the values that must never be stored or logged."""
+        """GET url?params. secret_params / secret_headers name the values that must never be stored or logged.
+
+        accept checks the answer before it is cached (see the module docstring)."""
         all_params = {str(name): str(value) for name, value in (params or {}).items()}
         public = {name: value for name, value in all_params.items() if name not in set(secret_params)}
         secrets = [all_params[name] for name in secret_params if name in all_params]
@@ -112,7 +187,7 @@ class PoliteClient:
             # Both the whole value ("Bearer abc") and the token alone ("abc") are redacted.
             secrets += [value, value.split()[-1]] if value.strip() else []
         key = request_key("GET", url, public)
-        return self.fetch("GET", url, all_params, public, None, None, headers, secrets, key, use_cache)
+        return self.fetch("GET", url, all_params, public, None, None, headers, secrets, key, use_cache, accept)
 
     def post_json(
         self,
@@ -121,6 +196,7 @@ class PoliteClient:
         *,
         secret_fields: Sequence[str] = (),
         use_cache: bool = True,
+        accept: Accept | None = None,
     ) -> FetchResult:
         """POST a JSON payload. secret_fields are top-level payload keys (e.g. a registration key) never stored."""
         public_payload = {name: value for name, value in payload.items() if name not in set(secret_fields)}
@@ -128,7 +204,7 @@ class PoliteClient:
         public_body = json.dumps(public_payload, sort_keys=True).encode("utf-8")
         key = request_key("POST", url, {}, public_body)
         body = json.dumps(dict(payload)).encode("utf-8")
-        return self.fetch("POST", url, {}, {}, body, public_payload, None, secrets, key, use_cache)
+        return self.fetch("POST", url, {}, {}, body, public_payload, None, secrets, key, use_cache, accept)
 
     def fetch(
         self,
@@ -142,14 +218,25 @@ class PoliteClient:
         secrets: list[str],
         key: str,
         use_cache: bool,
+        accept: Accept | None = None,
     ) -> FetchResult:
-        """Answer from the cache when possible; otherwise send the request with rate limiting and retries."""
+        """Answer from the cache when possible; otherwise send the request with rate limiting and retries.
+
+        An answer that accept rejects is never cached; a rejected cached answer is deleted and fetched again.
+        """
         host = urlsplit(url).hostname or url
-        if use_cache and self.cache is not None:
+        if use_cache and self.cache is not None and not self.refresh:
             cached = self.cache.get(key)
             if cached is not None:
-                LOGGER.info("cache hit %s %s", method, url)
-                return to_result(cached, from_cache=True)
+                result = to_result(cached, from_cache=True)
+                problem = rejection(result, accept)
+                if problem is None:
+                    LOGGER.info("cache hit %s %s", method, url)
+                    return result
+                LOGGER.warning("cached answer for %s %s rejected (%s); deleting it", method, url, problem)
+                self.cache.delete(key)
+                if self.offline:
+                    raise problem
         if self.offline:
             raise HostUnreachable(host, "offline mode is on and the request is not in the cache")
         response = self.send_with_retries(method, url, all_params, body, headers, secrets, host)
@@ -164,10 +251,14 @@ class PoliteClient:
             params=stored_params,
             status_code=response.status_code,
             content_type=response.headers.get("content-type", ""),
+            final_url=str(response.url.copy_with(query=None, fragment=None)),
         )
+        result = to_result(cached, from_cache=False)
+        if accept is not None:
+            accept(result)  # raises for a rejected answer, which is then not cached
         if use_cache and self.cache is not None:
             self.cache.put(key, cached)
-        return to_result(cached, from_cache=False)
+        return result
 
     def send_with_retries(
         self,
@@ -243,4 +334,5 @@ def to_result(cached: CachedResponse, from_cache: bool) -> FetchResult:
         status_code=cached.status_code,
         content_type=cached.content_type,
         from_cache=from_cache,
+        final_url=cached.final_url or cached.url,
     )

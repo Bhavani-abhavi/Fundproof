@@ -4,6 +4,9 @@ Studio uses these counts as competition context: same-industry establishments pe
 county compared with the metro median (S2). They have no locations, so distance-based competition comes from
 OpenStreetMap (osm.py). CBP suppresses or omits small cells; a county without a row is UNKNOWN, never zero.
 
+A refused key (Census's invalid_key / missing_key pages) raises InvalidApiKey and is never cached (see
+census_acs.check_census_answer).
+
 The variable names (ESTAB, NAICS2017) were checked against the keyless metadata endpoint
 https://api.census.gov/data/<year>/cbp/variables.json on 2026-10-12 for 2022 and 2023.
 """
@@ -11,6 +14,7 @@ https://api.census.gov/data/<year>/cbp/variables.json on 2026-10-12 for 2022 and
 from dataclasses import dataclass
 from typing import Any
 
+from uwcopilot.studio.data.census_acs import check_census_answer
 from uwcopilot.studio.data.errors import UpstreamError
 from uwcopilot.studio.data.http import PoliteClient
 from uwcopilot.studio.data.keys import require_key
@@ -63,12 +67,10 @@ def parse_county_rows(rows: list[list[Any]]) -> dict[str, int]:
 def fetch_county_counts(
     client: PoliteClient, state_fips: str, naics: str, year: int = DEFAULT_YEAR
 ) -> EstablishmentCounts:
-    """Establishments for one NAICS code in every county of a state. Raises MissingApiKey without CENSUS_API_KEY."""
+    """Establishments for one NAICS code in every county of a state (MissingApiKey / InvalidApiKey for key problems)."""
     key = require_key("CENSUS_API_KEY")
     url, params = county_request(year, state_fips, naics)
-    fetched = client.get(url, {**params, "key": key}, secret_params=["key"])
-    if "html" in fetched.content_type.lower():
-        raise UpstreamError(HOST, "answered with an HTML page instead of data (is CENSUS_API_KEY valid?)")
+    fetched = client.get(url, {**params, "key": key}, secret_params=["key"], accept=check_census_answer)
     counts = parse_county_rows(fetched.json())
     record = SOURCE.record(fetched, vintage=f"CBP {year}", geography=f"state {state_fips}")
     return EstablishmentCounts(naics=naics, year=year, counts=counts, source=record)

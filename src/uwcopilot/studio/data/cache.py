@@ -51,6 +51,7 @@ class CachedResponse:
     params: dict[str, str]
     status_code: int
     content_type: str
+    final_url: str = ""  # the URL that answered after redirects, without its query string ("" = not recorded)
 
 
 class ResponseCache:
@@ -83,6 +84,7 @@ class ResponseCache:
             params=dict(meta["params"]),
             status_code=int(meta["status_code"]),
             content_type=str(meta["content_type"]),
+            final_url=str(meta.get("final_url", "")),
         )
 
     def put(self, key: str, response: CachedResponse) -> None:
@@ -96,9 +98,19 @@ class ResponseCache:
             "sha256": response.sha256,
             "status_code": response.status_code,
             "content_type": response.content_type,
+            "final_url": response.final_url,
         }
         write_atomic(body_path, response.body)
         write_atomic(meta_path, json.dumps(meta, indent=2, sort_keys=True).encode("utf-8"))
+
+    def delete(self, key: str) -> bool:
+        """Remove one entry (body and metadata). True when something was removed."""
+        removed = False
+        for path in self.paths_for(key):
+            if path.is_file():
+                path.unlink()
+                removed = True
+        return removed
 
 
 def write_atomic(path: Path, data: bytes) -> None:
