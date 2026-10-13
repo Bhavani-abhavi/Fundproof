@@ -299,8 +299,9 @@ studio-data-refresh:  ## Like studio-data, but ignore cached answers and fetch e
 
 .PHONY: injection-payloads-check eval-injection eval-injection-smoke injection-detector test-security
 
-injection-payloads-check:  ## Rebuild the payload set from the pinned dataset revision (network) and compare with the frozen file
-	uv run python scripts/fetch_injection_payloads.py --check
+injection-payloads-check:  ## Re-download the pinned dataset into an empty temp folder (network), rebuild and compare with the frozen file
+	tmp=$$(mktemp -d) && uv run python scripts/fetch_injection_payloads.py --check --download-dir "$$tmp"; \
+	status=$$?; rm -rf "$$tmp"; exit $$status
 
 eval-injection:  ## R4 on Ollama: 60 payloads x L0/L1/L2 + 30 benign L1/L2 calls (hours) -> results/injection_metrics.json
 	uv run python scripts/eval_injection.py
@@ -368,3 +369,9 @@ web-metrics:  ## Start DOCKER_IMAGE with dev login, run flows + axe + Lighthouse
 		python scripts/web_metrics.py --url http://127.0.0.1:$(WEB_METRICS_PORT) --target local-container \
 		--docker-image $(DOCKER_IMAGE) --container $(WEB_METRICS_NAME); \
 	status=$$?; docker stop $(WEB_METRICS_NAME) >/dev/null 2>&1; exit $$status
+
+# Innovation S2: the sha256 of every request R4 will send (no model call); tests/security rebuilds and compares them.
+.PHONY: injection-requests
+
+injection-requests:  ## Hash the 240 planned R4 requests without a model -> results/injection/planned_requests.json
+	uv run python scripts/injection_request_hashes.py

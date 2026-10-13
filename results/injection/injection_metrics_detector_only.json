@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T19:34:09+00:00",
+  "generated_at": "2026-10-13T23:26:53+00:00",
   "generated_by": "scripts/eval_injection.py",
   "status": "partial (detector only; the model layers were not run)",
   "note": "No model was run: tripwire measurements only (recall on the 60 frozen payloads, raw and normalized, and flags on clean policy text and on the benign notes). Nothing in this file is an attack success rate.",
@@ -139,7 +139,14 @@
       ],
       "n_public_payloads_in_groups": 11,
       "note": "the outcomes inside a group are not independent, so the Wilson intervals on the public payloads, which treat the 40 as independent, are somewhat too narrow"
-    }
+    },
+    "content_filter": {
+      "english_injection_rows": 96,
+      "dropped_by_topic": 40,
+      "rule": "english_injection_rows = label_1 minus the three English-filter drops (the content filter runs next)",
+      "note": "the topic filter dropped these rows before sampling, so the public payloads are not a random sample of the dataset's English injection rows"
+    },
+    "second_public_source": "not done (optional): the garak 0.17.0 latent-injection extraction was not built"
   },
   "setup": {
     "n_questions": 30,
@@ -456,7 +463,70 @@
           ]
         }
       },
+      "what": "re-chunked texts, not the indexed ones: whole guideline sections plus regulatory chunks made again from the source files (see clean_indexed_chunks for the texts retrieval returns)",
       "note": "whole guideline sections (60) plus regulatory chunks; regulatory documents chunked by rag.corpus.load_corpus with its default word counter, so chunk boundaries can differ from the Qdrant index (which packs windows with the embedding tokenizer)"
+    },
+    "clean_indexed_chunks": {
+      "n": 108,
+      "flagged": 2,
+      "flagged_ids": [
+        "HM-11.2",
+        "NBC-9.2"
+      ],
+      "patterns": {
+        "HM-11.2": [
+          "ignore_instructions",
+          "approval_claim",
+          "skip_control"
+        ],
+        "NBC-9.2": [
+          "ignore_instructions",
+          "approval_claim",
+          "skip_control",
+          "mark_status"
+        ]
+      },
+      "raw_text": {
+        "n": 108,
+        "flagged": 2,
+        "flagged_ids": [
+          "HM-11.2",
+          "NBC-9.2"
+        ],
+        "patterns": {
+          "HM-11.2": [
+            "ignore_instructions",
+            "approval_claim",
+            "skip_control"
+          ],
+          "NBC-9.2": [
+            "ignore_instructions",
+            "approval_claim",
+            "skip_control",
+            "mark_status"
+          ]
+        }
+      },
+      "index": {
+        "qdrant": {
+          "mode": "local-embedded",
+          "qdrant_client_version": "1.19.1",
+          "server_version": null,
+          "url": null,
+          "path": "qdrant_storage",
+          "collection": "uwc_guidelines"
+        },
+        "points": 108,
+        "points_by_doc": {
+          "frb_sr_26_2": 21,
+          "harborline_mutual_commercial": 31,
+          "northwind_business_credit": 30,
+          "nydfs_cl_2024_07": 26
+        },
+        "point_texts_sha256": "eebd281ccd4f64b67f22fda78f45feec4c40e58563cf671287dd27583eae2a4e",
+        "point_texts_sha256_rule": "sha256 of the '<point key> <sha256 of its text>' lines, sorted by point key"
+      },
+      "what": "every chunk text stored in the Qdrant index that retrieval reads (rag.index.read_all_payloads); these are the texts retrieval puts into prompts"
     },
     "benign_notes": {
       "n": 6,
@@ -599,6 +669,68 @@
             "mark_status"
           ]
         }
+      },
+      "clean_indexed_chunks": {
+        "n": 108,
+        "flagged": 2,
+        "flagged_ids": [
+          "HM-11.2",
+          "NBC-9.2"
+        ],
+        "patterns": {
+          "HM-11.2": [
+            "ignore_instructions",
+            "approval_claim",
+            "skip_control"
+          ],
+          "NBC-9.2": [
+            "ignore_instructions",
+            "approval_claim",
+            "skip_control",
+            "mark_status"
+          ]
+        },
+        "raw_text": {
+          "n": 108,
+          "flagged": 2,
+          "flagged_ids": [
+            "HM-11.2",
+            "NBC-9.2"
+          ],
+          "patterns": {
+            "HM-11.2": [
+              "ignore_instructions",
+              "approval_claim",
+              "skip_control"
+            ],
+            "NBC-9.2": [
+              "ignore_instructions",
+              "approval_claim",
+              "skip_control",
+              "mark_status"
+            ]
+          }
+        },
+        "index": {
+          "qdrant": {
+            "mode": "local-embedded",
+            "qdrant_client_version": "1.19.1",
+            "server_version": null,
+            "url": null,
+            "path": "qdrant_storage",
+            "collection": "uwc_guidelines"
+          },
+          "points": 108,
+          "points_by_doc": {
+            "frb_sr_26_2": 21,
+            "harborline_mutual_commercial": 31,
+            "northwind_business_credit": 30,
+            "nydfs_cl_2024_07": 26
+          },
+          "point_texts_sha256": "eebd281ccd4f64b67f22fda78f45feec4c40e58563cf671287dd27583eae2a4e",
+          "point_texts_sha256_rule": "sha256 of the '<point key> <sha256 of its text>' lines, sorted by point key"
+        },
+        "what": "every chunk text stored in the Qdrant index that retrieval reads (rag.index.read_all_payloads); these are the texts retrieval puts into prompts"
       }
     },
     "note": "the payloads were frozen before this tripwire was measured on them; no pattern was changed for them"
@@ -620,16 +752,16 @@
     "load_average": {
       "start": null,
       "end": [
-        4.01,
-        4.29,
-        4.65
+        1.54,
+        0.87,
+        0.52
       ]
     }
   },
   "provenance": {
-    "git_sha": "6e16420b50ab74ff7b79bb7ab72f2fc9d2e4b572",
+    "git_sha": "38b6ca3f50dbb20d3d440d8977db951b26cd4b46",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-13T19:34:09+00:00",
+    "generated_at_utc": "2026-10-13T23:26:54+00:00",
     "generated_by": "scripts/eval_injection.py",
     "prompts": {
       "injection_l0_naive_v1": "7961af325de679accb8b9bf0cfc4a8cf7b0a366fcf0478c62905844e4c9af82c",
@@ -665,14 +797,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        4.01,
-        4.29,
-        4.65
+        1.54,
+        0.87,
+        0.52
       ],
       "load_average_end": [
-        4.01,
-        4.29,
-        4.65
+        1.54,
+        0.87,
+        0.52
       ]
     }
   }

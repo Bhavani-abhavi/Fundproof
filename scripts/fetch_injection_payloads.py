@@ -2,7 +2,8 @@
 
 Usage:
     uv run python scripts/fetch_injection_payloads.py            # build once; refuses to overwrite a frozen file
-    uv run python scripts/fetch_injection_payloads.py --check    # rebuild in memory and compare with the frozen file
+    uv run python scripts/fetch_injection_payloads.py --check    # rebuild in memory and compare with the frozen file;
+                                                                  # writes results/injection/payloads_check.json
 
 The file is frozen BEFORE any model sees it: the manifest records its sha256, scripts/eval_injection.py refuses a
 file whose sha256 differs, and the file is committed before the full evaluation (R4) runs. --force rebuilds it;
@@ -39,6 +40,7 @@ Every payload text is attack DATA for the evaluation; nothing in it is an instru
 
 import argparse
 import base64
+import hashlib
 import json
 import random
 import re
@@ -51,8 +53,8 @@ from typing import Any
 import yaml
 
 from uwcopilot.common.files import sha256_of_file
-from uwcopilot.common.paths import RAW_DATA_DIR
-from uwcopilot.governance.provenance import display_path
+from uwcopilot.common.paths import RAW_DATA_DIR, RESULTS_DIR
+from uwcopilot.governance.provenance import RunProvenance, display_path
 from uwcopilot.security.normalize import normalize_text
 from uwcopilot.security.payloads import (
     CANARY_VALUES,
@@ -72,6 +74,8 @@ PUBLIC_TRAIN_FILE = "data/train-00000-of-00001-9564e8b05b4757ab.parquet"
 PUBLIC_TRAIN_SHA256 = "2e10bc7ab30f542c97e4e83e2a5683000b5057d25ec10908784c631d44124c04"
 PUBLIC_CARD_FILE = "README.md"
 DEFAULT_DOWNLOAD_DIR = RAW_DATA_DIR / "injection" / "deepset_prompt_injections"
+# What --check verified, written by a script so the check is evidence and not a sentence in a document.
+CHECK_REPORT_FILE = RESULTS_DIR / "injection" / "payloads_check.json"
 N_PUBLIC = 40
 SEED = 42
 MIN_CHARS = 15
@@ -548,6 +552,33 @@ def build_payloads(download_dir: Path) -> tuple[list[InjectionPayload], dict[str
     return payloads, details
 
 
+def check_report(
+    frozen: Path, rebuilt: str, identical: bool, details: dict[str, Any], download_dir_was_empty: bool
+) -> dict[str, Any]:
+    """What --check verified: the pinned download, the card's license values as read, and the byte comparison.
+
+    The parquet sha256 equals PUBLIC_TRAIN_SHA256 whenever this report exists (download_public_files raises
+    otherwise). download_dir_was_empty says whether the files were fetched fresh rather than reused from disk.
+    """
+    return {
+        "checked_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "generated_by": "scripts/fetch_injection_payloads.py --check",
+        "dataset": PUBLIC_DATASET,
+        "revision": PUBLIC_REVISION,
+        "download_dir_was_empty": download_dir_was_empty,
+        "train_file": PUBLIC_TRAIN_FILE,
+        "train_file_sha256": sha256_of_file(details["train_path"]),
+        "train_file_matches_pinned_sha256": sha256_of_file(details["train_path"]) == PUBLIC_TRAIN_SHA256,
+        "card_sha256": sha256_of_file(details["card_path"]),
+        "license_facts": details["license_facts"],
+        "selection_counts": details["counts"],
+        "frozen_file": display_path(frozen),
+        "frozen_file_sha256": sha256_of_file(frozen),
+        "rebuilt_sha256": hashlib.sha256(rebuilt.encode("utf-8")).hexdigest(),
+        "identical": identical,
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Command-line options."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -556,6 +587,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--download-dir", type=Path, default=DEFAULT_DOWNLOAD_DIR)
     parser.add_argument("--force", action="store_true", help="overwrite a frozen file (only before any model run)")
     parser.add_argument("--check", action="store_true", help="rebuild in memory and compare with the frozen file")
+    parser.add_argument("--check-report", type=Path, default=CHECK_REPORT_FILE, help="where --check writes its report")
     return parser.parse_args(argv)
 
 
@@ -569,11 +601,21 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    run = RunProvenance.start("scripts/fetch_injection_payloads.py")
+    download_dir_was_empty = not args.download_dir.exists() or not any(args.download_dir.iterdir())
     payloads, details = build_payloads(args.download_dir)
     if args.check:
         rebuilt = "".join(payload_line(payload) + "\n" for payload in payloads)
         identical = args.output.read_text(encoding="utf-8") == rebuilt
         print(f"{display_path(args.output)} {'matches' if identical else 'DIFFERS FROM'} the rebuilt payload set")
+        report = check_report(args.output, rebuilt, identical, details, download_dir_was_empty)
+        report["provenance"] = run.finish(
+            eval_sets=[args.output],
+            data_snapshots={"public_source": {"dataset": PUBLIC_DATASET, "revision": PUBLIC_REVISION}},
+        )
+        args.check_report.parent.mkdir(parents=True, exist_ok=True)
+        args.check_report.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"Wrote {display_path(args.check_report)}")
         return 0 if identical else 1
     sha256 = write_payloads(args.output, payloads)
     manifest = build_manifest(

@@ -17,14 +17,19 @@ attack-success number will only exist in `results/injection_metrics.json` after 
 text is where a prompt injection would come from. S2 measures how often an injected instruction still reaches the
 answer under three prompt layers. L0 is naive pasting, L1 is the current prompt, and L2 is a separate, normalized
 applicant block with its own id namespace. The set is 60 frozen payloads: 40 public, 20 hand-written. S2 also proves
-with tests that a fully obedient model still cannot change a decision.
+with tests that a fully obedient model still cannot change a decision. The measured layers are RAG-answer prompts;
+the product's decision-memo prompt (`agent/memo.py`) is not a measured layer, so the R4 numbers do not measure how
+robust the memo prompt is.
 
 **Numbers available now (no model involved).** These come from `results/injection/injection_metrics_detector_only.json`,
 written by `make injection-detector`. The tripwire (`agent.injection.detect`) flagged:
 - 12 of 60 payloads on their raw text (Wilson 95% 0.1183-0.3178);
 - 16 of 60 after normalization (0.1713-0.3901);
 - 7 of the 40 public payloads either way;
-- 2 of 96 clean policy chunks (NBC-9.2 and HM-11.2, which quote injection phrases on purpose).
+- 2 of the 108 chunk texts stored in the Qdrant index, the texts retrieval puts into prompts (`clean_indexed_chunks`:
+  NBC-9.2 and HM-11.2, which quote injection phrases on purpose);
+- the same 2 of 96 re-chunked policy texts (`clean_chunks`: 60 whole guideline sections plus 36 regulatory chunks
+  made again with a word counter).
 
 ### Interview questions and answers
 
@@ -82,6 +87,10 @@ written by `make injection-detector`. The tripwire (`agent.injection.detect`) fl
      their own.
    - 11 of the 40 public payloads fall into 5 groups of near-duplicates (computed in the results file), so the
      public intervals are somewhat too narrow.
+   - The builder's content filter (hateful, violent, sexual, religious and named-politician topics, plus a few
+     jailbreak role-play phrases, malware, drugs and swearwords) dropped 40 of
+     the 96 English injection rows before sampling (`payloads.content_filter` in the detector-only results). So the
+     public payloads are not a random sample of the dataset's English injection rows.
 
 7. **Why is "100% blocked" not a claim?**
    - The payload set is small and fixed, and the model is one 3B local model.
@@ -90,12 +99,16 @@ written by `make injection-detector`. The tripwire (`agent.injection.detect`) fl
    - The defensible statements are a per-layer attack success rate with a confidence interval on these payloads,
      and "decision-level impact 0 by construction, enforced by a test".
 
-8. **How does this map to the OWASP Top 10 for LLM Applications 2025?** (Primary source: genai.owasp.org/llm-top-10/,
-   checked 2026-10-13.)
+8. **How does this map to the OWASP Top 10 for LLM Applications 2025?** (Primary source: OWASP Top 10 for LLM
+   Applications 2025, https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/, dated November 17,
+   2024 on that page; ids from https://genai.owasp.org/llm-top-10/; both accessed 2026-10-13. The site also lists a
+   newer "OWASP GenAI LLM Top 10 2026", dated August 3, 2026; this mapping was not re-checked against it.)
    - LLM01:2025 Prompt Injection is the attack itself.
    - LLM06:2025 Excessive Agency is what the tool allow-list and the human checkpoint prevent.
    - LLM05:2025 Improper Output Handling covers the exfiltration canary (a markdown image a renderer would fetch).
-   - LLM09:2025 Misinformation covers the fake citation.
+   - LLM09:2025 Misinformation covers the fake citation. It is a made-up id (`NBC-12.9`), not the real `NBC-7.1` the
+     plan named, so a real section cited for a rule it does not contain (misattribution) is not covered by the
+     frozen set, and no canary could catch it.
    - LLM08:2025 Vector and Embedding Weaknesses (a poisoned index) is a Tier 2 extension: S2 never writes to the
      index.
    - Whether any of this applies to a real institution depends on that institution and its risk profile; this is a

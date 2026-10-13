@@ -12,6 +12,7 @@ from fetch_injection_payloads import (
     PUBLIC_DATASET,
     PUBLIC_REVISION,
     card_license_facts,
+    check_report,
     content_filter_hit,
     english_filter_reason,
     hand_written_payloads,
@@ -183,3 +184,18 @@ def test_card_license_facts_read_both_licenses() -> None:
     facts = card_license_facts(card)
     assert facts["card_yaml_top_level_license"] == "apache-2.0"
     assert facts["card_yaml_dataset_info_license"] == "cc-by-4.0"
+
+
+def test_check_report_records_what_was_compared(tmp_path: Path) -> None:
+    # --check writes this report to results/injection/payloads_check.json; here with stand-in downloaded files.
+    train = tmp_path / "train.parquet"
+    card = tmp_path / "README.md"
+    train.write_bytes(b"not the pinned file")
+    card.write_text("card", encoding="utf-8")
+    details = {"train_path": train, "card_path": card, "license_facts": {"x": 1}, "counts": {"label_1": 1}}
+    rebuilt = PAYLOADS_FILE.read_text(encoding="utf-8")
+    report = check_report(PAYLOADS_FILE, rebuilt, True, details, download_dir_was_empty=True)
+    assert report["identical"] is True and report["rebuilt_sha256"] == sha256_of_file(PAYLOADS_FILE)
+    assert report["frozen_file_sha256"] == FROZEN_PAYLOADS_SHA256
+    assert report["train_file_matches_pinned_sha256"] is False  # the stand-in is not the pinned parquet file
+    assert report["revision"] == PUBLIC_REVISION and report["download_dir_was_empty"] is True

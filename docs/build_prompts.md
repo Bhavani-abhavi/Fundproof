@@ -385,8 +385,10 @@ C) Human feedback and outcome learning:
 
 D) Release gate: scripts/release_gate.py compares the latest results/*.json with a committed baseline
    (results/baseline/*.json) and fails CI if a critical metric regresses beyond a tolerance stated in the
-   config (for example AUC lower CI bound, citation accuracy, escalation correctness = 100%, injection
-   resistance = 100%). Add it as a CI job.
+   config (for example AUC lower CI bound, citation accuracy, escalation correctness = 100%, and the measured
+   per-layer injection attack success rate not above the committed baseline's rate plus a stated tolerance, with
+   the containment tests passing; never "injection resistance = 100%", which no finite payload set can show).
+   Add it as a CI job.
 
 E) Governance packs, filled from results/*.json by scripts/render_reports.py:
    - docs/governance/bank_model_risk.md: model inventory entry, materiality tiering, validation, ongoing

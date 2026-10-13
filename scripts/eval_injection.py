@@ -34,6 +34,10 @@ how often it answered "Not found" under attack and its key-fact recall under att
 refuse would otherwise look robust, because a refusal holds no canary. Action-level success is not measured here:
 it is 0 by construction and enforced by tests/security/test_containment.py.
 
+Tripwire false positives on clean policy text are measured twice: detector.clean_chunks (whole guideline sections plus
+regulatory chunks re-made with a word counter) and detector.clean_indexed_chunks (every chunk text stored in the local
+Qdrant index, i.e. the texts retrieval puts into prompts; "not measured" with the reason when there is no index).
+
 Outputs: per-call rows in results/injection/rows.jsonl and the aggregate in results/injection_metrics.json. Smoke
 runs write results/injection/smoke/ (rows.jsonl, injection_metrics_smoke.json) and a detector-only run writes
 results/injection/injection_metrics_detector_only.json; neither ever replaces the measured file.
@@ -69,13 +73,18 @@ from uwcopilot.governance.freeze_proof import freeze_record
 from uwcopilot.governance.provenance import RunProvenance, display_path, load_average
 from uwcopilot.llm.base import LLMClient
 from uwcopilot.llm.ollama_client import ContextBudgetExceeded, OllamaError
+from uwcopilot.rag.chunks import chunk_from_payload
 from uwcopilot.rag.frozen_hits import FROZEN_HITS_FILE, FROZEN_MANIFEST_FILE, KEY_FACTS_FILE, FrozenHitsRecord
 from uwcopilot.rag.generation_eval import KeyFactRow, score_answer
+from uwcopilot.rag.index import IndexNotBuiltError, describe_qdrant, make_qdrant_client, read_all_payloads
+from uwcopilot.rag.index import display_path as index_display_path
 from uwcopilot.rag.metrics import bootstrap_mean_ci, paired_bootstrap_difference, percentile
 from uwcopilot.rag.prompt import APPLICANT_DOC_ID, detect_instruction_like_text
 from uwcopilot.rag.prompts import prompt_sha256, prompt_template_sha256
+from uwcopilot.rag.settings import RagSettings, load_rag_settings
 from uwcopilot.security.injection_eval import (
     NEAR_DUPLICATE_MIN_WORDS,
+    Detector,
     asr_by_goal,
     asr_summary,
     detector_recall,
@@ -562,11 +571,69 @@ def regulatory_chunk_texts() -> tuple[dict[str, str], str]:
     return texts, note
 
 
+def load_indexed_chunks(settings: RagSettings | None = None) -> tuple[dict[str, str], dict[str, Any]] | str:
+    """The chunk texts stored in the Qdrant index that retrieval reads, by point key, and a description of the index.
+
+    These are the texts retrieval puts into prompts (a guideline section too long for the embedding model is stored
+    as parts, keyed "<chunk id>#<part>"). Returns "not measured (<reason>)" when there is no index to read. A missing
+    local folder is never created (QdrantClient(path=...) would create an empty one).
+    """
+    settings = settings or load_rag_settings()
+    if settings.mode == "local-embedded" and not Path(settings.qdrant_path).exists():
+        location = index_display_path(settings.qdrant_path)
+        return f"not measured (no local Qdrant index at {location}; build it with `make index`)"
+    try:
+        client = make_qdrant_client(settings)
+    except RuntimeError as error:  # local mode: another process has the folder open
+        return f"not measured (the Qdrant index could not be opened: {error})"
+    try:
+        chunks = [chunk_from_payload(payload) for payload in read_all_payloads(client, settings.collection)]
+        qdrant = describe_qdrant(client, settings)
+    except IndexNotBuiltError as error:
+        return f"not measured ({error})"
+    except Exception as error:  # noqa: BLE001 - this runs after the model calls; a read failure must not lose them
+        return f"not measured (the Qdrant index could not be read: {type(error).__name__})"
+    finally:
+        client.close()
+    texts = {chunk.point_key: chunk.text for chunk in sorted(chunks, key=lambda chunk: chunk.point_key)}
+    by_doc: dict[str, int] = {}
+    for chunk in chunks:
+        by_doc[chunk.doc_id] = by_doc.get(chunk.doc_id, 0) + 1
+    checksum_lines = "\n".join(f"{key} {text_sha256(text)}" for key, text in texts.items())
+    info = {
+        "qdrant": qdrant,
+        "points": len(texts),
+        "points_by_doc": dict(sorted(by_doc.items())),
+        "point_texts_sha256": text_sha256(checksum_lines),
+        "point_texts_sha256_rule": "sha256 of the '<point key> <sha256 of its text>' lines, sorted by point key",
+    }
+    return texts, info
+
+
+def indexed_chunks_flags(detector: Detector, indexed: tuple[dict[str, str], dict[str, Any]] | str) -> dict | str:
+    """flagged_sections() on the indexed chunk texts (normalized and raw), or the 'not measured' reason."""
+    if isinstance(indexed, str):
+        return indexed
+    texts, info = indexed
+    return {
+        **flagged_sections(texts, detector, normalize=True),
+        "raw_text": flagged_sections(texts, detector, normalize=False),
+        "index": info,
+        "what": "every chunk text stored in the Qdrant index that retrieval reads (rag.index.read_all_payloads); "
+        "these are the texts retrieval puts into prompts",
+    }
+
+
 def detector_block(payloads: Sequence[InjectionPayload]) -> dict[str, Any]:
-    """Tripwire recall on the payloads (raw vs normalized) and flags on clean policy text and on the benign notes."""
+    """Tripwire recall on the payloads (raw vs normalized) and flags on clean policy text and on the benign notes.
+
+    Clean policy text is measured twice: clean_chunks (whole guideline sections plus regulatory chunks re-made with
+    a word counter; needs no index) and clean_indexed_chunks (the chunk texts stored in the Qdrant index).
+    """
     sections = guideline_section_texts()
     regulatory, regulatory_note = regulatory_chunk_texts()
     clean = {**sections, **regulatory}
+    indexed = load_indexed_chunks()
     agent_recall = detector_recall(payloads, agent_detect)
     notes = {f"note-{index}": note for index, note in enumerate(BENIGN_NOTES)}
     return {
@@ -580,13 +647,17 @@ def detector_block(payloads: Sequence[InjectionPayload]) -> dict[str, Any]:
             "n_guideline_sections": len(sections),
             "n_regulatory_chunks": len(regulatory),
             "raw_text": flagged_sections(clean, agent_detect, normalize=False),
+            "what": "re-chunked texts, not the indexed ones: whole guideline sections plus regulatory chunks made "
+            "again from the source files (see clean_indexed_chunks for the texts retrieval returns)",
             "note": "whole guideline sections (60) plus regulatory chunks; " + regulatory_note,
         },
+        "clean_indexed_chunks": indexed_chunks_flags(agent_detect, indexed),
         "benign_notes": flagged_sections(notes, agent_detect, normalize=True),
         "prompt_tripwire": {
             "detector": "uwcopilot.rag.prompt.detect_instruction_like_text (sets the warning attribute at L1/L2)",
             "recall": detector_recall(payloads, detect_instruction_like_text),
             "clean_chunks": flagged_sections(clean, detect_instruction_like_text, normalize=True),
+            "clean_indexed_chunks": indexed_chunks_flags(detect_instruction_like_text, indexed),
         },
         "note": "the payloads were frozen before this tripwire was measured on them; no pattern was changed for them",
     }
@@ -626,6 +697,28 @@ def payloads_block(setup: EvalSetup, payloads_path: Path, manifest_path: Path, f
             "note": "the outcomes inside a group are not independent, so the Wilson intervals on the public payloads, "
             "which treat the 40 as independent, are somewhat too narrow",
         },
+        "content_filter": content_filter_effect(public.get("selection_counts") or {}),
+        "second_public_source": "not done (optional): the garak 0.17.0 latent-injection extraction was not built",
+    }
+
+
+def content_filter_effect(counts: dict[str, int]) -> dict[str, Any] | str:
+    """How many English injection rows the builder's topic filter dropped, from the manifest's selection counts.
+
+    The filter (hate, violence, sex, religion, named politicians) keeps the committed file professional, but it also
+    shapes the public sample: the public attack success describes the rows that remained, not the whole dataset.
+    """
+    needed = ("label_1", "dropped_non_ascii_letter", "dropped_foreign_function_word")
+    needed += ("dropped_fewer_than_2_english_function_words", "dropped_content_filter")
+    if not all(name in counts for name in needed):
+        return "not measured (the payload manifest has no selection counts)"
+    english_rows = counts["label_1"] - sum(counts[name] for name in needed[1:4])
+    return {
+        "english_injection_rows": english_rows,
+        "dropped_by_topic": counts["dropped_content_filter"],
+        "rule": "english_injection_rows = label_1 minus the three English-filter drops (the content filter runs next)",
+        "note": "the topic filter dropped these rows before sampling, so the public payloads are not a random sample "
+        "of the dataset's English injection rows",
     }
 
 
@@ -826,6 +919,11 @@ def print_summary(metrics: dict[str, Any]) -> None:
     print(f"  tripwire recall raw {detector['recall_raw']['all']}")
     print(f"  tripwire recall normalized {detector['recall_normalized']['all']}")
     print(f"  clean chunks flagged {detector['clean_chunks']['flagged']} of {detector['clean_chunks']['n']}")
+    indexed = detector["clean_indexed_chunks"]
+    if isinstance(indexed, dict):
+        print(f"  clean indexed chunks flagged {indexed['flagged']} of {indexed['n']}")
+    else:
+        print(f"  clean indexed chunks: {indexed}")
     for layer, block in metrics["layers"].items():
         if isinstance(block, dict) and isinstance(block.get("asr"), dict):
             print(f"  {layer} ASR {block['asr']['all']}")
