@@ -1,10 +1,12 @@
 # Release gate configuration (docs/innovations.md, S1 and S3).
 #
 # This file is evidence, so its history matters: the `migration:` margins below were written BEFORE any challenger
-# run (R2) and must be committed before the challenger is evaluated. scripts/llm_migration_gate.py records the
-# commit that last changed this file and refuses to certify a migration when that commit is newer than the
-# challenger's results (or when the file has uncommitted changes), so the margins cannot be tuned after seeing the
-# challenger's numbers. Other sections (controls, staleness rules) are added in Phase 6 / S3.
+# run (R2) and must be committed before the challenger is evaluated. When a run starts, scripts/eval_generation.py
+# records the first commit holding the current content of the `migration:` section (its parsed content, so comments
+# and other sections do not count; governance/freeze_proof.py). scripts/llm_migration_gate.py refuses to certify a
+# migration when that commit is newer than the challenger's earliest generated answer, or when the section changed
+# since the challenger run, so the margins cannot be tuned after seeing the challenger's answers. Other sections
+# (controls, staleness rules) are added in Phase 6 / S3.
 #
 # Source of the margins: the "Gated metrics and margins (to commit before R2)" table in docs/innovations.md, S1
 # (planned 2026-10-10). They were chosen before any generation run, not fitted to data.
@@ -49,6 +51,7 @@ migration:
       direction: lower_is_better
       margin: 0.02
       population: all
+    # Numbers the user wrote in the question are not counted (rag/generation_eval.py, numbers_from_question).
     answers_with_untraceable_number:
       direction: lower_is_better
       margin: 0.05

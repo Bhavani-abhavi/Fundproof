@@ -16,19 +16,20 @@ challenger configuration may replace the champion.
 
 | File | What it does |
 |---|---|
-| `eval/rag_key_facts.jsonl` | Frozen test set: for 57 answerable guideline questions, the short facts a correct answer must state (a number, a role such as "Senior Underwriter", or a named term). Written before any model ran. |
+| `eval/rag_key_facts.jsonl` | Frozen test set: for 57 answerable guideline questions, the short facts a correct answer must state (a number, a role such as "Senior Underwriter", or a named term). A role or term fact may list `alternates` (other wordings of the same fact). Written before any model ran; corrected once after review, before R1 (see below). |
 | `eval/rag_unanswerable_extra.jsonl` | Frozen test set: 20 new unanswerable questions (10 near-misses about products or lines the guidelines do not cover, 10 plausible but out of scope). With the original 10, 30 unanswerables. |
-| `tests/rag/test_key_facts.py` | Proves every key fact appears in its gold section's text (numbers through the SIG number normalizer). |
+| `tests/rag/test_key_facts.py` | Proves every key fact appears in its gold section's text (numbers through the SIG number normalizer), that restating the question never satisfies a fact, and that for a question with alternative gold sections each fact holds in every alternative. |
 | `config/release_gate.yaml` | The `migration:` margins table, committed before any challenger run. |
-| `src/uwcopilot/rag/prompts.py` | Prompt registry: `rag_answer_v1` points at the existing prompt constants; `prompt_sha256(id)` hashes them. |
+| `src/uwcopilot/rag/prompts.py` | Prompt registry: `rag_answer_v1` points at the existing prompt constants; `prompt_sha256(id)` hashes them; `prompt_template_sha256(id)` hashes the full prompt built for a fixed canary question, so a change to the template code is visible too; `request_sha256` hashes one request. |
 | `src/uwcopilot/rag/bm25.py` | Pure-Python BM25 over guideline sections; only the offline fallback retriever. |
 | `src/uwcopilot/rag/frozen_hits.py` | The frozen-hits file format (one JSON line per question) and its reader. |
 | `scripts/freeze_retrieval.py` | Runs hybrid_rerank retrieval once per question and writes `eval/generation/frozen_hits.jsonl` plus a manifest. |
 | `src/uwcopilot/rag/generation_eval.py` | Pure scoring functions: key-fact recall, abstention, asserted absence, citations, format, untraceable numbers. |
 | `scripts/eval_generation.py` | Runs one named config on the frozen hits through Ollama, writes per-question rows and aggregate metrics; `--reproducibility 20` is run R5. |
-| `src/uwcopilot/governance/migration_gate.py` | The non-inferiority rule, input checks and the certificate renderer. |
+| `src/uwcopilot/governance/migration_gate.py` | The non-inferiority rule, input checks (frozen inputs, prompt hashes, request hashes), freeze checks, the R5 validity check and the certificate renderer. |
+| `src/uwcopilot/governance/freeze_proof.py` | Freeze proofs: for an input file (or the `migration:` section of the margins file), the first commit holding its current content, with the author date. Recorded when a run starts. |
 | `scripts/llm_migration_gate.py` | Compares two measured configs and writes the gate JSON and the Markdown certificate. |
-| `tests/rag/test_generation_eval.py`, `tests/governance/test_migration_gate.py` | Offline tests (FakeLLM and synthetic paired data; no server). |
+| `tests/rag/test_generation_eval.py`, `tests/governance/test_migration_gate.py`, `tests/governance/test_freeze_proof.py` | Offline tests (FakeLLM, synthetic paired data, a throwaway git repository; no server). |
 
 ## How a run flows
 
@@ -38,9 +39,11 @@ challenger configuration may replace the champion.
 2. `make eval-generation CONFIG=qwen3b_v1_k3` (R1) and `CONFIG=qwen15b_v1_k3` (R2): each question is answered from its
    first k=3 frozen hits with `rag.answer.answer_from_hits`, under the Ollama queue lock, through the LLM cache.
 3. `make eval-generation-repro CONFIG=qwen3b_v1_k3` (R5): 20 seeded questions re-run with the cache off.
-4. `make llm-migration-gate`: refuses unless both runs used identical frozen inputs; then a paired bootstrap per
-   gated metric and the non-inferiority decision; writes `results/llm_migration_<A>_vs_<B>.json` and renders
-   `docs/governance/migration_certificates/<A>_vs_<B>.md` from that JSON only.
+4. `make llm-migration-gate`: refuses unless both runs used identical frozen inputs, the same prompt text and
+   byte-identical requests; re-scores every stored answer with the current scoring code and refuses if any score
+   differs; checks the freeze proofs; then a paired bootstrap per gated metric and the non-inferiority decision;
+   writes `results/llm_migration_<A>_vs_<B>.json` and renders `docs/governance/migration_certificates/<A>_vs_<B>.md`
+   from that JSON only.
 
 ## Design choices worth defending
 
@@ -51,9 +54,35 @@ challenger configuration may replace the champion.
 - **Errors are not scored**: a question refused by the context guard or failed over HTTP gets an error row, and the
   gate refuses to compare runs whose scored questions differ. An answer cut off at `num_predict` is scored on the
   text produced so far and counted separately (`errors.length_truncated`).
-- **Cached answers never count for latency**: latency and tokens/second use live calls only.
-- **The margins are checked against git**: the gate refuses (exit 3) if `config/release_gate.yaml` has uncommitted
-  changes or its last commit is newer than the challenger run.
+- **Every answer keeps its real generation time and latency**: a cached answer reports the time and latency stored
+  in its cache entry when it was generated, never the instant cache lookup. So a resumed run still reports the
+  latency of every answer, and re-running from the cache cannot make old answers look new.
+- **Freeze proofs are about content and answer times**: when a run starts it records, for the key facts, the
+  question files, the frozen hits and the `migration:` section of `config/release_gate.yaml`, the first commit that
+  holds the current content (author date, which survives amend and rebase). The gate refuses (exit 3) if any of
+  them was committed after the run's earliest answer was generated, or if the margins changed since the challenger
+  run. Adding a Phase 6 section or a comment to the margins file does not count as a change.
+- **Numbers from the question are not "untraceable"**: a correct answer applies the rule to the user's own figures
+  ("a DSCR of 1.18 is below 1.25 [NBC-4.2]"). Those numbers cannot be in a guideline but were not invented, so they
+  are listed as `numbers_from_question` and not counted. The cost: a model that presents the user's number as a
+  policy value is not caught by this metric (key-fact recall still misses the real value).
+- **"12 consecutive months" is read as 12 months** in the generation eval (a small fold before number extraction).
+  The shared SIG normalizer reads it as a count of 12; changing the normalizer itself would change SIG's frozen
+  mutation set, so the fix stays local and the gap is reported to the SIG owner.
+- **The gate re-scores instead of trusting stored scores**: R1 and R2 run hours apart while other code changes; if
+  the scoring code changed in between, the stored scores were computed by different rules. The gate recomputes every
+  score from the stored answer and refuses on any difference; re-running the eval from the cache re-scores without
+  calling a model.
+
+## Key-fact corrections before R1 (2026-10-13)
+
+A review found facts that misread correct answers. The file was corrected before R1; no measured run had used it
+(only a 3-question smoke, whose one keyed question, NB14, was not edited). Changes: NB25 and HM24 dropped a role
+that the question itself names ("Compliance", "Catastrophe Management") for "resolved" (with alternates such as
+"cleared"), and "in writing" gained the alternate "written"; NB26 dropped "Band E", which is not in its alternative
+gold section NBC-7.3; NB09 gained alternates that hold in NBC-3.5; NB23 and NB30 gained common paraphrases. Tests now
+guard against facts satisfied by the question and against any_of facts missing from an alternative. The owner review
+of 10 random rows is still required before R1.
 
 ## Interview questions and answers
 
@@ -83,8 +112,10 @@ challenger configuration may replace the champion.
    `seed` and `num_predict` per request and returns token counts and durations. The context size matters most: it
    decides how much prompt the model sees, and the OpenAI-compatible endpoint has no per-request way to set it.
 9. **Why were the margins committed before the challenger run?** So nobody can pick margins after seeing the
-   challenger's numbers. The gate checks the commit time of `config/release_gate.yaml` against the challenger's
-   `generated_at_utc`.
+   challenger's answers. Each run records the first commit holding the current `migration:` section; the gate
+   compares its author date with the earliest time a challenger answer was generated (from the rows, including
+   answers served from the cache), and refuses if the section changed since. Git dates can be set by hand, so this
+   is a process control against honest mistakes and casual tuning, not a tamper-proof seal.
 10. **Why is the challenger not a clean "size only" comparison?** The only 1.5B artifact available was F16 while the
     3B is Q4_K_M, so size and quantization differ together; the config file says so, and a result cannot be
     attributed to size alone.

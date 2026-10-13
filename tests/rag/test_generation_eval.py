@@ -70,11 +70,26 @@ DSCR_KEY = KeyFactRow(
 # Scoring
 # ---------------------------------------------------------------------------------------------------------------
 
+DEFAULT_QUESTION = "What does the policy say about this file?"
+
+
+def score_with(
+    question_id: str,
+    category: str,
+    answer: str,
+    context: list[GuidelineHit],
+    gold_in_context: bool | None,
+    key_row: KeyFactRow | None,
+    question: str = DEFAULT_QUESTION,
+) -> QuestionScore:
+    """score_answer with a question that holds no number (the tests below that need one pass it)."""
+    return score_answer(question_id, category, answer, context, gold_in_context, key_row, question=question)
+
 
 def test_correct_cited_answer_scores_full_recall_and_complies() -> None:
     context = [hit("NBC-4.2", DSCR_TEXT + " Refer to a Senior Underwriter.")]
     answer = "The term loan minimum is 1.25x [NBC-4.2]. Below it, refer to a senior underwriter [NBC-4.2]."
-    score = score_answer("NB14", "single_section", answer, context, True, DSCR_KEY)
+    score = score_with("NB14", "single_section", answer, context, True, DSCR_KEY)
     assert score.key_facts_matched == 2 and score.key_fact_recall == 1.0
     assert score.gold_section_in_context is True
     assert score.format_compliant and not score.has_fabricated_citation
@@ -85,7 +100,7 @@ def test_correct_cited_answer_scores_full_recall_and_complies() -> None:
 def test_wrong_number_fabricated_citation_and_untraceable_number_are_caught() -> None:
     context = [hit("NBC-4.2", DSCR_TEXT)]
     answer = "The minimum is 1.30 [NBC-4.2]. See also [NBC-9.9]."
-    score = score_answer("NB14", "single_section", answer, context, True, DSCR_KEY)
+    score = score_with("NB14", "single_section", answer, context, True, DSCR_KEY)
     assert score.key_facts_matched == 0 and score.key_facts_missed == ["1.25", "Senior Underwriter"]
     assert score.has_fabricated_citation and score.fabricated_ids == ["NBC-9.9"]
     assert not score.format_compliant
@@ -94,7 +109,7 @@ def test_wrong_number_fabricated_citation_and_untraceable_number_are_caught() ->
 
 def test_not_found_answer_is_abstention_and_asserted_absence() -> None:
     context = [hit("NBC-4.2", DSCR_TEXT)]
-    score = score_answer("UA11", "unanswerable", NOT_FOUND_ANSWER, context, None, None)
+    score = score_with("UA11", "unanswerable", NOT_FOUND_ANSWER, context, None, None)
     assert score.is_not_found and score.format_compliant and score.asserted_absence
     assert score.key_fact_recall is None and not score.keyed
     assert metric_values([score], "abstention_accuracy_unanswerable") == {"UA11": 1.0}
@@ -110,19 +125,19 @@ def test_asserted_absence_lexicon_and_its_audit_trail() -> None:
 
 def test_uncited_sentence_and_no_citation_fail_format() -> None:
     context = [hit("NBC-1.1", REVOLVER_TEXT)]
-    score = score_answer("NB01", "single_section", "The maximum revolver is $500,000.", context, True, None)
+    score = score_with("NB01", "single_section", "The maximum revolver is $500,000.", context, True, None)
     assert not score.format_compliant and score.n_uncited_sentences == 1 and score.uncited_share == 1.0
     assert score.has_untraceable_number  # a number in a sentence that cites nothing cannot be traced
 
 
 def test_populations_follow_gold_in_context() -> None:
     context = [hit("NBC-4.1", "Annual debt service ...")]
-    out_of_context = score_answer("NB14", "single_section", NOT_FOUND_ANSWER, context, False, DSCR_KEY)
+    out_of_context = score_with("NB14", "single_section", NOT_FOUND_ANSWER, context, False, DSCR_KEY)
     assert out_of_context.gold_section_in_context is False
     assert metric_values([out_of_context], "key_fact_recall") == {"NB14": 0.0}
     assert metric_values([out_of_context], "key_fact_recall_gold_in_context") == {}
     assert metric_values([out_of_context], "asserted_absence_error_rate") == {}
-    in_context = score_answer("NB14", "single_section", NOT_FOUND_ANSWER, [hit("NBC-4.2", DSCR_TEXT)], True, DSCR_KEY)
+    in_context = score_with("NB14", "single_section", NOT_FOUND_ANSWER, [hit("NBC-4.2", DSCR_TEXT)], True, DSCR_KEY)
     assert metric_values([in_context], "false_abstention_rate") == {"NB14": 1.0}
     assert metric_values([in_context], "asserted_absence_error_rate") == {"NB14": 1.0}
 
@@ -130,9 +145,9 @@ def test_populations_follow_gold_in_context() -> None:
 def test_summarize_reports_cis_counts_and_missing_populations() -> None:
     context = [hit("NBC-4.2", DSCR_TEXT + " Senior Underwriter.")]
     scores = [
-        score_answer("NB14", "single_section", "It is 1.25 [NBC-4.2].", context, True, DSCR_KEY),
-        score_answer("UA11", "unanswerable", NOT_FOUND_ANSWER, context, None, None),
-        score_answer("UA12", "unanswerable", "It is 1.25 [NBC-4.2].", context, None, None),
+        score_with("NB14", "single_section", "It is 1.25 [NBC-4.2].", context, True, DSCR_KEY),
+        score_with("UA11", "unanswerable", NOT_FOUND_ANSWER, context, None, None),
+        score_with("UA12", "unanswerable", "It is 1.25 [NBC-4.2].", context, None, None),
     ]
     summary = summarize(scores, n_resamples=200, seed=42)
     assert summary["key_fact_recall"]["all"]["mean"] == 0.5 and summary["key_fact_recall"]["all"]["n"] == 1
@@ -147,7 +162,7 @@ def test_summarize_reports_cis_counts_and_missing_populations() -> None:
 
 
 def test_question_score_round_trips_through_a_results_row() -> None:
-    score = score_answer("NB14", "single_section", "It is 1.25 [NBC-4.2].", [hit("NBC-4.2", DSCR_TEXT)], True, DSCR_KEY)
+    score = score_with("NB14", "single_section", "It is 1.25 [NBC-4.2].", [hit("NBC-4.2", DSCR_TEXT)], True, DSCR_KEY)
     row = json.loads(json.dumps({"score": score.to_dict(), "answer": "x"}))
     assert QuestionScore.from_dict(row["score"]) == score
 
@@ -345,3 +360,121 @@ def test_config_loader_and_unsupported_options() -> None:
 
 def test_question_files_constant_lists_both_sets() -> None:
     assert [path.name for path in QUESTION_FILES] == ["rag_questions.jsonl", "rag_unanswerable_extra.jsonl"]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Numbers from the question, qualified durations, prompt hashes (review fixes)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def test_numbers_the_user_wrote_in_the_question_are_not_untraceable() -> None:
+    context = [hit("NBC-4.2", DSCR_TEXT + " Refer to a Senior Underwriter.")]
+    answer = "A DSCR of 1.18 is below the 1.25 minimum, so refer to a Senior Underwriter [NBC-4.2]."
+    from_user = score_with("NB14", "single_section", answer, context, True, DSCR_KEY, "My DSCR is 1.18. Approve?")
+    assert not from_user.has_untraceable_number and from_user.numbers_from_question == ["1.18"]
+    invented = score_with("NB14", "single_section", answer, context, True, DSCR_KEY, "Can I approve this loan?")
+    assert invented.has_untraceable_number and invented.untraceable_numbers == ["1.18"]
+    summary = summarize([from_user, invented], n_resamples=50)
+    assert summary["answers_with_untraceable_number"]["k"] == 1
+    assert summary["answers_with_untraceable_number"]["answers_with_number_from_question"] == 1
+
+
+def test_a_duration_with_qualifiers_is_traceable_to_its_section() -> None:
+    context = [hit("NBC-3.5", "any missing statement month within the required 12 consecutive months;")]
+    answer = "Statements must cover 12 months [NBC-3.5]."
+    scored = score_with("NB09", "single_section", answer, context, True, None)
+    assert not scored.has_untraceable_number
+
+
+def test_prompt_template_hash_covers_the_template_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    from uwcopilot.rag import prompts
+
+    before_prompt, before_template = prompt_sha256("rag_answer_v1"), prompts.prompt_template_sha256("rag_answer_v1")
+
+    def changed_builder(question: str, hits: list[GuidelineHit]) -> tuple[str, list[LLMMessage], dict]:
+        """The same constants, but a different wrapper around the documents."""
+        system, messages, flags = prompts.build_answer_prompt(question, hits)
+        return system, [LLMMessage(role="user", content="<docs>" + messages[0].content)], flags
+
+    monkeypatch.setitem(prompts.PROMPT_BUILDERS, "rag_answer_v1", changed_builder)
+    assert prompt_sha256("rag_answer_v1") == before_prompt  # the constants did not change ...
+    assert prompts.prompt_template_sha256("rag_answer_v1") != before_template  # ... but the template hash sees it
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Generation times, cache entries, request hashes, statuses and R5 (review fixes)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def timed_response(text: str, latency_s: float) -> LLMResponse:
+    """A response that took latency_s seconds to generate."""
+    return LLMResponse(
+        text=text, model="fake-scripted", input_tokens=5, output_tokens=7, latency_s=latency_s, provider="fake"
+    )
+
+
+def test_cached_answers_keep_their_original_generation_time_and_latency(tmp_path: Path) -> None:
+    from uwcopilot.llm.cache import CachedLLMClient, LLMCache
+
+    hits = [hit("NBC-4.2", DSCR_TEXT, 1)]
+    records = [record("NB14", "single_section", hits, [1])]
+    answer = "The minimum is 1.25 [NBC-4.2]."
+    first = CachedLLMClient(ScriptedClient([timed_response(answer, 12.5)]), LLMCache(tmp_path))
+    live_rows, _ = eval_generation.evaluate_records(records, {}, first, 3, 200, progress=False)
+    second = CachedLLMClient(ScriptedClient([]), LLMCache(tmp_path))  # a resumed run: no model call is possible
+    cached_rows, _ = eval_generation.evaluate_records(records, {}, second, 3, 200, progress=False)
+    live, cached = live_rows[0], cached_rows[0]
+    assert live["cached"] is False and cached["cached"] is True and cached["latency_s"] < 1.0
+    assert cached["generated_latency_s"] == live["generated_latency_s"] == 12.5
+    assert cached["answer_generated_at_utc"] == live["answer_generated_at_utc"] is not None
+    assert cached["request_sha256"] == live["request_sha256"] and len(live["request_sha256"]) == 64
+    runtime = eval_generation.runtime_summary(cached_rows)
+    assert runtime["latency_s"]["p50"] == 12.5 and runtime["latency_s"]["n_from_cache_entries"] == 1
+    assert cached["load_average_at_generation"] is None  # this process did not generate it: no load average to claim
+    assert runtime["load_average_at_generation"].startswith("not recorded")
+    times = eval_generation.answer_times(cached_rows)
+    assert times["earliest_answer_generated_at_utc"] == live["answer_generated_at_utc"]
+
+
+def test_top_level_status_is_measured_only_when_every_config_is(tmp_path: Path) -> None:
+    assert eval_generation.overall_status(["measured", "partial"]) == "partial"
+    assert eval_generation.overall_status(["smoke", "smoke"]) == "smoke"
+    assert eval_generation.overall_status(["measured", "measured"]) == "measured"
+    path = tmp_path / "metrics.json"
+    base = {"frozen_inputs": {}, "provenance": {}}
+    eval_generation.update_metrics_file(path, "champ", dict(base, status="measured"), {})
+    eval_generation.update_metrics_file(path, "chall", dict(base, status="partial"), {})
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["status"] == "partial"
+    assert document["config_statuses"] == {"champ": "measured", "chall": "partial"}
+
+
+def test_a_stale_reproducibility_result_is_dropped_when_the_champion_is_rerun(tmp_path: Path) -> None:
+    path = tmp_path / "metrics.json"
+    r5 = {"config": "champ", "n": 1, "bit_identical": 1, "original_answer_sha256": {"NB14": "a" * 64}}
+    block = {"status": "measured", "frozen_inputs": {}}
+    eval_generation.update_metrics_file(path, "champ", block, {"reproducibility": r5})
+    eval_generation.update_metrics_file(path, "champ", block, {}, {"NB14": "a" * 64})
+    assert json.loads(path.read_text(encoding="utf-8"))["reproducibility"] == r5  # same answers: still valid
+    eval_generation.update_metrics_file(path, "champ", block, {}, {"NB14": "b" * 64})
+    assert json.loads(path.read_text(encoding="utf-8"))["reproducibility"].startswith("not measured for the current")
+
+
+def test_reproducibility_needs_a_measured_run_with_its_own_rows_file(tmp_path: Path) -> None:
+    rows_path = tmp_path / "champ.jsonl"
+    rows_path.write_text('{"question_id": "NB14"}\n', encoding="utf-8")
+    metrics = tmp_path / "metrics.json"
+    metrics.write_text(json.dumps({"configs": {"champ": {"status": "smoke"}}}), encoding="utf-8")
+    with pytest.raises(eval_generation.EvaluationInputError, match="not 'measured'"):
+        eval_generation.check_measured_run(metrics, "champ", rows_path)
+    metrics.write_text(json.dumps({"configs": {"champ": {"status": "measured", "rows_sha256": "0" * 64}}}), "utf-8")
+    with pytest.raises(eval_generation.EvaluationInputError, match="not the rows file"):
+        eval_generation.check_measured_run(metrics, "champ", rows_path)
+    good = {"status": "measured", "rows_sha256": sha256_of_file(rows_path)}
+    metrics.write_text(json.dumps({"configs": {"champ": good}}), encoding="utf-8")
+    eval_generation.check_measured_run(metrics, "champ", rows_path)
+
+
+def test_freeze_proof_covers_every_frozen_input() -> None:
+    roles = [item["role"] for item in eval_generation.collect_freeze_proof(KEY_FACTS_FILE, FROZEN_HITS_FILE)]
+    assert roles == ["key_facts", "frozen_hits", "question_file", "question_file", "margins"]

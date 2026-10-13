@@ -11,9 +11,16 @@ Per-question measures:
     all match, while "500,000" with no currency does not. Comparator words in the fact text ("more than 6") are
     context for the reader; only the quantity is compared.
   * role and term: casefolded substring after normalization (NFKC, curly quotes and dashes unified, whitespace
-    collapsed). Years are written as term facts, because the number normalizer treats 1900-2099 as dates.
+    collapsed). Years are written as term facts, because the number normalizer treats 1900-2099 as dates. A role or
+    term fact may list `alternates`: other wordings of the same fact ("authority to decline" for "decline
+    authority"); the fact is matched when the text or any alternate is found.
   Reported for all keyed questions and for the subset whose gold section was in the prompt, which separates
   retrieval misses from generation misses.
+- Before any number is extracted, fold_unit_qualifiers() turns "12 consecutive months" into "12 months" (also "most
+  recent", "complete", "policy", "tax" ... between a number and its unit). The shared SIG normalizer reads
+  "12 consecutive months" as a count of 12, not as 12 months, so without this step a correct answer quoting the
+  guideline's own words would miss a "12 months" fact or be flagged untraceable. The fold is done here, not in
+  provenance/numbers.py, because changing the shared normalizer changes SIG's frozen mutation set.
 - is_not_found: the answer is the exact not-found sentence (rag.citations.is_not_found_answer: case, surrounding
   whitespace and the final full stop are ignored). Used for abstention_accuracy_unanswerable (unanswerable
   questions) and false_abstention_rate (answerable questions whose gold is in the prompt).
@@ -24,20 +31,26 @@ Per-question measures:
 - has_fabricated_citation and the uncited factual sentence share: from rag.citations.check_citations.
 - format_compliant: the exact not-found answer, or at least one citation with no fabricated citation.
 - has_untraceable_number: some number in the answer is not found in any cited section that was in the prompt
-  (provenance.numeric_check.check_numbers). Comparator mismatches are counted separately and are not gated.
+  (provenance.numeric_check.check_numbers) AND is not a number the user wrote in the question. A correct answer
+  applies the rule to the user's own figures ("a DSCR of 1.18 is below 1.25 [NBC-4.2]"); the 1.18 cannot be in a
+  guideline, but it was not invented either. Such numbers are listed as numbers_from_question and not counted.
+  Limitation: a model that presents the user's number as a policy value ("the maximum is $600,000" when the user
+  asked about $600,000) is not flagged by this measure; key-fact recall still misses the real limit.
+  Comparator mismatches are counted separately and are not gated.
 """
 
 import json
+import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from uwcopilot.common.stats import rate_summary
-from uwcopilot.provenance.numbers import extract_numbers, same_quantity
+from uwcopilot.provenance.numbers import TENS_WORDS, UNITS_WORDS, NumberMention, extract_numbers, same_quantity
 from uwcopilot.provenance.numeric_check import check_numbers
 from uwcopilot.rag.citations import (
     CitationCheck,
@@ -48,11 +61,21 @@ from uwcopilot.rag.citations import (
     split_answer_sentences,
 )
 from uwcopilot.rag.eval_set import normalize_for_match
+from uwcopilot.rag.frozen_hits import FrozenHitsRecord
 from uwcopilot.rag.metrics import bootstrap_mean_ci
 from uwcopilot.rag.prompt import NOT_FOUND_ANSWER
 from uwcopilot.tools.schemas import GuidelineHit
 
 KeyFactKind = Literal["number", "role", "term"]
+
+# "<number> <qualifier words> <time unit>": the qualifiers are dropped before number extraction (module docstring).
+NUMBER_TOKEN = r"\d[\d,]*(?:\.\d+)?|" + "|".join([*UNITS_WORDS, *TENS_WORDS])
+UNIT_QUALIFIERS = re.compile(
+    rf"\b(?P<number>{NUMBER_TOKEN})"
+    r"(?P<qualifiers>(?:\s+(?:consecutive|most\s+recent|complete|full|policy|tax|fiscal|trailing))+)"
+    r"(?=\s+(?:business\s+|calendar\s+)?(?:months?|years?|days?)\b)",
+    re.IGNORECASE,
+)
 
 # Phrases that state that the documents lack the information (casefolded substring match after normalization).
 ASSERTED_ABSENCE_PHRASES: tuple[str, ...] = (
@@ -106,12 +129,31 @@ METRIC_POPULATIONS: dict[str, str] = {
 
 
 class KeyFact(BaseModel):
-    """One fact a correct answer must state."""
+    """One fact a correct answer must state.
+
+    alternates: other wordings of a role or term fact that count as stating it (never used for number facts, whose
+    wordings the number normalizer already covers).
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     text: str = Field(min_length=1)
     kind: KeyFactKind
+    alternates: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def alternates_are_wordings(self) -> "KeyFact":
+        """Number facts have no alternates; alternates are non-empty and differ from the text."""
+        if self.alternates and self.kind == "number":
+            raise ValueError(f"number fact {self.text!r} cannot have alternates")
+        for alternate in self.alternates:
+            if not alternate.strip() or normalize_text(alternate) == normalize_text(self.text):
+                raise ValueError(f"fact {self.text!r}: alternate {alternate!r} is empty or repeats the text")
+        return self
+
+    def wordings(self) -> list[str]:
+        """The text followed by its alternates."""
+        return [self.text, *self.alternates]
 
 
 class KeyFactRow(BaseModel):
@@ -145,21 +187,30 @@ def normalize_text(text: str) -> str:
     return normalize_for_match(unicodedata.normalize("NFKC", text))
 
 
+def fold_unit_qualifiers(text: str) -> str:
+    """'the most recent 12 consecutive months' -> 'the most recent 12 months' (see the module docstring)."""
+    return UNIT_QUALIFIERS.sub(lambda match: match.group("number"), text)
+
+
 def fact_in_text(fact: KeyFact, text: str) -> bool:
     """True when the fact is stated in text (rules in the module docstring).
 
     Raises ValueError for a number fact whose text holds no quantity, since it could never be checked.
     """
     if fact.kind == "number":
-        wanted = extract_numbers(fact.text)
+        wanted = extract_numbers(fold_unit_qualifiers(fact.text))
         if not wanted:
             raise ValueError(f"number fact {fact.text!r} contains no quantity")
-        found = extract_numbers(text)
+        found = extract_numbers(fold_unit_qualifiers(text))
         for mention in wanted:
             if not any(same_quantity(mention, other) for other in found):
                 return False
         return True
-    return normalize_text(fact.text) in normalize_text(text)
+    normalized = normalize_text(text)
+    for wording in fact.wordings():
+        if normalize_text(wording) in normalized:
+            return True
+    return False
 
 
 def asserted_absence_phrases(text: str) -> list[str]:
@@ -218,6 +269,7 @@ class QuestionScore:
     untraceable_numbers: list[str]
     has_untraceable_number: bool
     comparator_mismatches: list[str] = field(default_factory=list)
+    numbers_from_question: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Plain JSON-ready dict."""
@@ -230,6 +282,21 @@ class QuestionScore:
         return cls(**{name: data[name] for name in names if name in data})
 
 
+def split_question_numbers(
+    untraceable: Sequence[NumberMention], question: str
+) -> tuple[list[NumberMention], list[NumberMention]]:
+    """(still untraceable, taken from the question): a number the user wrote in the question is not invented."""
+    question_numbers = extract_numbers(fold_unit_qualifiers(question))
+    remaining: list[NumberMention] = []
+    from_question: list[NumberMention] = []
+    for mention in untraceable:
+        if any(same_quantity(mention, other) for other in question_numbers):
+            from_question.append(mention)
+        else:
+            remaining.append(mention)
+    return remaining, from_question
+
+
 def score_answer(
     question_id: str,
     category: str,
@@ -237,10 +304,13 @@ def score_answer(
     context: Sequence[GuidelineHit],
     gold_in_context: bool | None,
     key_row: KeyFactRow | None,
+    *,
+    question: str,
 ) -> QuestionScore:
-    """Score one answer given the hits that were in its prompt.
+    """Score one answer given the question and the hits that were in its prompt.
 
     gold_in_context: None for an unanswerable question. key_row: the question's key facts, or None if not keyed.
+    question: the question text the model saw (its numbers are not counted as untraceable).
     """
     context_ids = [hit.section_id for hit in context]
     check = check_citations(answer_text, context_ids)
@@ -261,8 +331,9 @@ def score_answer(
 
     phrases = asserted_absence_phrases(answer_text)
     n_factual, n_uncited = factual_sentence_counts(answer_text, check)
-    sources = {hit.section_id: hit.text for hit in context}
-    numeric = check_numbers(answer_text, sources)
+    sources = {hit.section_id: fold_unit_qualifiers(hit.text) for hit in context}
+    numeric = check_numbers(fold_unit_qualifiers(answer_text), sources)
+    untraceable, from_question = split_question_numbers([item.mention for item in numeric.untraceable], question)
     return QuestionScore(
         question_id=question_id,
         category=category,
@@ -285,9 +356,26 @@ def score_answer(
         uncited_share=(n_uncited / n_factual) if n_factual else None,
         format_compliant=format_compliant(check),
         n_numbers=len(numeric.mentions),
-        untraceable_numbers=[item.mention.text for item in numeric.untraceable],
-        has_untraceable_number=bool(numeric.untraceable),
+        untraceable_numbers=[mention.text for mention in untraceable],
+        has_untraceable_number=bool(untraceable),
         comparator_mismatches=[item.mention.text for item in numeric.comparator_mismatches],
+        numbers_from_question=[mention.text for mention in from_question],
+    )
+
+
+def score_record(record: FrozenHitsRecord, answer_text: str, k: int, key_row: KeyFactRow | None) -> QuestionScore:
+    """Score an answer to a frozen question whose prompt held the record's first k hits.
+
+    The evaluation script and the migration gate both call this, so a stored score can be recomputed exactly.
+    """
+    return score_answer(
+        record.question_id,
+        record.category,
+        answer_text,
+        record.context_hits(k),
+        record.gold_in_context(k),
+        key_row,
+        question=record.question,
     )
 
 
@@ -370,6 +458,8 @@ def summarize(scores: Sequence[QuestionScore], n_resamples: int = 1000, seed: in
     uncited_block["factual_sentences"] = sum(score.n_factual_sentences for score in scores)
     untraceable = proportion(scores, "answers_with_untraceable_number")
     untraceable["answers_with_any_number"] = sum(1 for score in scores if score.n_numbers > 0)
+    untraceable["answers_with_number_from_question"] = sum(1 for score in scores if score.numbers_from_question)
+    untraceable["note"] = "numbers the user wrote in the question are not counted as untraceable"
     return {
         "key_fact_recall": {
             "all": mean_with_ci(list(metric_values(scores, "key_fact_recall").values()), n_resamples, seed),

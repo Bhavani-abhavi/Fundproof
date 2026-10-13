@@ -25,8 +25,17 @@ an error row and is NOT scored; the counts are reported, and the migration gate 
 questions differ. After 3 HTTP errors in a row the run stops. An answer cut off at num_predict (stop reason
 "length") is scored on the text produced so far and counted in errors.length_truncated.
 
-Cache: on by default (.cache/llm), so a crashed run resumes where it stopped. Latency is reported only for live
-calls; cached answers are excluded from latency and throughput. --no-cache forces live calls.
+Cache: on by default (.cache/llm), so a crashed run resumes where it stopped. Every row records when its answer was
+generated and how long that call took: for a live call, now; for a cached answer, the values stored in the cache
+entry when it was generated (created_at_utc, latency_s). Latency and throughput are reported over those generation
+calls, so a resumed run still reports the latency of every answer. --no-cache forces live calls.
+
+Freeze proofs (governance/freeze_proof.py): when the run starts, it records for the key facts, the question files,
+the frozen hits and the `migration:` section of config/release_gate.yaml the first commit that holds their current
+content. The migration gate compares those commits with the earliest answer generation time of each run, so inputs
+or margins changed after seeing answers cannot be certified (a cached re-run keeps the original generation times).
+Each row also records request_sha256, the hash of the exact system prompt and messages sent, so the gate can prove
+two configurations saw identical prompts.
 
 --limit N / --ids a,b,c select a subset: a smoke run. Smoke output goes to results/generation/smoke/ and never
 replaces the measured results.
@@ -50,9 +59,11 @@ from typing import Any
 import yaml
 
 from uwcopilot.common.files import sha256_of_file
-from uwcopilot.common.paths import CONFIG_DIR, RESULTS_DIR
+from uwcopilot.common.paths import CONFIG_DIR, REPO_ROOT, RESULTS_DIR
+from uwcopilot.governance.freeze_proof import freeze_record
 from uwcopilot.governance.provenance import RunProvenance, display_path, git_sha, load_average
 from uwcopilot.llm.base import IncompleteLLMResponse, LLMClient, LLMMessage, LLMResponse
+from uwcopilot.llm.cache import cache_key
 from uwcopilot.llm.ollama_client import ContextBudgetExceeded, OllamaError
 from uwcopilot.rag.answer import answer_from_hits
 from uwcopilot.rag.eval_set import EvalQuestion
@@ -72,14 +83,15 @@ from uwcopilot.rag.generation_eval import (
     KeyFactRow,
     QuestionScore,
     load_key_facts,
-    score_answer,
+    score_record,
     summarize,
     summarize_by_category,
 )
 from uwcopilot.rag.metrics import percentile
-from uwcopilot.rag.prompts import prompt_sha256
+from uwcopilot.rag.prompts import prompt_sha256, prompt_template_sha256, request_sha256
 
 CONFIG_FILE = CONFIG_DIR / "generation_eval.yaml"
+RELEASE_GATE_FILE = CONFIG_DIR / "release_gate.yaml"
 GENERATION_RESULTS_DIR = RESULTS_DIR / "generation"
 SMOKE_DIR = GENERATION_RESULTS_DIR / "smoke"
 METRICS_FILE = RESULTS_DIR / "generation_metrics.json"
@@ -262,11 +274,55 @@ def select_records(
     return selected, excluded
 
 
-class RecordingClient:
-    """Passes calls to the wrapped client and keeps the last LLMResponse (answer_from_hits does not return it).
+def utc_now() -> str:
+    """The current UTC time, ISO 8601 to the second."""
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
-    An answer cut off at the token limit raises IncompleteLLMResponse in the clients; here its partial response is
-    returned instead, and last_incomplete is set, so the evaluation can score and count it.
+
+def find_cache_client(client: Any) -> Any | None:
+    """The CachedLLMClient in a chain of wrapped clients (the one with a `cache` and `hits`), or None."""
+    current = client
+    while current is not None:
+        if hasattr(current, "cache") and hasattr(current, "hits"):
+            return current
+        current = getattr(current, "inner", None)
+    return None
+
+
+def read_cache_entry(
+    cache_client: Any, system: str, messages: list[LLMMessage], max_tokens: int, temperature: float, text: str
+) -> dict[str, Any] | None:
+    """The stored cache entry that a cache hit was served from, or None when it cannot be found.
+
+    The key is computed the way llm.cache.CachedLLMClient computes it. If that ever changes, nothing is found and the
+    row records no generation time, which makes the migration gate refuse rather than guess.
+    """
+    params: dict[str, Any] = {
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "client": dict(getattr(cache_client.inner, "request_fingerprint", {})),
+    }
+    key = cache_key(cache_client.provider, cache_client.model, system, messages, params)
+    path = cache_client.cache.path_for(key)
+    if not path.exists():
+        return None
+    entry = json.loads(path.read_text(encoding="utf-8"))
+    if entry.get("response", {}).get("text") != text:
+        return None
+    return entry
+
+
+class RecordingClient:
+    """Passes calls to the wrapped client and keeps what the evaluation must record about the last call.
+
+    - last_response: the LLMResponse (answer_from_hits does not return it). An answer cut off at the token limit
+      raises IncompleteLLMResponse in the clients; here its partial response is kept and last_incomplete is set, so
+      the evaluation can score and count it.
+    - last_request_sha256: the hash of the exact system prompt and messages sent.
+    - last_generated_at / last_generated_latency_s: when the answer was generated and how long that call took. For a
+      cache hit they come from the cache entry, not from the (instant) lookup.
+    - last_load_average: the 1/5/15-minute load average right after a live call (None for a cache hit: the process
+      that generated it did not store one in the cache).
     """
 
     def __init__(self, inner: LLMClient) -> None:
@@ -274,19 +330,37 @@ class RecordingClient:
         self.inner = inner
         self.provider = inner.provider
         self.model = inner.model
+        self.cache_client = find_cache_client(inner)
         self.last_response: LLMResponse | None = None
         self.last_incomplete = False
+        self.last_request_sha256: str | None = None
+        self.last_generated_at: str | None = None
+        self.last_generated_latency_s: float | None = None
+        self.last_load_average: list[float] | None = None
 
     def complete(self, system: str, messages: list[LLMMessage], max_tokens: int, temperature: float = 0) -> LLMResponse:
         """Call the wrapped client and remember its response (partial responses included)."""
         self.last_response = None
         self.last_incomplete = False
+        self.last_generated_at = None
+        self.last_generated_latency_s = None
+        self.last_load_average = None
+        self.last_request_sha256 = request_sha256(system, messages)
         try:
             response = self.inner.complete(system, messages, max_tokens, temperature)
         except IncompleteLLMResponse as error:
             self.last_incomplete = True
             response = error.response
         self.last_response = response
+        if not response.cached:
+            self.last_generated_at = utc_now()
+            self.last_generated_latency_s = response.latency_s
+            self.last_load_average = load_average()
+        elif self.cache_client is not None:
+            entry = read_cache_entry(self.cache_client, system, messages, max_tokens, temperature, response.text)
+            if entry is not None:
+                self.last_generated_at = entry.get("created_at_utc")
+                self.last_generated_latency_s = entry["response"].get("latency_s")
         return response
 
 
@@ -329,7 +403,8 @@ def answer_one(
         return row
     response = client.last_response if answer.llm_called else None
     metadata = response.metadata if response is not None else {}
-    score = score_answer(record.question_id, record.category, answer.text, hits, gold_in_context, key_row)
+    score = score_record(record, answer.text, k, key_row)
+    generated_latency = client.last_generated_latency_s if response is not None else None
     row.update(
         {
             "answer": answer.text,
@@ -344,6 +419,10 @@ def answer_one(
             "possible_truncation": bool(metadata.get("possible_truncation", False)),
             "cached": response.cached if response is not None else False,
             "latency_s": round(response.latency_s, 3) if response is not None else None,
+            "request_sha256": client.last_request_sha256 if response is not None else None,
+            "answer_generated_at_utc": client.last_generated_at if response is not None else None,
+            "generated_latency_s": round(generated_latency, 3) if generated_latency is not None else None,
+            "load_average_at_generation": client.last_load_average if response is not None else None,
             "input_tokens": response.input_tokens if response is not None else 0,
             "output_tokens": response.output_tokens if response is not None else 0,
             "eval_count": metadata.get("eval_count"),
@@ -385,19 +464,29 @@ def scored(rows: Sequence[dict[str, Any]]) -> list[QuestionScore]:
 
 
 def runtime_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """Latency, tokens and generation speed. Latency and speed use live (uncached) calls only."""
+    """Latency, tokens and generation speed of the calls that generated the answers.
+
+    For a cached answer the latency and the token timings are the ones stored when it was generated, so a resumed
+    run reports every answer. n_in_this_process says how many of them were generated by this process.
+    """
     called = [row for row in rows if row.get("llm_called")]
-    live = [row for row in called if not row.get("cached")]
     summary: dict[str, Any] = {}
-    latencies = [float(row["latency_s"]) for row in live if row.get("latency_s") is not None]
+    generated = [row for row in called if row.get("generated_latency_s") is not None]
+    latencies = [float(row["generated_latency_s"]) for row in generated]
     if latencies:
         summary["latency_s"] = {
             "p50": round(percentile(latencies, 50), 3),
             "p95": round(percentile(latencies, 95), 3),
             "n_live_calls": len(latencies),
+            "n_in_this_process": sum(1 for row in generated if not row.get("cached")),
+            "n_from_cache_entries": sum(1 for row in generated if row.get("cached")),
+            "note": (
+                "wall-clock time of the call that generated each answer; for cached answers it is read from the "
+                "cache entry, so the load average of this process may not describe those calls"
+            ),
         }
     else:
-        summary["latency_s"] = "not measured (no live call in this run: every answer came from the cache)"
+        summary["latency_s"] = "not measured (no answer has a recorded generation latency)"
     if called:
         summary["tokens"] = {
             "in_mean": round(sum(row["input_tokens"] for row in called) / len(called), 1),
@@ -408,7 +497,7 @@ def runtime_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     else:
         summary["tokens"] = "not measured (no LLM call)"
     speeds: list[float] = []
-    for row in live:
+    for row in called:
         count, duration = row.get("eval_count"), row.get("eval_duration_ns")
         if count and duration:
             speeds.append(count / (duration / 1e9))
@@ -416,6 +505,20 @@ def runtime_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         summary["gen_tokens_per_s"] = {"p50": round(percentile(speeds, 50), 2), "n": len(speeds)}
     else:
         summary["gen_tokens_per_s"] = "not measured (no live call with eval_count and eval_duration)"
+    one_minute = [row["load_average_at_generation"][0] for row in called if row.get("load_average_at_generation")]
+    if one_minute:
+        summary["load_average_at_generation"] = {
+            "one_minute_min": min(one_minute),
+            "one_minute_p50": round(percentile(one_minute, 50), 2),
+            "one_minute_max": max(one_minute),
+            "n": len(one_minute),
+            "n_without_value": len(called) - len(one_minute),
+            "note": "read right after each live call; cached answers from an earlier process have no value",
+        }
+    else:
+        summary["load_average_at_generation"] = (
+            "not recorded (every answer came from the cache of an earlier process, which did not store it)"
+        )
     return summary
 
 
@@ -448,6 +551,36 @@ def find_model_record_client(client: Any) -> Any | None:
     return None
 
 
+def collect_freeze_proof(
+    key_facts_path: Path,
+    frozen_hits_path: Path,
+    question_files: Sequence[Path] = QUESTION_FILES,
+    release_gate_path: Path = RELEASE_GATE_FILE,
+    repo_root: Path = REPO_ROOT,
+) -> list[dict[str, Any]]:
+    """Freeze records (governance/freeze_proof.py) of every frozen input, taken when the run starts."""
+    records = [
+        freeze_record(key_facts_path, "key_facts", "file", repo_root),
+        freeze_record(frozen_hits_path, "frozen_hits", "file", repo_root),
+    ]
+    for path in question_files:
+        records.append(freeze_record(path, "question_file", "file", repo_root))
+    records.append(freeze_record(release_gate_path, "margins", "migration_section", repo_root))
+    return records
+
+
+def answer_times(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """When the scored answers were generated: earliest, latest, and how many have no recorded time."""
+    times = [row["answer_generated_at_utc"] for row in rows if row.get("score") and row.get("answer_generated_at_utc")]
+    missing = [row["question_id"] for row in rows if row.get("score") and not row.get("answer_generated_at_utc")]
+    ordered = sorted(times, key=datetime.fromisoformat)
+    return {
+        "earliest_answer_generated_at_utc": ordered[0] if ordered else None,
+        "latest_answer_generated_at_utc": ordered[-1] if ordered else None,
+        "answers_without_generation_time": missing,
+    }
+
+
 def build_config_block(
     config: GenerationConfig,
     rows: Sequence[dict[str, Any]],
@@ -462,6 +595,8 @@ def build_config_block(
     cache_info: dict[str, Any],
     resamples: int,
     seed: int,
+    run_started_at: str | None = None,
+    freeze_proof: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The configs.<id> entry of the metrics JSON."""
     scores = scored(rows)
@@ -483,6 +618,7 @@ def build_config_block(
         },
         "prompt_id": config.prompt_id,
         "prompt_sha256": prompt_sha256(config.prompt_id),
+        "prompt_template_sha256": prompt_template_sha256(config.prompt_id),
         "k": config.k,
         "options": config.options(),
         "n_questions": len(scores),
@@ -499,7 +635,10 @@ def build_config_block(
         "frozen_inputs": frozen_inputs,
         "rows_path": display_path(rows_path),
         "rows_sha256": sha256_of_file(rows_path),
-        "generated_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "run_started_at_utc": run_started_at,
+        **answer_times(rows),
+        "freeze_proof": freeze_proof if freeze_proof is not None else "not recorded",
+        "generated_at_utc": utc_now(),
         "git_sha": git_sha(),
     }
     block.update(runtime_summary(rows))
@@ -518,8 +657,45 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def update_metrics_file(path: Path, config_id: str, block: dict[str, Any] | None, extra: dict[str, Any]) -> None:
-    """Merge one config block (and top-level keys such as reproducibility) into the metrics JSON."""
+def overall_status(statuses: Sequence[str]) -> str:
+    """'measured' only when every config is measured, 'smoke' when every config is a smoke run, else 'partial'."""
+    if statuses and all(status == "measured" for status in statuses):
+        return "measured"
+    if statuses and all(status == "smoke" for status in statuses):
+        return "smoke"
+    return "partial"
+
+
+def answers_by_question(rows: Sequence[dict[str, Any]]) -> dict[str, str]:
+    """{question id: answer sha256} for the scored rows."""
+    return {row["question_id"]: row["answer_sha256"] for row in rows if row.get("score") and row.get("answer_sha256")}
+
+
+def reproducibility_matches(reproducibility: Any, config_id: str, answers: dict[str, str]) -> bool:
+    """True when an R5 block compared exactly these answers of this config (so it still describes this run)."""
+    if not isinstance(reproducibility, dict) or reproducibility.get("config") != config_id:
+        return False
+    originals = reproducibility.get("original_answer_sha256") or {}
+    if not originals:
+        return False
+    for question_id, answer_sha in originals.items():
+        if answers.get(question_id) != answer_sha:
+            return False
+    return True
+
+
+def update_metrics_file(
+    path: Path,
+    config_id: str,
+    block: dict[str, Any] | None,
+    extra: dict[str, Any],
+    answers: dict[str, str] | None = None,
+) -> None:
+    """Merge one config block (and top-level keys such as reproducibility) into the metrics JSON.
+
+    answers ({question id: answer sha256} of the new block's rows): an existing R5 result for this config that
+    compared different answers no longer describes the run, so it is replaced by a "not measured" note.
+    """
     document: dict[str, Any] = {}
     if path.exists():
         document = json.loads(path.read_text(encoding="utf-8"))
@@ -527,11 +703,19 @@ def update_metrics_file(path: Path, config_id: str, block: dict[str, Any] | None
     if block is not None:
         document["configs"][config_id] = block
         document["frozen_inputs"] = block["frozen_inputs"]
+        previous = document.get("reproducibility")
+        if isinstance(previous, dict) and previous.get("config") == config_id:
+            if not reproducibility_matches(previous, config_id, answers or {}):
+                document["reproducibility"] = (
+                    f"not measured for the current {config_id} run (the previous R5 compared other answers; "
+                    f"re-run --reproducibility 20)"
+                )
     document.update(extra)
-    document["generated_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+    document["generated_at"] = utc_now()
     document["generated_by"] = "scripts/eval_generation.py"
-    statuses = {entry.get("status") for entry in document["configs"].values()}
-    document["status"] = "measured" if "measured" in statuses else "partial"
+    statuses = {config: entry.get("status") for config, entry in document["configs"].items()}
+    document["status"] = overall_status(list(statuses.values()))
+    document["config_statuses"] = statuses
     document.setdefault("reproducibility", "not measured (run --reproducibility 20 after the champion run)")
     document["note"] = CLAIM_NOTE
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -591,6 +775,8 @@ def run_evaluation(args: argparse.Namespace, config: GenerationConfig, inputs: F
     label = f"scripts/eval_generation.py --config {config.config_id}" + (" (smoke)" if smoke else "")
     with ollama_queue_lock(label):
         run = RunProvenance.start("scripts/eval_generation.py")
+        run_started_at = utc_now()
+        freeze_proof = collect_freeze_proof(args.key_facts, args.frozen_hits)
         client = build_ollama_client(config, use_cache=not args.no_cache)
         rows, aborted = evaluate_records(selected, inputs.key_rows, client, config.k, config.num_predict)
         model_info = model_info_of(client, config)
@@ -612,6 +798,8 @@ def run_evaluation(args: argparse.Namespace, config: GenerationConfig, inputs: F
         cache_info,
         args.resamples,
         args.seed,
+        run_started_at=run_started_at,
+        freeze_proof=freeze_proof,
     )
     block["provenance"] = run.finish(
         prompts={config.prompt_id: prompt_sha256(config.prompt_id)},
@@ -620,7 +808,9 @@ def run_evaluation(args: argparse.Namespace, config: GenerationConfig, inputs: F
         corpus_checksum=inputs.hashes["corpus_checksum"],
         data_snapshots={"frozen_hits_manifest": display_path(args.manifest)},
     )
-    update_metrics_file(metrics_path, config.config_id, block, {"provenance": block["provenance"]})
+    update_metrics_file(
+        metrics_path, config.config_id, block, {"provenance": block["provenance"]}, answers_by_question(rows)
+    )
     print(f"Wrote {display_path(rows_path)} and {display_path(metrics_path)} (status {status})")
     print_summary(block)
     return 0 if not aborted else 1
@@ -643,13 +833,25 @@ def print_summary(block: dict[str, Any]) -> None:
     print(f"  latency_s {block.get('latency_s')}")
 
 
+def check_measured_run(metrics_path: Path, config_id: str, rows_path: Path) -> None:
+    """Refuse R5 unless the config's block is 'measured' and its rows file is the one that block describes."""
+    if not rows_path.exists():
+        raise EvaluationInputError(f"{display_path(rows_path)} is missing: run the full evaluation first")
+    document = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else {}
+    block = (document.get("configs") or {}).get(config_id)
+    if not block or block.get("status") != "measured":
+        status = block.get("status") if block else "missing"
+        raise EvaluationInputError(f"{config_id}: the metrics block is {status!r}, not 'measured'; R5 needs a full run")
+    if block.get("rows_sha256") != sha256_of_file(rows_path):
+        raise EvaluationInputError(f"{display_path(rows_path)} is not the rows file the {config_id} block describes")
+
+
 def run_reproducibility(args: argparse.Namespace, config: GenerationConfig, inputs: FrozenInputs) -> int:
     """R5: rerun N seeded-random measured questions with the cache off and count bit-identical answers."""
     from uwcopilot.llm.ollama_queue import ollama_queue_lock
 
     rows_path = args.results_dir / f"{config.config_id}.jsonl"
-    if not rows_path.exists():
-        raise EvaluationInputError(f"{display_path(rows_path)} is missing: run the full evaluation first")
+    check_measured_run(args.metrics_output, config.config_id, rows_path)
     measured = [row for row in read_rows(rows_path) if row.get("score")]
     if len(measured) < args.reproducibility:
         raise EvaluationInputError(f"only {len(measured)} measured rows; cannot sample {args.reproducibility}")
@@ -682,6 +884,7 @@ def run_reproducibility(args: argparse.Namespace, config: GenerationConfig, inpu
         model_info = model_info_of(client, config)
     output = args.results_dir / f"{config.config_id}.reproducibility.jsonl"
     write_rows(output, out_rows)
+    original_answers = {question_id: originals[question_id].get("answer_sha256") for question_id in chosen_ids}
     reproducibility = {
         "config": config.config_id,
         "n": len(out_rows),
@@ -691,11 +894,12 @@ def run_reproducibility(args: argparse.Namespace, config: GenerationConfig, inpu
         "sample_seed": REPRODUCIBILITY_SEED,
         "cache": "off for the rerun",
         "compared_with": {"path": display_path(rows_path), "sha256": sha256_of_file(rows_path)},
+        "original_answer_sha256": original_answers,
         "rows_path": display_path(output),
         "note": "temperature 0 and a fixed seed on CPU are only near-deterministic; this counts exact text matches",
         "load_average": {"start": run.load_average_start, "end": load_average()},
         "model": model_info,
-        "generated_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "generated_at_utc": utc_now(),
     }
     update_metrics_file(args.metrics_output, config.config_id, None, {"reproducibility": reproducibility})
     print(f"Reproducibility: {reproducibility['bit_identical']}/{reproducibility['n']} bit-identical")

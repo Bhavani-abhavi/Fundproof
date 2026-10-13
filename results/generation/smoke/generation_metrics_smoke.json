@@ -15,6 +15,7 @@
       },
       "prompt_id": "rag_answer_v1",
       "prompt_sha256": "35a4679fdf6e4212a948dd167167890c66af78febf5daa4b44660ff4fc7b0ec8",
+      "prompt_template_sha256": "8d22c45348c1544e9985edfba7c4d95ad5e10dfbf86dc7ffd8da93c8e307df5b",
       "k": 3,
       "options": {
         "num_predict": 200,
@@ -117,7 +118,9 @@
             0.0,
             0.5615
           ],
-          "answers_with_any_number": 0
+          "answers_with_any_number": 0,
+          "answers_with_number_from_question": 0,
+          "note": "numbers the user wrote in the question are not counted as untraceable"
         },
         "answers_with_comparator_mismatch": {
           "k": 0,
@@ -267,14 +270,14 @@
       },
       "load_average": {
         "start": [
-          5.09,
-          7.11,
-          4.94
+          2.57,
+          3.0,
+          3.48
         ],
         "end": [
-          5.09,
-          7.11,
-          4.94
+          2.57,
+          3.0,
+          3.48
         ]
       },
       "errors": {
@@ -311,8 +314,8 @@
       "frozen_inputs": {
         "retrieval_mode": "hybrid_rerank",
         "frozen_hits_sha256": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b",
-        "frozen_manifest_sha256": "45ca4f58d51d205782b21689eb34254a39fedf32794b3d687410f76b2337b280",
-        "key_facts_sha256": "55ee871a90dbcccd43df2333315c9f00cb6b8e9669ab37b51659a3c128ef8cf1",
+        "frozen_manifest_sha256": "c33d1de7ac75bd015e7e5608ea67504a210e8c60b9583b451b4c29e95c5eabff",
+        "key_facts_sha256": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
         "question_sets": {
           "eval/rag_questions.jsonl": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
           "eval/rag_unanswerable_extra.jsonl": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc"
@@ -326,21 +329,94 @@
         "n_questions": 3
       },
       "rows_path": "results/generation/smoke/qwen3b_v1_k3.jsonl",
-      "rows_sha256": "a2eec96cc9af1fac9ca7bf1fef349553991cc8eca772c1652ba10c8e7e9fa09c",
-      "generated_at_utc": "2026-10-12T20:00:03+00:00",
-      "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
-      "latency_s": "not measured (no live call in this run: every answer came from the cache)",
+      "rows_sha256": "61a3a43a01f3492064e89efdf02efe5dea66a45420272a9e77b00e48b15b023b",
+      "run_started_at_utc": "2026-10-13T03:22:31+00:00",
+      "earliest_answer_generated_at_utc": "2026-10-12T19:54:51+00:00",
+      "latest_answer_generated_at_utc": "2026-10-12T19:58:30+00:00",
+      "answers_without_generation_time": [],
+      "freeze_proof": [
+        {
+          "role": "key_facts",
+          "path": "eval/rag_key_facts.jsonl",
+          "kind": "file",
+          "sha256": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
+          "first_committed": null,
+          "note": "this content is not in any commit (uncommitted change, or git is unavailable)"
+        },
+        {
+          "role": "frozen_hits",
+          "path": "eval/generation/frozen_hits.jsonl",
+          "kind": "file",
+          "sha256": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b",
+          "first_committed": {
+            "sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
+            "author_date": "2026-10-13T02:47:10+00:00",
+            "committer_date": "2026-10-13T02:47:10+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        },
+        {
+          "role": "question_file",
+          "path": "eval/rag_questions.jsonl",
+          "kind": "file",
+          "sha256": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
+          "first_committed": {
+            "sha": "6330afd0af49692942283e3f247f2e59b4d9bdcd",
+            "author_date": "2026-10-11T01:40:38+00:00",
+            "committer_date": "2026-10-11T01:40:38+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        },
+        {
+          "role": "question_file",
+          "path": "eval/rag_unanswerable_extra.jsonl",
+          "kind": "file",
+          "sha256": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc",
+          "first_committed": {
+            "sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+            "author_date": "2026-10-12T19:39:16+00:00",
+            "committer_date": "2026-10-12T19:39:16+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        },
+        {
+          "role": "margins",
+          "path": "config/release_gate.yaml",
+          "kind": "migration_section",
+          "sha256": "fa781320491cfc397f7fdb62b26881023f7ae2f7d02f756c43044b78f6b8c26d",
+          "first_committed": {
+            "sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+            "author_date": "2026-10-12T19:39:16+00:00",
+            "committer_date": "2026-10-12T19:39:16+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        }
+      ],
+      "generated_at_utc": "2026-10-13T03:22:33+00:00",
+      "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
+      "latency_s": {
+        "p50": 115.174,
+        "p95": 144.329,
+        "n_live_calls": 3,
+        "n_in_this_process": 0,
+        "n_from_cache_entries": 3,
+        "note": "wall-clock time of the call that generated each answer; for cached answers it is read from the cache entry, so the load average of this process may not describe those calls"
+      },
       "tokens": {
         "in_mean": 1083.0,
         "out_mean": 8.0,
         "n": 3,
         "note": "as reported by Ollama (prompt_eval_count may be lower when a prompt prefix is reused)"
       },
-      "gen_tokens_per_s": "not measured (no live call with eval_count and eval_duration)",
+      "gen_tokens_per_s": {
+        "p50": 0.13,
+        "n": 3
+      },
+      "load_average_at_generation": "not recorded (every answer came from the cache of an earlier process, which did not store it)",
       "provenance": {
-        "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+        "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
         "git_dirty": true,
-        "generated_at_utc": "2026-10-12T20:00:03+00:00",
+        "generated_at_utc": "2026-10-13T03:22:33+00:00",
         "generated_by": "scripts/eval_generation.py",
         "prompts": {
           "rag_answer_v1": "35a4679fdf6e4212a948dd167167890c66af78febf5daa4b44660ff4fc7b0ec8"
@@ -349,7 +425,7 @@
         "eval_sets": {
           "eval/rag_questions.jsonl": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
           "eval/rag_unanswerable_extra.jsonl": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc",
-          "eval/rag_key_facts.jsonl": "55ee871a90dbcccd43df2333315c9f00cb6b8e9669ab37b51659a3c128ef8cf1",
+          "eval/rag_key_facts.jsonl": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
           "eval/generation/frozen_hits.jsonl": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b"
         },
         "models": [
@@ -382,14 +458,14 @@
         "environment": {
           "cpu_count": 4,
           "load_average_start": [
-            5.09,
-            7.11,
-            4.94
+            2.57,
+            3.0,
+            3.48
           ],
           "load_average_end": [
-            5.09,
-            7.11,
-            4.94
+            2.57,
+            3.0,
+            3.48
           ]
         }
       }
@@ -409,6 +485,7 @@
       },
       "prompt_id": "rag_answer_v1",
       "prompt_sha256": "35a4679fdf6e4212a948dd167167890c66af78febf5daa4b44660ff4fc7b0ec8",
+      "prompt_template_sha256": "8d22c45348c1544e9985edfba7c4d95ad5e10dfbf86dc7ffd8da93c8e307df5b",
       "k": 3,
       "options": {
         "num_predict": 200,
@@ -511,7 +588,9 @@
             0.0,
             0.5615
           ],
-          "answers_with_any_number": 0
+          "answers_with_any_number": 0,
+          "answers_with_number_from_question": 0,
+          "note": "numbers the user wrote in the question are not counted as untraceable"
         },
         "answers_with_comparator_mismatch": {
           "k": 0,
@@ -661,14 +740,14 @@
       },
       "load_average": {
         "start": [
-          8.11,
-          8.04,
-          5.01
+          2.57,
+          3.0,
+          3.48
         ],
         "end": [
-          5.74,
-          7.3,
-          4.98
+          2.92,
+          3.07,
+          3.5
         ]
       },
       "errors": {
@@ -693,8 +772,8 @@
       },
       "cache": {
         "used": true,
-        "hits": 0,
-        "misses": 3
+        "hits": 3,
+        "misses": 0
       },
       "bootstrap": {
         "resamples": 1000,
@@ -705,8 +784,8 @@
       "frozen_inputs": {
         "retrieval_mode": "hybrid_rerank",
         "frozen_hits_sha256": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b",
-        "frozen_manifest_sha256": "45ca4f58d51d205782b21689eb34254a39fedf32794b3d687410f76b2337b280",
-        "key_facts_sha256": "55ee871a90dbcccd43df2333315c9f00cb6b8e9669ab37b51659a3c128ef8cf1",
+        "frozen_manifest_sha256": "c33d1de7ac75bd015e7e5608ea67504a210e8c60b9583b451b4c29e95c5eabff",
+        "key_facts_sha256": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
         "question_sets": {
           "eval/rag_questions.jsonl": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
           "eval/rag_unanswerable_extra.jsonl": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc"
@@ -720,13 +799,78 @@
         "n_questions": 3
       },
       "rows_path": "results/generation/smoke/qwen15b_v1_k3.jsonl",
-      "rows_sha256": "2261cf4fe0271bf4f5458ea349f7352e2664c826fb2d84f8381dd92e56943a17",
-      "generated_at_utc": "2026-10-12T19:59:52+00:00",
-      "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+      "rows_sha256": "ebe7968ef61ec63fa42a320ef2c7de429d3d551afc90708cb6dd362994d25581",
+      "run_started_at_utc": "2026-10-13T03:22:34+00:00",
+      "earliest_answer_generated_at_utc": "2026-10-12T19:59:15+00:00",
+      "latest_answer_generated_at_utc": "2026-10-12T19:59:52+00:00",
+      "answers_without_generation_time": [],
+      "freeze_proof": [
+        {
+          "role": "key_facts",
+          "path": "eval/rag_key_facts.jsonl",
+          "kind": "file",
+          "sha256": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
+          "first_committed": null,
+          "note": "this content is not in any commit (uncommitted change, or git is unavailable)"
+        },
+        {
+          "role": "frozen_hits",
+          "path": "eval/generation/frozen_hits.jsonl",
+          "kind": "file",
+          "sha256": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b",
+          "first_committed": {
+            "sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
+            "author_date": "2026-10-13T02:47:10+00:00",
+            "committer_date": "2026-10-13T02:47:10+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        },
+        {
+          "role": "question_file",
+          "path": "eval/rag_questions.jsonl",
+          "kind": "file",
+          "sha256": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
+          "first_committed": {
+            "sha": "6330afd0af49692942283e3f247f2e59b4d9bdcd",
+            "author_date": "2026-10-11T01:40:38+00:00",
+            "committer_date": "2026-10-11T01:40:38+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        },
+        {
+          "role": "question_file",
+          "path": "eval/rag_unanswerable_extra.jsonl",
+          "kind": "file",
+          "sha256": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc",
+          "first_committed": {
+            "sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+            "author_date": "2026-10-12T19:39:16+00:00",
+            "committer_date": "2026-10-12T19:39:16+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        },
+        {
+          "role": "margins",
+          "path": "config/release_gate.yaml",
+          "kind": "migration_section",
+          "sha256": "fa781320491cfc397f7fdb62b26881023f7ae2f7d02f756c43044b78f6b8c26d",
+          "first_committed": {
+            "sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+            "author_date": "2026-10-12T19:39:16+00:00",
+            "committer_date": "2026-10-12T19:39:16+00:00"
+          },
+          "note": "first commit holding this exact content (author date)"
+        }
+      ],
+      "generated_at_utc": "2026-10-13T03:22:36+00:00",
+      "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
       "latency_s": {
         "p50": 28.21,
         "p95": 29.195,
-        "n_live_calls": 3
+        "n_live_calls": 3,
+        "n_in_this_process": 0,
+        "n_from_cache_entries": 3,
+        "note": "wall-clock time of the call that generated each answer; for cached answers it is read from the cache entry, so the load average of this process may not describe those calls"
       },
       "tokens": {
         "in_mean": 1083.0,
@@ -738,10 +882,11 @@
         "p50": 3.33,
         "n": 3
       },
+      "load_average_at_generation": "not recorded (every answer came from the cache of an earlier process, which did not store it)",
       "provenance": {
-        "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+        "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
         "git_dirty": true,
-        "generated_at_utc": "2026-10-12T19:59:52+00:00",
+        "generated_at_utc": "2026-10-13T03:22:36+00:00",
         "generated_by": "scripts/eval_generation.py",
         "prompts": {
           "rag_answer_v1": "35a4679fdf6e4212a948dd167167890c66af78febf5daa4b44660ff4fc7b0ec8"
@@ -750,7 +895,7 @@
         "eval_sets": {
           "eval/rag_questions.jsonl": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
           "eval/rag_unanswerable_extra.jsonl": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc",
-          "eval/rag_key_facts.jsonl": "55ee871a90dbcccd43df2333315c9f00cb6b8e9669ab37b51659a3c128ef8cf1",
+          "eval/rag_key_facts.jsonl": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
           "eval/generation/frozen_hits.jsonl": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b"
         },
         "models": [
@@ -783,14 +928,14 @@
         "environment": {
           "cpu_count": 4,
           "load_average_start": [
-            8.11,
-            8.04,
-            5.01
+            2.57,
+            3.0,
+            3.48
           ],
           "load_average_end": [
-            5.74,
-            7.3,
-            4.98
+            2.92,
+            3.07,
+            3.5
           ]
         }
       }
@@ -799,8 +944,8 @@
   "frozen_inputs": {
     "retrieval_mode": "hybrid_rerank",
     "frozen_hits_sha256": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b",
-    "frozen_manifest_sha256": "45ca4f58d51d205782b21689eb34254a39fedf32794b3d687410f76b2337b280",
-    "key_facts_sha256": "55ee871a90dbcccd43df2333315c9f00cb6b8e9669ab37b51659a3c128ef8cf1",
+    "frozen_manifest_sha256": "c33d1de7ac75bd015e7e5608ea67504a210e8c60b9583b451b4c29e95c5eabff",
+    "key_facts_sha256": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
     "question_sets": {
       "eval/rag_questions.jsonl": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
       "eval/rag_unanswerable_extra.jsonl": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc"
@@ -814,9 +959,9 @@
     "n_questions": 3
   },
   "provenance": {
-    "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+    "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-12T20:00:03+00:00",
+    "generated_at_utc": "2026-10-13T03:22:36+00:00",
     "generated_by": "scripts/eval_generation.py",
     "prompts": {
       "rag_answer_v1": "35a4679fdf6e4212a948dd167167890c66af78febf5daa4b44660ff4fc7b0ec8"
@@ -825,15 +970,15 @@
     "eval_sets": {
       "eval/rag_questions.jsonl": "d2737825e61614f9208d8fe8814a669664b8df2b8d9b94d060d402fb974c7a12",
       "eval/rag_unanswerable_extra.jsonl": "939ac01bf7b152aaeaad25f2025b304d8ca964b90c06801757ccf6ccc48cbafc",
-      "eval/rag_key_facts.jsonl": "55ee871a90dbcccd43df2333315c9f00cb6b8e9669ab37b51659a3c128ef8cf1",
+      "eval/rag_key_facts.jsonl": "c7a1b3b2c67989bc305bce5c94bf2eec6cd9e7a2c7e2f86b3ad7a4d18decc75c",
       "eval/generation/frozen_hits.jsonl": "89b2b0c4dc2da1381da0ffc1ffb7d5af436f321a6533ff8cb76a8d134eb6c09b"
     },
     "models": [
       {
         "provider": "ollama",
-        "model": "qwen2.5-3b-instruct-q4km",
-        "digest": "fae2485a8df6d917bc97274961a6fb59820bdd058fbf5849157fa2e8a0abcd6b",
-        "license": "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Qwen Research License (qwen-research, checked 2026-10-12)",
+        "model": "qwen2.5-1.5b-instruct-f16",
+        "digest": "75a307d2fa0d2d6d5158a9d22a4bad38836b9b998ebb106fd9ea1e8c1a9d33d3",
+        "license": "Docker Hub artifact: Apache-2.0; upstream Hugging Face card: Apache-2.0 (checked 2026-10-12)",
         "runtime_version": "ollama 0.40.3"
       }
     ],
@@ -858,20 +1003,24 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        5.09,
-        7.11,
-        4.94
+        2.57,
+        3.0,
+        3.48
       ],
       "load_average_end": [
-        5.09,
-        7.11,
-        4.94
+        2.92,
+        3.07,
+        3.5
       ]
     }
   },
-  "generated_at": "2026-10-12T20:00:03+00:00",
+  "generated_at": "2026-10-13T03:22:36+00:00",
   "generated_by": "scripts/eval_generation.py",
-  "status": "partial",
+  "status": "smoke",
   "reproducibility": "not measured (run --reproducibility 20 after the champion run)",
-  "note": "Measured on SYNTHETIC guidelines and questions written by the project author, with a small local model. Key-fact recall is a proxy for faithfulness, not a measure of it. CIs are wide at this sample size."
+  "note": "Measured on SYNTHETIC guidelines and questions written by the project author, with a small local model. Key-fact recall is a proxy for faithfulness, not a measure of it. CIs are wide at this sample size.",
+  "config_statuses": {
+    "qwen3b_v1_k3": "smoke",
+    "qwen15b_v1_k3": "smoke"
+  }
 }

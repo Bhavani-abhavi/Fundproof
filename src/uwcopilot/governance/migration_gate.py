@@ -6,7 +6,9 @@ can be compared question by question.
 
 Algorithm:
 1. Refuse unless both runs used identical question ids, frozen-hits hash, key-facts hash, eval-set (question file)
-   hashes and corpus checksum (check_same_inputs). A difference means the runs measured different things.
+   hashes and corpus checksum (check_same_inputs). A difference means the runs measured different things. With the
+   same prompt id, the prompt hashes must also be equal (check_prompts_comparable), and with the same prompt id and k
+   every question's request hash must be equal (request_hash_differences): both models saw the same bytes.
 2. For each gated metric, take the per-question values of both runs on the questions in the metric's population
    (generation_eval.METRIC_POPULATIONS; for "gold in context" populations, the questions where both runs had the
    gold in context) and compute the paired percentile bootstrap of (challenger - champion), resampling questions
@@ -19,6 +21,13 @@ Algorithm:
 Non-inferiority asks "is the challenger not worse by more than m?", not "is it better?". With about 30-130
 questions the intervals are wide, so INCONCLUSIVE is a common and honest outcome.
 
+Freeze checks (freeze_summary): each run recorded, when it started, the first commit holding its key facts, question
+files and frozen hits, and the first commit holding the `migration:` section of config/release_gate.yaml
+(governance/freeze_proof.py). Every frozen input must have been committed before the run's EARLIEST answer was
+generated, the margins before the challenger's earliest answer, and the margins must not have changed since the
+challenger run. A failed freeze check blocks certification (the script can override it for development, and the
+certificate then says NOT VALID FOR RELEASE).
+
 render_certificate() turns the gate's JSON report into the Markdown migration certificate; it reads nothing else.
 """
 
@@ -29,6 +38,7 @@ from typing import Any, Literal
 
 import yaml
 
+from uwcopilot.governance.freeze_proof import committed_before
 from uwcopilot.rag.generation_eval import METRIC_POPULATIONS
 from uwcopilot.rag.metrics import paired_bootstrap_difference
 
@@ -43,6 +53,8 @@ SAME_INPUT_FIELDS: tuple[str, ...] = (
     "question_sets",
     "corpus_checksum",
 )
+# Frozen inputs whose freeze proof is checked for both runs (the margins are checked for the challenger only).
+FROZEN_INPUT_ROLES: tuple[str, ...] = ("key_facts", "frozen_hits", "question_file")
 DISCLAIMER = (
     "Demonstration only. Results are measured on SYNTHETIC guidelines and questions written by the project author, "
     "with a small local model; they are not evidence of production quality, and this certificate is not a "
@@ -162,6 +174,141 @@ def check_same_inputs(champion: Mapping[str, Any], challenger: Mapping[str, Any]
     return problems
 
 
+def check_prompts_comparable(champion: Mapping[str, Any], challenger: Mapping[str, Any]) -> list[str]:
+    """With the same prompt id, the prompt hash and the prompt template hash must be recorded and equal."""
+    if champion.get("prompt_id") != challenger.get("prompt_id"):
+        return []
+    problems: list[str] = []
+    for name in ("prompt_sha256", "prompt_template_sha256"):
+        if not champion.get(name) or not challenger.get(name):
+            problems.append(f"{name}: not recorded by both runs (re-run scripts/eval_generation.py)")
+        elif champion[name] != challenger[name]:
+            problems.append(f"{name}: same prompt id {champion.get('prompt_id')!r} but the prompt text differs")
+    return problems
+
+
+def request_hash_differences(
+    champion_rows: Sequence[Mapping[str, Any]], challenger_rows: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """Scored question ids whose request hash is missing or differs between the runs (call only when the prompt id
+    and k are the same, so the requests must be byte-identical)."""
+    challenger_hashes = {row["question_id"]: row.get("request_sha256") for row in challenger_rows if row.get("score")}
+    different: list[str] = []
+    for row in champion_rows:
+        if not row.get("score"):
+            continue
+        question_id = row["question_id"]
+        mine = row.get("request_sha256")
+        if not mine or mine != challenger_hashes.get(question_id):
+            different.append(question_id)
+    return sorted(different)
+
+
+def find_records(block: Mapping[str, Any], role: str) -> list[Mapping[str, Any]]:
+    """The freeze records of one role in a run's freeze_proof ([] when none was recorded)."""
+    proof = block.get("freeze_proof")
+    if not isinstance(proof, list):
+        return []
+    return [record for record in proof if isinstance(record, Mapping) and record.get("role") == role]
+
+
+def expected_sha256(frozen_inputs: Mapping[str, Any], role: str, path: str) -> str | None:
+    """The hash the run loaded for an input, from its frozen_inputs block."""
+    if role == "key_facts":
+        return frozen_inputs.get("key_facts_sha256")
+    if role == "frozen_hits":
+        return frozen_inputs.get("frozen_hits_sha256")
+    if role == "question_file":
+        return (frozen_inputs.get("question_sets") or {}).get(path)
+    return None
+
+
+def run_freeze_checks(run: str, block: Mapping[str, Any], answers_from: str | None) -> list[dict[str, Any]]:
+    """Freeze checks of one run's key facts, frozen hits and question files against its earliest answer time."""
+    checks: list[dict[str, Any]] = []
+    for role in FROZEN_INPUT_ROLES:
+        records = find_records(block, role)
+        if not records:
+            checks.append(
+                {"run": run, "role": role, "path": None, "ok": False, "detail": "no freeze proof recorded for it"}
+            )
+        for record in records:
+            path = str(record.get("path"))
+            if record.get("sha256") != expected_sha256(block.get("frozen_inputs") or {}, role, path):
+                ok = False
+                detail = f"{path}: the content at run start differs from the content the run loaded"
+            else:
+                ok, detail = committed_before(record, answers_from)
+            checks.append({"run": run, "role": role, "path": path, "ok": ok, "detail": detail})
+    return checks
+
+
+def margins_freeze_check(
+    challenger: Mapping[str, Any], answers_from: str | None, current_margins_sha256: str | None
+) -> dict[str, Any]:
+    """The margins (migration section) must be unchanged since the challenger run and committed before it."""
+    records = find_records(challenger, "margins")
+    if not records:
+        return {"run": "challenger", "role": "margins", "path": None, "ok": False, "detail": "no freeze proof recorded"}
+    record = records[0]
+    path = str(record.get("path"))
+    if record.get("sha256") != current_margins_sha256:
+        detail = (
+            f"{path}: the migration section changed since the challenger run "
+            f"(recorded {record.get('sha256')}, now {current_margins_sha256})"
+        )
+        return {"run": "challenger", "role": "margins", "path": path, "ok": False, "detail": detail}
+    ok, detail = committed_before(record, answers_from)
+    return {"run": "challenger", "role": "margins", "path": path, "ok": ok, "detail": detail}
+
+
+def freeze_summary(
+    champion: Mapping[str, Any],
+    challenger: Mapping[str, Any],
+    champion_answers_from: str | None,
+    challenger_answers_from: str | None,
+    current_margins_sha256: str | None,
+) -> dict[str, Any]:
+    """Every freeze check, whether all passed, and where the margins come from."""
+    margins = margins_freeze_check(challenger, challenger_answers_from, current_margins_sha256)
+    checks = [
+        *run_freeze_checks("champion", champion, champion_answers_from),
+        *run_freeze_checks("challenger", challenger, challenger_answers_from),
+        margins,
+    ]
+    margin_records = find_records(challenger, "margins")
+    commit = (margin_records[0].get("first_committed") or {}) if margin_records else {}
+    path = margin_records[0].get("path") if margin_records else "config/release_gate.yaml"
+    return {
+        "all_frozen": all(check["ok"] for check in checks),
+        "checks": checks,
+        "champion_answers_from": champion_answers_from,
+        "challenger_answers_from": challenger_answers_from,
+        "margins_frozen_before_challenger": margins["ok"],
+        "margins_source": f"{path}@{commit.get('sha', 'uncommitted')}",
+        "margins_section_sha256": current_margins_sha256,
+        "margins_committed_at": commit.get("author_date"),
+    }
+
+
+def validate_reproducibility(
+    reproducibility: Any, champion_id: str, champion: Mapping[str, Any], champion_answers: Mapping[str, str]
+) -> Any:
+    """The R5 block when it describes THIS champion run (same config, model digest and answers), else a note."""
+    if not (isinstance(reproducibility, Mapping) and reproducibility.get("config") == champion_id):
+        return "not measured for the champion (scripts/eval_generation.py --reproducibility 20)"
+    model = reproducibility.get("model") or {}
+    if model.get("digest") != champion.get("ollama_digest"):
+        return "not measured for this champion run (R5 used a different model digest)"
+    originals = reproducibility.get("original_answer_sha256") or {}
+    if not originals:
+        return "not measured for this champion run (the R5 block does not record which answers it compared)"
+    for question_id, answer_sha in originals.items():
+        if champion_answers.get(question_id) != answer_sha:
+            return "not measured for this champion run (R5 compared answers from a different run)"
+    return dict(reproducibility)
+
+
 def compare_metric(
     metric: GatedMetric,
     champion_values: Mapping[str, float],
@@ -240,9 +387,12 @@ def config_lines(role: str, block: Mapping[str, Any]) -> list[str]:
         f"- Ollama version: {block.get('ollama_version')}",
         f"- License (Docker Hub artifact): {licenses.get('docker_artifact', 'not recorded')}",
         f"- License (upstream model card): {licenses.get('upstream_card', 'not recorded')}",
-        f"- Prompt: `{block.get('prompt_id')}` sha256 `{block.get('prompt_sha256')}`",
+        f"- Prompt: `{block.get('prompt_id')}` sha256 `{block.get('prompt_sha256')}`, template sha256 "
+        f"`{block.get('prompt_template_sha256')}`",
         f"- k = {block.get('k')}, options {block.get('options')}",
-        f"- Evaluated at {block.get('generated_at_utc')} (git {block.get('git_sha')}), "
+        f"- Answers generated {block.get('earliest_answer_generated_at_utc')} to "
+        f"{block.get('latest_answer_generated_at_utc')}; results written {block.get('generated_at_utc')} "
+        f"(git {block.get('git_sha')}), "
         f"load average start {block.get('load_average', {}).get('start')} / end "
         f"{block.get('load_average', {}).get('end')}",
         f"- Per-question results: `{block.get('rows_path')}` sha256 `{block.get('rows_sha256')}`",
@@ -264,10 +414,12 @@ def render_certificate(report: Mapping[str, Any]) -> str:
         f"`{report['report_path']}`; do not edit by hand.",
         "",
     ]
-    if not report.get("margins_frozen_before_challenger", False):
+    freeze = report.get("freeze") or {}
+    if not freeze.get("all_frozen", False):
+        failed = [check["detail"] for check in freeze.get("checks", []) if not check["ok"]]
         lines += [
-            "> **NOT VALID FOR RELEASE:** the margins file was not committed before the challenger run "
-            f"({report.get('margins_check')}).",
+            "> **NOT VALID FOR RELEASE:** a frozen input or the margins were not committed before the answers were "
+            "generated: " + "; ".join(failed or ["no freeze proof"]) + ".",
             "",
         ]
     lines += [
@@ -280,8 +432,8 @@ def render_certificate(report: Mapping[str, Any]) -> str:
         "the upper bound <= +m and FAIL if the lower bound > +m; anything else is INCONCLUSIVE, which blocks. "
         "Overall PASS only if every gated metric passes.",
         "",
-        f"Margins: `{report['margins_source']}` (file sha256 `{report['margins_file_sha256']}`, last commit "
-        f"{report.get('margins_committed_at')}).",
+        f"Margins: `{report['margins_source']}` (migration section sha256 `{report.get('margins_section_sha256')}`, "
+        f"first committed {report.get('margins_committed_at')}; file sha256 `{report['margins_file_sha256']}`).",
         "",
         "## Gated metrics",
         "",
@@ -303,10 +455,20 @@ def render_certificate(report: Mapping[str, Any]) -> str:
         lines.append(
             f"- {role}: latency p50 {reported.get('latency_p50_s')} s, p95 {reported.get('latency_p95_s')} s "
             f"(n live calls {reported.get('n_live_calls')}); mean tokens in {reported.get('tokens_in_mean')}, "
-            f"out {reported.get('tokens_out_mean')}; errors {reported.get('errors')}"
+            f"out {reported.get('tokens_out_mean')}; load average at generation "
+            f"{format_value(reported.get('load_average_at_generation'))}; errors {reported.get('errors')}"
         )
     reproducibility = report.get("reproducibility")
     lines += ["", "## Reproducibility (champion, cache off)", "", f"- {format_value(reproducibility)}", ""]
+    lines += ["## Freeze checks", ""]
+    for check in freeze.get("checks", []):
+        lines.append(f"- {'ok' if check['ok'] else 'FAILED'} ({check['run']}, {check['role']}): {check['detail']}")
+    lines += [
+        "",
+        f"- Stored per-question scores recomputed with the current scorer: {format_value(report.get('rescored'))}",
+        f"- Request hashes compared: {format_value(report.get('request_hashes'))}",
+        "",
+    ]
     lines += ["## Configurations", ""]
     lines += config_lines("Champion", champion)
     lines += config_lines("Challenger", challenger)
