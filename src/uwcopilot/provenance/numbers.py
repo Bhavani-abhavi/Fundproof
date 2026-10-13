@@ -13,8 +13,11 @@ number come from?", it has to find the number, whatever way it was written:
 - number words: zero to ninety-nine, hundred, thousand, million, billion, and the fractions half, quarter, third.
   "a"/"an" counts as one only before a scale or fraction word ("a hundred", "a quarter"); otherwise it is an
   article and not part of the number ("A five-year loss ratio" is five years, not six). "and" inside a run of number
-  words is skipped ("one hundred and five" is 105, "two and a half" is 5/2). Known limit: two numbers joined by "and"
-  read as one ("year four and three" gives 7).
+  words is skipped ("one hundred and five" is 105, "two and a half" is 5/2). A fraction word ends the number unless
+  scale words follow it; those multiply the whole number, fraction included ("two and a half million" is 2,500,000,
+  "half a million" and "a half million" are 500,000). Any other number word after a fraction word starts a new
+  number. Known limits: two numbers joined by "and" read as one ("year four and three" gives 7); a fraction written
+  after a scale word is added, not multiplied ("one million and a half" gives 1,000,000.5, which matches nothing).
 
 Each mention becomes a NumberMention with an exact value (a Fraction, so "one third" stays exact) and a unit:
 USD, PERCENT, BPS, RATIO, MONTHS, YEARS, DAYS, COUNT or NONE (a bare number such as "1.25").
@@ -226,24 +229,34 @@ def integer_words_value(tokens: list[str]) -> int | None:
 def words_to_value(words: list[str]) -> Fraction | None:
     """Parse one number written in words ("two hundred fifty thousand", "one third", "two and a half") into a value.
 
-    A fraction word ends the number. The word right before it is its numerator ("two thirds", "a quarter"; one when
-    there is none, as in "half"); any words before that are a whole part ("two and a half" is 5/2). Returns None when
-    the words hold no quantity (for example only "a" or "and").
+    Without a fraction word the words are a whole number. With one, the word right before the fraction word is its
+    numerator ("two thirds", "a quarter"; one when there is none, as in "half") and any words before that are a whole
+    part ("two and a half" is 5/2). Scale words after the fraction word multiply the whole result ("two and a half
+    million" is 2,500,000; "half a million" is 500,000). Returns None when the words hold no quantity (only "a" or
+    "and"), and when a word other than an article or a scale word follows the fraction word (word_groups never
+    passes such words: it starts a new number there).
     """
     tokens = [word.lower() for word in words if word.lower() != "and"]
     if not tokens or all(token in ARTICLES for token in tokens):
         return None
-    if tokens[-1] not in FRACTION_WORDS:
+    fraction_at = next((index for index, token in enumerate(tokens) if token in FRACTION_WORDS), None)
+    if fraction_at is None:
         whole = integer_words_value(tokens)
         return None if whole is None else Fraction(whole)
-    fraction = FRACTION_WORDS[tokens[-1]]
-    before = tokens[:-1]
+    scales = [token for token in tokens[fraction_at + 1 :] if token not in ARTICLES]
+    if any(token not in SCALE_WORDS for token in scales):
+        return None
+    fraction = FRACTION_WORDS[tokens[fraction_at]]
+    before = tokens[:fraction_at]
     numerator = 1
     if before and (before[-1] in ARTICLES or before[-1] in UNITS_WORDS):
         numerator = 1 if before[-1] in ARTICLES else UNITS_WORDS[before[-1]]
         before = before[:-1]
     whole_part = integer_words_value(before) if before else 0
-    return Fraction(whole_part or 0) + numerator * fraction
+    multiplier = 1
+    for scale in scales:
+        multiplier *= SCALE_WORDS[scale]
+    return (Fraction(whole_part or 0) + numerator * fraction) * multiplier
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -328,7 +341,9 @@ def word_groups(run: re.Match[str]) -> list[tuple[int, int, list[str]]]:
     """Split one run of number words into separate numbers: (start, end, words) for each.
 
     An article ("a", "an") not followed by a scale or fraction word is left out, so "A five-year" starts at "five",
-    and an article between two number words separates them. A leading or trailing "and" is left out of the span.
+    and an article between two number words separates them. A fraction word ends its number unless scale words follow
+    ("half a million" stays one number; in "one half two" the "two" is a new one). A leading or trailing "and" is left
+    out of the span.
     """
     words = [
         (found.group(0).lower(), run.start() + found.start(), run.start() + found.end())
@@ -352,8 +367,18 @@ def word_groups(run: re.Match[str]) -> list[tuple[int, int, list[str]]]:
         if word == "and" and not current:
             continue  # a leading "and" is not part of the number
         current.append((word, start, end))
+        if word in FRACTION_WORDS and not scale_follows(words, index):
+            close()
     close()
     return groups
+
+
+def scale_follows(words: list[tuple[str, int, int]], index: int) -> bool:
+    """True when the word after words[index] is a scale word, or an article and then a scale word ("half a million")."""
+    following = [word for word, _, _ in words[index + 1 : index + 3]]
+    if following and following[0] in SCALE_WORDS:
+        return True
+    return len(following) == 2 and following[0] in ARTICLES and following[1] in SCALE_WORDS
 
 
 def word_mentions(original: str, masked: str, taken: list[tuple[int, int]]) -> list[NumberMention]:

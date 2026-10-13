@@ -210,3 +210,82 @@ def test_a_restated_duration_traces_to_its_qualified_source() -> None:
     assert guideline_statuses("The experience period covers the last 5 policy years [HM-1.2].") == [
         ("5 policy years", "traceable", None)
     ]
+
+
+# Regression tests from the code review of the S1b checker fixes (real guideline text, SYNTHETIC).
+
+
+def test_coordinated_values_share_the_comparator() -> None:
+    """HM-7.1 'limits above $2,000,000 / $4,000,000 are not offered': "above" governs both values.
+
+    With one comparator per number and no coordination rule, $4,000,000 had no comparator in the source, so a correct
+    'above $4,000,000' was a COMPARATOR_MISMATCH (S1b question HM32's correct answer was flagged).
+    """
+    [four] = extract_numbers("$4,000,000")
+    assert source_comparators(GUIDELINES["HM-7.1"], four) == {"GT"}
+    assert guideline_statuses("General liability aggregate limits above $4,000,000 are not offered [HM-7.1].") == [
+        ("$4,000,000", "traceable", "GT")
+    ]
+    hm32 = (  # the correct answer to S1b question HM32
+        "No. Harborline does not offer liability limits above $2,000,000 per occurrence "
+        "or above $4,000,000 aggregate [HM-7.1]."
+    )
+    assert guideline_statuses(hm32) == [
+        ("$2,000,000", "traceable", "GT"),
+        ("$4,000,000", "traceable", "GT"),
+    ]
+    # The answer side: a flip of the shared comparator is caught through both values, not only the first.
+    assert guideline_statuses("Limits below $2,000,000 / $4,000,000 are not offered [HM-7.1].") == [
+        ("$2,000,000", "comparator_mismatch", "LT"),
+        ("$4,000,000", "comparator_mismatch", "LT"),
+    ]
+
+
+def test_coordination_needs_a_joiner_and_the_same_unit() -> None:
+    """Only '/', 'and', 'or', 'and/or' (after an optional 'per <word>' and comma) join; nothing flows backwards."""
+
+    def second_comparator(text: str) -> str | None:
+        mentions = extract_numbers(text)
+        return comparator_near(text, mentions[1], mentions)
+
+    assert second_comparator("up to $25,000,000 per account and $10,000,000 per location") == "LE"  # HM-1.1
+    assert second_comparator("above $1,000,000 per occurrence / $2,000,000 aggregate") == "GT"  # HM-7.1
+    assert second_comparator("above $2,000,000, $4,000,000") is None  # a bare comma does not join
+    assert second_comparator("above $2,000,000 / 4.00") is None  # different units
+    text = "$2,000,000 / $4,000,000 or more"
+    first, second = extract_numbers(text)
+    assert comparator_near(text, first) is None and comparator_near(text, second) == "GE"
+
+
+def test_fraction_words_before_a_scale_do_not_round_to_a_source_limit() -> None:
+    """'two and a half million dollars' is $2,500,000, not $2,000,000 (NBC-1.1 maximums: $2,000,000, $1,500,000)."""
+    assert guideline_statuses("A term loan can be up to two and a half million dollars [NBC-1.1].") == [
+        ("two and a half million dollars", "untraceable", "LE")
+    ]
+    assert guideline_statuses("Limits above one and a half million dollars require approval [HM-7.1].") == [
+        ("one and a half million dollars", "untraceable", "GT")
+    ]
+    assert guideline_statuses("An equipment loan can be up to one and a half million dollars [NBC-1.1].") == [
+        ("one and a half million dollars", "traceable", "LE")
+    ]
+    assert guideline_statuses("A revolving line can be up to half a million dollars [NBC-1.1].") == [
+        ("half a million dollars", "traceable", "LE")
+    ]
+
+
+def test_a_limit_stated_from_both_sides_is_unverifiable() -> None:
+    """NBC-7.2 pairs $500,000 and $1,000,000 with 'Maximum total exposure' (LE, header) and 'above' (GT, prose).
+
+    Known trade-off of header binding, pinned here until the owners decide whether a limit and its complement (LE/GT,
+    GE/LT) count as one threshold: these flips pass as comparator_unverifiable (the old checker caught them), while a
+    correct 'up to $1,000,000' (a false flag in the old checker) now passes.
+    """
+    for value in ("$500,000", "$1,000,000"):
+        [mention] = extract_numbers(value)
+        assert source_comparators(GUIDELINES["NBC-7.2"], mention) == {"GT", "LE"}
+    assert guideline_statuses("Total exposure below $500,000 goes to the Chief Credit Officer [NBC-7.2].") == [
+        ("$500,000", "comparator_unverifiable", "LT")
+    ]
+    assert guideline_statuses("The Chief Credit Officer can approve up to $1,000,000 [NBC-7.2].") == [
+        ("$1,000,000", "comparator_unverifiable", "LE")
+    ]

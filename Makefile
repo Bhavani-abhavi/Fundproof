@@ -199,6 +199,21 @@ studio-test:  ## Studio tests only (offline, recorded fixtures)
 packets:  ## Make the SYNTHETIC document packets (150 credit + 150 insurance, seed 42) -> data/processed/packets/, eval/packets/manifest.json
 	uv run python scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 --seed 42 --test-credit 30 --test-insurance 30
 
+# Innovation SIG: numeric provenance (docs/innovations.md). Offline, no LLM. The reference sentences and the mutations
+# are FROZEN test sets: rebuild them only when a change to provenance/numbers.py changes their generation, and say so.
+# eval-provenance records whether regenerating the mutations with the seed gives exactly the committed file.
+
+.PHONY: reference-sentences mutations eval-provenance
+
+reference-sentences:  ## Rebuild the frozen eval/provenance/reference_sentences.jsonl from the SYNTHETIC guidelines (see note above)
+	uv run python scripts/make_reference_sentences.py
+
+mutations:  ## Rebuild the frozen eval/provenance/mutations.jsonl from the reference sentences, seed 42 (see note above)
+	uv run python scripts/make_mutations.py --seed 42
+
+eval-provenance:  ## SIG checker mutation test, incumbent baseline and validator adversarial set -> results/provenance_metrics.json
+	uv run python scripts/eval_provenance.py
+
 # Innovation S1b: frozen retrieval, generation eval on a local model, LLM migration gate. The eval targets call the
 # local Ollama server (one job at a time, data/cache/ollama.lock) and are never part of CI.
 

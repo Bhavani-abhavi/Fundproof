@@ -89,7 +89,7 @@
       },
       "known_blind_spot": "wrong_row: a value from another row of the same cited table looks traceable",
       "development_note": "The checker was debugged on these reference sentences during development (sentence splitting around citations, soft line wraps, table header binding). The fixes were general, but the mutation set is not a held-out test, and the same author wrote the guidelines, the reference-sentence rules and the mutations.",
-      "mutation_set_note": "Regenerated with scripts/make_mutations.py (seed 42) on 2026-10-13: the number normalizer now reads duration qualifiers ('12 consecutive months' is 12 months, not a count of 12), which changes the units of some section numbers and so the seeded draws. The reference sentences did not change. The checker fixes made at the same time (duration qualifiers, comparator ownership, table header binding) came from answer sentences found in the S1b review, not from this mutation set."
+      "mutation_set_note": "Regenerated with scripts/make_mutations.py (seed 42) on 2026-10-13: the number normalizer now reads duration qualifiers ('12 consecutive months' is 12 months, not a count of 12), which changes the units of some section numbers and so the seeded draws. The reference sentences did not change. The checker fixes made at the same time (duration qualifiers, comparator ownership, table header binding) came from answer sentences found in the S1b review, and the later ones (coordinated values share a comparator, fraction words before a scale word) from a code review of those fixes; none came from this mutation set. Results written before 2026-10-13 were measured on the previous set (sha256 480af16a17cbfa4cd8fecca8fd6e9003cdb55175fcd5ae7d073a09ad3889e1d1, 791 mutations), so a before/after comparison across that date mixes a set change with checker changes. A checker-only comparison on one set is not measured by any committed script."
     },
     "incumbent_claim_checker": {
       "description": "uwcopilot.agent.claim_checker: a number is supported when some number in the cited section rounds to it at the written precision; no units, no comparators",
@@ -304,9 +304,9 @@
   "memo": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)",
   "kyc_memo": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)",
   "provenance": {
-    "git_sha": "1df0e0aab3f9d8135c328361f7abea280a7090b3",
+    "git_sha": "cefd1433f55a096fd7353a7043f4888dcff1e451",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-13T03:57:05+00:00",
+    "generated_at_utc": "2026-10-13T13:51:35+00:00",
     "generated_by": "scripts/eval_provenance.py",
     "prompts": {},
     "corpus_checksum": "1a0f3d051a1f9ead4d3b0f288b2f521d8661b55e38e74ad79143dd8e302b4fea",
@@ -335,14 +335,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        2.08,
-        1.58,
-        1.98
+        0.35,
+        0.32,
+        0.18
       ],
       "load_average_end": [
-        2.08,
-        1.58,
-        1.98
+        0.35,
+        0.32,
+        0.18
       ]
     }
   }

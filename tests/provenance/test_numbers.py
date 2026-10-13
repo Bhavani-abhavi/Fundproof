@@ -137,6 +137,16 @@ NUMBER_WORD_CASES: list[tuple[str, list[tuple[str, str]]]] = [
     ("one hundred and five", [("105", "NONE")]),
     # Known limit (module docstring), kept on purpose: two numbers joined by "and" read as one (rag_questions HM11).
     ("two liability claims in year four and three in year five", [("2", "COUNT"), ("7", "NONE"), ("5", "NONE")]),
+    # Scale words after a fraction word multiply it (code review of the S1b fixes: these used to read as $2,000,000,
+    # $1,000,000, $1,000,000, $1,000,000 and $1,000,000, which match real limits, so wrong amounts passed).
+    ("two and a half million dollars", [("2500000", "USD")]),
+    ("one and a half million dollars", [("1500000", "USD")]),
+    ("half a million dollars", [("500000", "USD")]),
+    ("a half million dollars", [("500000", "USD")]),
+    ("a quarter million dollars", [("250000", "USD")]),
+    ("one half two", [("1/2", "NONE"), ("2", "NONE")]),  # any other number word after a fraction is a new number
+    # Known limit: "of" ends a run of number words, so this is two numbers; the stray 3/4 is untraceable.
+    ("three quarters of a million dollars", [("3/4", "NONE"), ("1000000", "USD")]),
 ]
 
 
@@ -164,3 +174,13 @@ def test_words_to_value_reads_articles_and_fractions() -> None:
     assert words_to_value(["two", "and", "a", "half"]) == Fraction(5, 2)
     assert words_to_value(["three", "quarters"]) == Fraction(3, 4)
     assert words_to_value(["half"]) == Fraction(1, 2)
+
+
+def test_words_to_value_multiplies_a_fraction_by_the_scale_after_it() -> None:
+    """'two and a half million' is 2,500,000 and 'half a million' 500,000; a non-scale word after a fraction is None."""
+    assert words_to_value(["two", "and", "a", "half", "million"]) == 2_500_000
+    assert words_to_value(["one", "and", "a", "half", "million"]) == 1_500_000
+    assert words_to_value(["half", "a", "million"]) == 500_000
+    assert words_to_value(["a", "quarter", "million"]) == 250_000
+    assert words_to_value(["three", "quarters", "million"]) == 750_000
+    assert words_to_value(["a", "half", "two"]) is None  # word_groups splits there, so extraction never passes this

@@ -87,6 +87,30 @@ gold section NBC-7.3; NB09 gained alternates that hold in NBC-3.5; NB23 and NB30
 guard against facts satisfied by the question and against any_of facts missing from an alternative. The owner review
 of 10 random rows is still required before R1.
 
+## SIG checker fixes from the S1b review (2026-10-13)
+
+S1b scores numbers with the SIG checker (`src/uwcopilot/provenance/`), so the review read real answers against
+real guideline text and found five places where the checker misread a correct sentence or let a wrong one pass.
+Each fix has a regression test built from the guideline sentence (`tests/provenance/`).
+
+| Problem | Example | Rule now |
+|---|---|---|
+| Qualified durations read as counts | "12 consecutive months" (NBC-3.5), "60 consecutive days" (HM-2.2) | A closed list of qualifier words may sit between a number and days, months or years. |
+| A table header's comparator was out of reach | "Minimum decision DSCR" over 1.25 (NBC-4.2) | Source tables are read cell by cell; a cell takes its column header's (else its row label's) comparator when that label has exactly one comparator class and no number. |
+| A comparator went to the wrong number | "five-year loss ratio is more than 55.0%" (HM-4.2) | Each comparator phrase belongs to the closest number; "or ..." phrases read backwards on a tie, others forwards. |
+| The second of two coordinated values lost its comparator | "limits above $2,000,000 / $4,000,000" (HM-7.1) | A number with no comparator of its own takes the one of the number right before it, when both have the same unit and only "/", "and", "or" or "and/or" joins them. |
+| Fraction words before a scale word were dropped | "two and a half million dollars" read as $2,000,000 | Scale words after a fraction multiply it: 2,500,000; "half a million" is 500,000. |
+
+Two things to be able to explain. First, the mutation set (`eval/provenance/mutations.jsonl`) was regenerated once
+(seed 42) because the duration rule changed how section numbers are read, which changed the seeded draws; the last
+two fixes did not change it (byte-identical). So SIG results from before and after 2026-10-13 are on different
+mutation sets and cannot be compared as a checker-only change. Second, one trade-off is open for the owners:
+comparator classes are compared strictly, so a correct answer that states a limit from its other side ("a premium
+above $150,000 needs the Underwriting Manager" against "Maximum annual premium") is still a mismatch, and at NBC-7.2
+the header ("Maximum total exposure", LE) plus the prose ("above $500,000", GT) makes those values unverifiable, so
+a flipped comparator on them ("below $500,000") is no longer caught. Counting a limit and its complement as one threshold would change
+both; it should be decided on principle, not tuned on the frozen set.
+
 ## Interview questions and answers
 
 1. **Why freeze retrieval?** So a model or prompt change is measured on the same documents. Otherwise a
