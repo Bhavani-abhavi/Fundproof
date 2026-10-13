@@ -1,0 +1,30 @@
+# Docker build context for the Dockerfile at the repo root. ALLOW-LIST: everything is excluded, then only the
+# files the image needs are let back in. This keeps secrets (.env), downloaded data (data/), local caches
+# (.venv, node_modules, .cache, qdrant_storage), results/ and the git history out of the build context.
+
+# 1. Exclude everything.
+*
+
+# 2. Let back in what the Dockerfile copies.
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!config/
+!corpus/
+!frontend/
+
+# 3. Inside those folders, exclude build output, dependencies, caches and anything secret-looking.
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/.env.*
+**/.DS_Store
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+frontend/npm-debug.log*
+# Frontend dev helpers that are not part of the build (screenshots need Python + Playwright).
+frontend/scripts/screenshots.py

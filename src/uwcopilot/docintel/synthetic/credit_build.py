@@ -59,7 +59,8 @@ INDUSTRY_WORDS = {
     "software_development": "Software", "restaurant": "Kitchen", "landscaping": "Landscaping",
     "veterinary_clinic": "Veterinary", "hardware_retail": "Hardware", "medical_clinic": "Medical",
     "commercial_printing": "Printing", "cannabis_retail": "Botanicals", "long_haul_trucking": "Freight Lines",
-    "bakery": "Bakery", "auto_repair": "Auto Care", "freight_broker": "Logistics", "construction_contractor": "Builders",
+    "bakery": "Bakery", "auto_repair": "Auto Care", "freight_broker": "Logistics",
+    "construction_contractor": "Builders",
     "used_vehicle_dealer": "Motors", "money_services_business": "Money Services",
 }  # fmt: skip
 STRUCTURE_MIX = {"llc": 0.60, "corporation": 0.30, "partnership": 0.10}

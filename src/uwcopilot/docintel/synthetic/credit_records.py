@@ -115,7 +115,10 @@ def missing_pages(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: dict[
     return ProblemRecord(
         doc_ids=[before, after],
         fields=["statement.period_start"],
-        values_by_doc={before: month_text(case.statements[index - 1].month), after: month_text(case.statements[index + 1].month)},
+        values_by_doc={
+            before: month_text(case.statements[index - 1].month),
+            after: month_text(case.statements[index + 1].month),
+        },
         description=f"The bank statement for {month} is missing between {before} and {after}.",
         resolving_request="missing_statement_month",
         resolving_request_params={"month": month},
@@ -279,7 +282,8 @@ def prompt_injection(case: CreditCase, plan: ProblemPlan, app: dict, doc_ids: di
         doc_ids=[doc_id],
         fields=[fields[plan.details["location"]]],
         values_by_doc={doc_id: plan.details["text"]},
-        description=f"Embedded instruction ({plan.details['technique']}) in the {plan.details['location']} of {doc_id}.",
+        description=f"Embedded instruction ({plan.details['technique']}) in the {plan.details['location']} "
+        f"of {doc_id}.",
         resolving_request="fraud_operations_review",
         params={},
         latent_option_id="confirmed",

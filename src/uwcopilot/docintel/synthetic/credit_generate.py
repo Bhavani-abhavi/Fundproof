@@ -14,6 +14,7 @@ from datetime import date
 from faker import Faker
 
 from uwcopilot.docintel.synthetic.common import (
+    CPA_FIRMS,
     PAYROLL_PROVIDERS,
     UTILITIES,
     add_months,
@@ -22,7 +23,7 @@ from uwcopilot.docintel.synthetic.common import (
     log_uniform,
     month_end,
 )
-from uwcopilot.docintel.synthetic.credit_application import average_monthly, schedule_totals
+from uwcopilot.docintel.synthetic.credit_application import average_monthly
 from uwcopilot.docintel.synthetic.credit_build import (
     BENIGN_REMARKS,
     CARD_INDUSTRIES,
@@ -56,7 +57,6 @@ from uwcopilot.docintel.synthetic.problems_credit import (
     prepare_debt_mismatch,
     stated_revenue,
 )
-from uwcopilot.docintel.synthetic.common import CPA_FIRMS
 
 
 def statement_months(application_date: date) -> list[date]:
@@ -131,9 +131,8 @@ def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: li
     existing = existing_annual_service(
         schedule_payment, average_monthly(present, "loan_payment"), average_monthly(present, "mca_remittance")
     )
-    amount, noi = solve_amount_and_noi(
-        request.product, request.amount, request.rate_pct, request.term_months, existing, verified, draw_dscr_target(rng)
-    )
+    dscr, stress_safe = draw_dscr_target(rng)
+    amount, noi = solve_amount_and_noi(request, existing, verified, dscr, stress_safe)
     gap = find_plan(plans, "revenue_gap")
     if gap is not None and gap.cause == "benign_unidentified_revenue":
         pnl_revenue = revenue.true_revenue * (1.0 + rng.uniform(-0.02, 0.03))
@@ -151,7 +150,9 @@ def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: li
     balance_sheet = build_balance_sheet(rng, period_end, statements[-1].closing, verified, loans, fixed_assets)
     tax_years = build_tax_years(rng, latest_receipts, application_date)
     gross = round(sum(item.total_deposits for item in statements), 2)
-    stated = stated_revenue(rng, plans, verified, revenue.true_revenue, gross, [pnl.revenue, tax_years[-1].gross_receipts])
+    stated = stated_revenue(
+        rng, plans, verified, revenue.true_revenue, gross, [pnl.revenue, tax_years[-1].gross_receipts]
+    )
     if gap is not None and gap.cause == "benign_timing":
         tax_years[-1].gross_receipts = stated
 
@@ -194,8 +195,3 @@ def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: li
     applied = apply_document_problems(rng, case, plans)
     plans[:] = applied
     return case
-
-
-def schedule_payment_total(case: CreditCase) -> float:
-    """The debt schedule's monthly payment total (helper for reports)."""
-    return schedule_totals(case)[0]

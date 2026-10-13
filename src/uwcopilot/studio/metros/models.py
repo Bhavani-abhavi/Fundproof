@@ -9,7 +9,7 @@ The mode tells the app how much to trust a metro's data:
 
 - synthetic: the SYNTHETIC metro; everything is generated and labeled SYNTHETIC.
 - limited: a real metro without a data snapshot, with an unverified county list, or with data coverage below the
-  metro's threshold. Factors without data are UNKNOWN; the app says "limited mode".
+  metro's threshold for any business type. Factors without data are UNKNOWN; the app says "limited mode".
 - full: a real metro with a verified county list, a snapshot and coverage at or above the threshold.
 """
 
@@ -115,6 +115,7 @@ class MetroConfig(StrictModel):
     bbox: BoundingBox | None = None
     trade_area: TradeArea
     enhancements: list[Enhancement] = Field(default_factory=list)
+    # Pins a snapshot (data/studio/snapshots/<id>/<date>/); null means "the newest snapshot on disk".
     snapshot_date: date | None = None
     coverage_threshold: float = Field(default=DEFAULT_COVERAGE_THRESHOLD, gt=0, le=1)
     synthetic: SyntheticSettings | None = None

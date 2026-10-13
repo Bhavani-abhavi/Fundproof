@@ -1,6 +1,7 @@
 # Business-type profile (Founder Studio S1). Schema: src/uwcopilot/studio/profiles/models.py.
 # EVERY number below is an ASSUMPTION of the project author: a deliberately wide range, user-editable in the app,
-# with a note naming the source that should replace it. Nothing is SOURCED (no source could be opened in this build).
+# with a note naming the source that should replace it. Nothing is SOURCED: no primary source has been opened and
+# cited for these numbers yet. A test fails if any field is marked SOURCED (see tests/studio/test_profiles.py).
 id: motel
 display_name: Motel / small hotel
 

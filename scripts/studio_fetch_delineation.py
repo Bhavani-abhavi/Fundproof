@@ -249,7 +249,10 @@ def main(argv: list[str] | None = None) -> int:
         code = rows[0].cbsa_code
         configured[metro_id] = code
         record = {
-            "source": {**source, "page_or_table": f"{deli_path.name}, first sheet, the {len(rows)} rows with CBSA Code {code}"},
+            "source": {
+                **source,
+                "page_or_table": f"{deli_path.name}, first sheet, the {len(rows)} rows with CBSA Code {code}",
+            },
             "file_name": deli_path.name,
             "file_sha256": deli_fetch.sha256,
             "retrieved_at_utc": deli_fetch.retrieved_at.isoformat(timespec="seconds"),
@@ -265,7 +268,10 @@ def main(argv: list[str] | None = None) -> int:
             load_metro(metro_id, args.metros_dir)
 
     report = ranking_report(column, ranking, pep_fetch, configured)
-    print(f"Top {TOP_N} by {column}: " + "; ".join(f"{item['cbsa_code']} {item['name']}" for item in report["top"][:TOP_N]))
+    print(
+        f"Top {TOP_N} by {column}: "
+        + "; ".join(f"{item['cbsa_code']} {item['name']}" for item in report["top"][:TOP_N])
+    )
     print(f"Configured real metros equal the top {TOP_N}: {report['configured_equals_top_five']}")
     if args.dry_run:
         return 0

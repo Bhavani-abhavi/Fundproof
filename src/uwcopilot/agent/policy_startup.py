@@ -6,8 +6,10 @@ evidence behind the plan instead. Each check names the program sections (NSP-x.y
 copied from the program text; where the program says a Northwind rule applies (NBC-2.2, NBC-2.3, NBC-4.2, NBC-4.5,
 NBC-5.1, NBC-6.1), the constant is imported from policy_credit.py so the two documents cannot drift apart in code.
 
-Calculations reuse credit_calculations.py (the NBC-4.1 term-loan debt service, coverage ratios, collateral
-coverage) and are recorded as CALC-startup_* so they never collide with the Northwind calculation ids.
+Calculations reuse credit_calculations.py (the NBC-4.1 term-loan payment and the NBC-5.1 advance rates) and are
+recorded as CALC-startup_* so they never collide with the Northwind calculation ids. Ratios and percentages follow
+the program's rounding convention: they are computed from the dollar amounts in exact decimal arithmetic and rounded
+half up (59,800 / 400,000 is exactly 14.95%, which is 15.0%), so an exact tie never depends on binary floating point.
 
 Sanctions screening and the injection check are shared by every line and run in policy.py. The Northwind risk model
 is not applicable to startups (NSP-1.1): it is recorded as not evaluated with the reason, never estimated.
@@ -15,15 +17,10 @@ The thresholds are illustrative, not an industry standard, and not lending, lega
 """
 
 import math
+from decimal import ROUND_HALF_UP, Decimal
 
 from uwcopilot.agent.applications import MaterialAssumption, StartupCreditApplication, StartupOwner
-from uwcopilot.agent.credit_calculations import (
-    collateral_coverage,
-    coverage_ratio,
-    months_between,
-    proposed_annual_debt_service,
-    round_pct,
-)
+from uwcopilot.agent.credit_calculations import ADVANCE_RATES, months_between, proposed_annual_debt_service
 from uwcopilot.agent.policy import PolicyInputs, RuleContext, money, pct, ratio
 from uwcopilot.agent.policy_credit import (
     COLLATERAL_REQUIRED_ABOVE,
@@ -65,6 +62,28 @@ NEAR_MISS_STARTUP_CREDIT_SCORE = 660
 # are restricted by this program. Every other code keeps its NBC-2.2 / NBC-2.3 category.
 RESTAURANT_INDUSTRIES = frozenset({"restaurant", "restaurant_cafe"})
 STARTUP_RESTRICTED_INDUSTRIES = frozenset({"short_term_rental"})
+# NSP-2.3: when the business type and the industry code fall in different categories, the stricter one applies.
+CATEGORY_STRICTNESS: dict[str, int] = {
+    "eligible": 0,
+    "restricted": 1,
+    "restricted_startup": 1,
+    "restricted_restaurant": 1,
+    "prohibited": 2,
+}
+# NSP-1.3, NSP-2.1, NSP-3.1, NSP-6.1: a flag in the application counts only when its document is listed in
+# documents_provided.
+EQUITY_STATEMENTS_DOCUMENT = "equity_bank_statements"
+EXPERIENCE_EVIDENCE_DOCUMENT = "owner_resumes_and_references"
+SUPPORTING_DOCUMENTS: tuple[str, ...] = (
+    "lease_or_letter_of_intent",
+    "contractor_or_equipment_quotes",
+    "comparable_data_with_source",
+)
+# NSP-9.1 / NBC-7.2: findings that can only be approved through a policy exception. A Senior Underwriter may
+# approve at most one exception; two or more go to a higher authority.
+EXCEPTION_RULES = frozenset(
+    {"experience_near_miss", "credit_score_near_miss", "equity_injection_near_miss", "projected_dscr_below_minimum"}
+)
 # NSP-3.1: equity injection (percent of total project cost) and the near-miss floor.
 MIN_EQUITY_INJECTION_PCT = 20.0
 NEAR_MISS_EQUITY_INJECTION_PCT = 15.0
@@ -93,15 +112,34 @@ STARTUP_BASE_DOCUMENTS: tuple[str, ...] = (
 )
 RISK_MODEL_NOT_APPLICABLE = (
     "not applicable: the Northwind credit risk model was not developed on startup loans (NSP-1.1), and the only "
-    "credit model in this repository was trained on Lending Club loan outcomes with an operating or credit history; "
-    "no probability of default is estimated for a startup, so model risk is UNKNOWN and score_risk is not called"
+    "credit model in this repository (uwcopilot.risk.credit) was trained on Lending Club loan outcomes, not on "
+    "startup business loans; no probability of default is estimated, so model risk is UNKNOWN and score_risk is "
+    "not called"
 )
 NOT_EVALUATED: tuple[tuple[str, list[str], str], ...] = (
     ("risk_model_pd", ["NSP-1.1", "NBC-8.1"], RISK_MODEL_NOT_APPLICABLE),
     (
+        "existing_business_debt_and_stacking",
+        ["NSP-1.1", "NBC-4.4"],
+        "not implemented: the application has no field for business debt that exists before this loan or for loans "
+        "taken in the last 90 days; only the loans and seller notes listed in the sources of funds are counted "
+        "(NSP-1.2)",
+    ),
+    (
+        "applicant_bankruptcy_and_tax_liens",
+        ["NSP-2.2"],
+        "not implemented: the application records bankruptcies and tax liens for principals only, not for the "
+        "applicant entity",
+    ),
+    (
         "identity_verification",
         ["NBC-6.2"],
         "not implemented: needs ID documents and credit reports (document extraction, Phase 2)",
+    ),
+    (
+        "ownership_matches_formation_documents",
+        ["NBC-6.1"],
+        "not implemented: needs the formation documents; only the application's own ownership total is checked",
     ),
     ("adverse_media_and_pep", ["NBC-6.4"], "not implemented: no adverse-media or PEP input in the application"),
     ("document_integrity", ["NBC-9.1"], "not implemented: needs the founder package documents and their metadata"),
@@ -158,8 +196,46 @@ def industry_category(industry: str) -> str:
     return "eligible"
 
 
-def projected_annual_debt_service(app: StartupCreditApplication, rate_add_pct: float = 0.0) -> float:
-    """NSP-1.2: 12 fully amortizing payments of the requested loan (optionally at a stressed rate), to the cent."""
+def strictest_industry(app: StartupCreditApplication) -> tuple[str, str]:
+    """NSP-2.3: (code, category) of the stricter of the industry code and the business type's own code.
+
+    A restaurant cannot become eligible by using another business type's industry code: the business type still
+    counts. On a tie the industry code is reported, because it is the more specific of the two.
+    """
+    codes = [app.applicant.industry, app.applicant.business_type]
+    code = max(codes, key=lambda item: CATEGORY_STRICTNESS[industry_category(item)])
+    return code, industry_category(code)
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Program arithmetic: exact decimals, rounded half up (program conventions)
+# --------------------------------------------------------------------------------------------------------------
+
+
+def to_decimal(value: float) -> Decimal:
+    """A number from the application as the decimal it was written as (repr gives the shortest form: 0.1 -> 0.1)."""
+    return Decimal(repr(value))
+
+
+def half_up(value: Decimal, places: int) -> float:
+    """Round to `places` decimals; an exact half rounds up (14.95 -> 15.0, 1.095 -> 1.10)."""
+    return float(value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP))
+
+
+def program_ratio(numerator: float, denominator: float) -> float | None:
+    """numerator / denominator rounded half up to two decimals (DSCR, coverage); None when denominator <= 0."""
+    if denominator <= 0:
+        return None
+    return half_up(to_decimal(numerator) / to_decimal(denominator), 2)
+
+
+def program_pct(part: float, whole: float) -> float:
+    """part / whole as a percentage, rounded half up to one decimal (equity injection)."""
+    return half_up(to_decimal(part) * 100 / to_decimal(whole), 1)
+
+
+def startup_loan_annual_debt_service(app: StartupCreditApplication, rate_add_pct: float = 0.0) -> float:
+    """12 fully amortizing payments of the requested startup loan (optionally at a stressed rate), to the cent."""
     loan = app.loan_request
     service = proposed_annual_debt_service(
         DEBT_SERVICE_PRODUCT, loan.amount, loan.annual_rate_pct + rate_add_pct, loan.term_months
@@ -167,18 +243,73 @@ def projected_annual_debt_service(app: StartupCreditApplication, rate_add_pct: f
     return round(service, 2)
 
 
-def top_drivers(app: StartupCreditApplication) -> list[MaterialAssumption]:
-    """NSP-6.1: the ranked material assumptions with tornado rank 1, 2 and 3 (fewer if fewer are ranked)."""
-    ranked = sorted(
-        (item for item in app.material_assumptions if item.tornado_rank is not None),
-        key=lambda item: item.tornado_rank or 0,
+def other_debt_annual_service(app: StartupCreditApplication) -> float:
+    """12 payments of every other loan and seller note listed in the sources of funds (NSP-1.2, NSP-3.2)."""
+    monthly = sum((to_decimal(item.monthly_payment) for item in app.sources_and_uses.sources.other_debt), Decimal(0))
+    return half_up(monthly * 12, 2)
+
+
+def projected_annual_debt_service(app: StartupCreditApplication, rate_add_pct: float = 0.0) -> float:
+    """NSP-1.2: the startup loan's annual debt service plus that of the other loans and seller notes, to the cent.
+
+    The rate stress (NSP-4.2) raises only the startup loan's note rate; other debt keeps its stated payment.
+    """
+    loan_service = to_decimal(startup_loan_annual_debt_service(app, rate_add_pct))
+    return half_up(loan_service + to_decimal(other_debt_annual_service(app)), 2)
+
+
+def revenue_stressed_noi(noi: float, revenue: float) -> float:
+    """NSP-4.2: NOI after removing REVENUE_STRESS_SHARE of revenue dollar for dollar, to the cent."""
+    return half_up(to_decimal(noi) - to_decimal(REVENUE_STRESS_SHARE) * to_decimal(revenue), 2)
+
+
+def startup_collateral_coverage(app: StartupCreditApplication) -> float:
+    """NSP-7.1 (NBC-5.1): sum of value x maximum advance rate, divided by the loan amount, rounded half up."""
+    lendable = sum(
+        (to_decimal(item.value) * to_decimal(ADVANCE_RATES[item.collateral_type]) for item in app.collateral),
+        Decimal(0),
     )
-    return ranked[:TOP_DRIVER_COUNT]
+    return half_up(lendable / to_decimal(app.loan_request.amount), 2)
 
 
-def is_backed(assumption: MaterialAssumption) -> bool:
-    """NSP-6.1: a supporting document is in the file, or the value is VERIFIED."""
-    return assumption.supporting_document_provided or assumption.status == "VERIFIED"
+# --------------------------------------------------------------------------------------------------------------
+# Documents behind the plan
+# --------------------------------------------------------------------------------------------------------------
+
+
+def document_listed(app: StartupCreditApplication, document: str) -> bool:
+    """True when the document is in the application's documents_provided list."""
+    return document in app.documents_provided
+
+
+def supporting_document_listed(app: StartupCreditApplication) -> bool:
+    """NSP-1.2: a quote, a lease or letter of intent, or comparable data with its source is in the file."""
+    return any(document_listed(app, document) for document in SUPPORTING_DOCUMENTS)
+
+
+def required_driver_ranks(app: StartupCreditApplication) -> list[int]:
+    """NSP-6.1: ranks 1, 2 and 3 (every rank from 1 when the plan lists fewer than three assumptions)."""
+    return list(range(1, min(TOP_DRIVER_COUNT, len(app.material_assumptions)) + 1))
+
+
+def missing_driver_ranks(app: StartupCreditApplication) -> list[int]:
+    """The required top-driver ranks that no material assumption carries."""
+    present = {item.tornado_rank for item in app.material_assumptions}
+    return [rank for rank in required_driver_ranks(app) if rank not in present]
+
+
+def top_drivers(app: StartupCreditApplication) -> list[MaterialAssumption]:
+    """NSP-6.1: the material assumptions ranked 1, 2 and 3 (the required ranks), in rank order."""
+    required = set(required_driver_ranks(app))
+    drivers = [item for item in app.material_assumptions if item.tornado_rank in required]
+    return sorted(drivers, key=lambda item: item.tornado_rank or 0)
+
+
+def is_backed(assumption: MaterialAssumption, app: StartupCreditApplication) -> bool:
+    """NSP-6.1: VERIFIED, or marked as backed with a supporting document listed in documents_provided."""
+    if assumption.status == "VERIFIED":
+        return True
+    return assumption.supporting_document_provided and supporting_document_listed(app)
 
 
 def required_startup_documents(app: StartupCreditApplication) -> list[str]:
@@ -289,9 +420,12 @@ def check_startup_entity(app: StartupCreditApplication, context: RuleContext) ->
 
 
 def check_startup_industry(app: StartupCreditApplication, context: RuleContext) -> None:
-    """NSP-2.3: prohibited industries (decline-for-review) and restricted industries (refer, R-NSP-02)."""
-    industry = app.applicant.industry
-    category = industry_category(industry)
+    """NSP-2.3: prohibited industries (decline-for-review) and restricted industries (refer, R-NSP-02).
+
+    The stricter category of the industry code and the business type applies, so neither field can hide the other.
+    """
+    industry, category = strictest_industry(app)
+    evidence = ["APP-industry"] if industry == app.applicant.industry else ["APP-industry", "APP-business_type"]
     if category == "prohibited":
         context.find(
             "prohibited_industry",
@@ -299,15 +433,16 @@ def check_startup_industry(app: StartupCreditApplication, context: RuleContext) 
             ["NSP-2.3", "NBC-2.2", "NBC-7.1"],
             [SENIOR_UNDERWRITER],
             f"Industry code {industry} is a prohibited industry; no exception may be granted.",
-            ["APP-industry"],
+            evidence,
         )
         return
     if category == "eligible":
         context.passed(
             "industry_eligible",
             ["NSP-2.3"],
-            f"Industry code {industry} is neither prohibited nor restricted for startups.",
-            ["APP-industry"],
+            f"Industry code {industry} (business type {app.applicant.business_type}) is neither prohibited nor "
+            "restricted for startups.",
+            ["APP-industry", "APP-business_type"],
         )
         return
     reasons = {
@@ -323,7 +458,7 @@ def check_startup_industry(app: StartupCreditApplication, context: RuleContext) 
         sections,
         [SENIOR_UNDERWRITER],
         f"Industry code {industry} needs Senior Underwriter review: {reason}.",
-        ["APP-industry"],
+        evidence,
         trigger_ids=["R-NSP-02"],
     )
 
@@ -354,24 +489,31 @@ def check_owner_experience(app: StartupCreditApplication, context: RuleContext) 
     )
     if months >= MIN_EXPERIENCE_MONTHS:
         qualified = [owner for owner in people if experience_months(owner) >= MIN_EXPERIENCE_MONTHS]
-        evidenced = [owner.owner_id for owner in qualified if owner.experience_evidence_provided]
-        if evidenced:
+        resumes_listed = document_listed(app, EXPERIENCE_EVIDENCE_DOCUMENT)
+        flagged = [owner.owner_id for owner in qualified if owner.experience_evidence_provided]
+        evidence = [calc_id, "APP-owners", "APP-documents_provided"]
+        if flagged and resumes_listed:
             context.passed(
                 "owner_experience",
                 ["NSP-2.1"],
-                f"Principal {evidenced[0]} has at least 24 months of relevant experience, evidenced by a resume and "
-                f"references; the most experience of any principal is {months} months.",
-                [calc_id, "APP-owners"],
+                f"Principal {flagged[0]} has at least 24 months of relevant experience, evidenced by a resume and "
+                f"references in the file; the most experience of any principal is {months} months.",
+                evidence,
             )
         else:
+            reason = (
+                "the documents provided list no owner resumes and references"
+                if flagged
+                else "no resume and references are in the file"
+            )
             context.find(
                 "experience_evidence_missing",
                 "request_more_information",
                 ["NSP-2.1"],
                 [SENIOR_UNDERWRITER],
                 f"Principal(s) {', '.join(owner.owner_id for owner in qualified)} claim at least 24 months of relevant "
-                "experience, but no resume and references are in the file.",
-                [calc_id, "APP-owners"],
+                f"experience, but {reason}.",
+                evidence,
             )
     elif months >= NEAR_MISS_EXPERIENCE_MONTHS:
         context.find(
@@ -510,7 +652,15 @@ def check_sources_and_uses(app: StartupCreditApplication, context: RuleContext) 
     )
     total_sources = sources.total()
     sources_id = context.calc(
-        "startup_total_sources", "Total sources of funds", total_sources, "usd", ["NSP-3.2"], **sources.model_dump()
+        "startup_total_sources",
+        "Total sources of funds",
+        total_sources,
+        "usd",
+        ["NSP-3.2"],
+        loan=sources.loan,
+        owner_cash_equity=sources.owner_cash_equity,
+        other_debt=sources.other_debt_total(),
+        other=sources.other,
     )
     amount = app.loan_request.amount
     problems = []
@@ -541,7 +691,7 @@ def check_sources_and_uses(app: StartupCreditApplication, context: RuleContext) 
 def check_equity_injection(app: StartupCreditApplication, total_cost: float, context: RuleContext) -> None:
     """NSP-3.1: equity injection of at least 20.0% of total project cost, verified by bank statements."""
     equity = app.sources_and_uses.sources.owner_cash_equity
-    share = round_pct(equity / total_cost * 100.0)
+    share = program_pct(equity, total_cost)
     equity_id = context.calc(
         "startup_equity_injection_pct",
         "Equity injection (owner cash equity / total project cost, percent)",
@@ -578,21 +728,28 @@ def check_equity_injection(app: StartupCreditApplication, total_cost: float, con
             [equity_id],
             trigger_ids=["R-NSP-05"],
         )
-    if app.sources_and_uses.equity_verified_by_statements:
+    marked_verified = app.sources_and_uses.equity_verified_by_statements
+    statements_listed = document_listed(app, EQUITY_STATEMENTS_DOCUMENT)
+    if marked_verified and statements_listed:
         context.passed(
             "equity_verified",
             ["NSP-3.1"],
             "Bank statements in the file verify the owner cash equity.",
-            ["APP-sources_and_uses"],
+            ["APP-sources_and_uses", "APP-documents_provided"],
         )
     else:
+        reason = (
+            "is marked as verified, but the documents provided list no equity bank statements"
+            if marked_verified
+            else "is not verified by bank statements yet"
+        )
         context.find(
             "equity_not_verified",
             "request_more_information",
             ["NSP-3.1"],
             [SENIOR_UNDERWRITER],
-            f"Owner cash equity of {money(equity)} is not verified by bank statements yet; request them.",
-            [equity_id, "APP-sources_and_uses"],
+            f"Owner cash equity of {money(equity)} {reason}; request them.",
+            [equity_id, "APP-sources_and_uses", "APP-documents_provided"],
         )
 
 
@@ -607,16 +764,18 @@ def check_projected_dscr(app: StartupCreditApplication, context: RuleContext) ->
     service = projected_annual_debt_service(app)
     service_id = context.calc(
         "startup_annual_debt_service",
-        "Projected annual debt service (startup term loan)",
+        "Projected annual debt service (startup term loan plus other loans and seller notes)",
         service,
         "usd",
         ["NSP-1.2", "NSP-4.1"],
         requested_amount=loan.amount,
         note_rate_pct=loan.annual_rate_pct,
         term_months=loan.term_months,
+        startup_loan_annual_debt_service=startup_loan_annual_debt_service(app),
+        other_debt_annual_debt_service=other_debt_annual_service(app),
     )
     year = app.projections.year(PROJECTED_DSCR_YEAR)
-    dscr = coverage_ratio(year.noi_p50, service)
+    dscr = program_ratio(year.noi_p50, service)
     dscr_id = context.calc(
         "startup_projected_dscr",
         "Projected DSCR (year 2 P50 NOI / projected annual debt service)",
@@ -665,8 +824,8 @@ def check_projected_dscr(app: StartupCreditApplication, context: RuleContext) ->
 def check_startup_stress(app: StartupCreditApplication, service: float, context: RuleContext) -> None:
     """NSP-4.2: the NBC-4.5 revenue stress on every startup loan, and the rate stress on variable-rate loans."""
     year = app.projections.year(PROJECTED_DSCR_YEAR)
-    stressed_noi = round(year.noi_p50 - REVENUE_STRESS_SHARE * year.revenue_p50, 2)
-    stressed = coverage_ratio(stressed_noi, service)
+    stressed_noi = revenue_stressed_noi(year.noi_p50, year.revenue_p50)
+    stressed = program_ratio(stressed_noi, service)
     stress_id = context.calc(
         "startup_stressed_dscr_revenue",
         "Projected DSCR after a 20% revenue stress (year 2 P50)",
@@ -704,7 +863,7 @@ def check_startup_stress(app: StartupCreditApplication, service: float, context:
         return
     stressed_rate = app.loan_request.annual_rate_pct + RATE_STRESS_ADD_PCT
     rate_service = projected_annual_debt_service(app, RATE_STRESS_ADD_PCT)
-    rate_dscr = coverage_ratio(year.noi_p50, rate_service)
+    rate_dscr = program_ratio(year.noi_p50, rate_service)
     rate_id = context.calc(
         "startup_stressed_dscr_rate",
         "Projected DSCR with the note rate plus 2.00 percentage points",
@@ -773,7 +932,7 @@ def record_simulation_outputs(app: StartupCreditApplication, context: RuleContex
         context.skip("simulation_outputs", ["NSP-4.4"], "information only: the plan includes no simulation outputs")
         return
     provenance: dict[str, float | int | str | None] = {
-        "label": simulation.label,
+        "simulation_label": simulation.label,
         "simulator_version": simulation.simulator_version,
         "n_paths": simulation.n_paths,
         "seed": simulation.seed,
@@ -801,8 +960,11 @@ def check_working_capital_reserve(app: StartupCreditApplication, service: float,
     """NSP-5.1: reserve of at least 3 months of fixed costs plus debt service at closing."""
     fixed = app.projections.monthly_fixed_costs
     reserve = app.sources_and_uses.uses.working_capital_reserve
-    monthly_need = fixed + service / 12.0
-    required = round(RESERVE_MONTHS_REQUIRED * monthly_need, 2)
+    monthly_need = to_decimal(fixed) + to_decimal(service) / 12
+    # 3 x (fixed + service / 12), multiplied out first so the cents are exact (service x 3 / 12 = service / 4).
+    required = half_up(
+        RESERVE_MONTHS_REQUIRED * to_decimal(fixed) + to_decimal(service) * RESERVE_MONTHS_REQUIRED / 12, 2
+    )
     required_id = context.calc(
         "startup_required_reserve",
         "Required working-capital reserve (3 months of fixed costs plus debt service)",
@@ -813,7 +975,7 @@ def check_working_capital_reserve(app: StartupCreditApplication, service: float,
         annual_debt_service=service,
         working_capital_reserve=reserve,
     )
-    months_covered = round(reserve / monthly_need, 1)
+    months_covered = half_up(to_decimal(reserve) / monthly_need, 1)
     months_id = context.calc(
         "startup_reserve_months",
         "Working-capital reserve in months of fixed costs plus debt service",
@@ -821,7 +983,7 @@ def check_working_capital_reserve(app: StartupCreditApplication, service: float,
         "months",
         ["NSP-5.1"],
         working_capital_reserve=reserve,
-        monthly_fixed_costs_plus_debt_service=round(monthly_need, 2),
+        monthly_fixed_costs_plus_debt_service=half_up(monthly_need, 2),
     )
     if reserve >= required:
         context.passed(
@@ -845,9 +1007,12 @@ def check_working_capital_reserve(app: StartupCreditApplication, service: float,
 
 
 def check_material_assumptions(app: StartupCreditApplication, context: RuleContext) -> None:
-    """NSP-6.1: each top driver is backed by a supporting document or VERIFIED; one request per unbacked driver."""
-    drivers = top_drivers(app)
-    if not drivers:
+    """NSP-6.1: ranks 1-3 are identified, and each top driver is backed; one request per unbacked driver.
+
+    A driver counts as backed when it is VERIFIED, or when it is marked as backed and a supporting document (quote,
+    lease or letter of intent, comparable data) is listed in documents_provided.
+    """
+    if not app.material_assumptions:
         context.find(
             "top_drivers_not_identified",
             "request_more_information",
@@ -857,24 +1022,44 @@ def check_material_assumptions(app: StartupCreditApplication, context: RuleConte
             ["APP-material_assumptions"],
         )
         return
-    unbacked = [item for item in drivers if not is_backed(item)]
+    missing = missing_driver_ranks(app)
+    if missing:
+        context.find(
+            "top_drivers_not_identified",
+            "request_more_information",
+            ["NSP-6.1"],
+            [SENIOR_UNDERWRITER],
+            f"The plan does not identify all of its top drivers: no material assumption has tornado rank "
+            f"{', '.join(str(rank) for rank in missing)} (ranks 1, 2 and 3 are required).",
+            ["APP-material_assumptions"],
+        )
+    drivers = top_drivers(app)
+    evidence = ["APP-material_assumptions", "APP-documents_provided"]
+    unbacked = [item for item in drivers if not is_backed(item, app)]
     for item in unbacked:
+        if item.supporting_document_provided:
+            problem = (
+                "is marked as backed, but the documents provided list no quote, lease or letter of intent, or "
+                "comparable data"
+            )
+        else:
+            problem = "has no supporting document"
         context.find(
             "material_assumption_unsupported",
             "request_more_information",
             ["NSP-6.1"],
             [SENIOR_UNDERWRITER],
-            f"Top driver {item.name} (rank {item.tornado_rank}, status {item.status}) has no supporting document; "
-            "request a quote, a lease or letter of intent, or comparable data with its source.",
-            ["APP-material_assumptions"],
+            f"Top driver {item.name} (rank {item.tornado_rank}, status {item.status}) {problem}; request a quote, a "
+            "lease or letter of intent, or comparable data with its source.",
+            evidence,
         )
-    if not unbacked:
+    if drivers and not unbacked and not missing:
         context.passed(
             "material_assumptions_supported",
             ["NSP-6.1"],
-            f"Every top driver ({', '.join(item.name for item in drivers)}) is backed by a supporting document or "
-            "has VERIFIED status.",
-            ["APP-material_assumptions"],
+            f"Every top driver ({', '.join(item.name for item in drivers)}) is backed by a supporting document in the "
+            "file or has VERIFIED status.",
+            evidence,
         )
 
 
@@ -894,7 +1079,7 @@ def check_startup_collateral(app: StartupCreditApplication, context: RuleContext
             ["APP-requested_amount"],
         )
         return
-    coverage = collateral_coverage(app.collateral, amount)
+    coverage = startup_collateral_coverage(app)
     coverage_id = context.calc(
         "startup_collateral_coverage",
         "Collateral coverage (value x advance rate / loan amount)",

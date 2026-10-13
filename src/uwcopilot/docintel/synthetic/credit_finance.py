@@ -5,14 +5,25 @@ revenue exceeds verified revenue. The generator draws a target DSCR from a mixtu
 1.10 / 1.25 / 1.35 thresholds, 40% in 1.5-3.0, 20% in 0.8-1.1), computes the annual debt service from the
 as-documented debts and the requested loan, and sets EBITDA so the target is met. NOI is kept at or below 70% of
 verified revenue; when the target would need more, the requested amount is reduced (as in agent/synthetic_credit).
+
+Cases in the "comfortable" group are also made stress-safe the way agent/synthetic_credit.target_noi does it: when
+the NBC-4.5 stress tests apply (a line of credit, or more than $100,000), NOI is raised to at least 1.08 x the
+annual debt service plus 20% of verified revenue, and for a variable rate to at least 1.20 x the service at the
+note rate + 2.00 points. Their DSCR is therefore the drawn 1.5-3.0 or higher. The other groups are not adjusted:
+a DSCR near 1.25 cannot pass the revenue stress test (it would need NOI above verified revenue), so they refer.
 """
 
-import math
 import random
 from datetime import date, timedelta
+from typing import Protocol
 
 from uwcopilot.agent.credit_calculations import ADVANCE_RATES, proposed_annual_debt_service
-from uwcopilot.agent.policy_credit import PRODUCT_LIMITS
+from uwcopilot.agent.policy_credit import (
+    PRODUCT_LIMITS,
+    RATE_STRESS_ADD_PCT,
+    REVENUE_STRESS_SHARE,
+    STRESS_AMOUNT_ABOVE,
+)
 from uwcopilot.docintel.synthetic.common import APPRAISERS, cents, round_to, weighted_choice
 from uwcopilot.docintel.synthetic.credit_case import (
     BalanceSheetData,
@@ -23,22 +34,37 @@ from uwcopilot.docintel.synthetic.credit_case import (
 )
 
 MAX_NOI_SHARE_OF_REVENUE = 0.70
+# Safety margins of agent/synthetic_credit.target_noi, so stress-safe cases pass NBC-4.5 with room to spare.
+STRESS_SAFETY_MARGIN = 1.08
+RATE_STRESS_SAFETY_MARGIN = 1.20
 THRESHOLDS = (1.10, 1.25, 1.35)
 COLLATERAL_ABOVE = 250_000
+
+
+class LoanTerms(Protocol):
+    """What the DSCR solve needs from a loan request (credit_build.LoanRequest)."""
+
+    product: str
+    amount: float
+    term_months: int
+    rate_pct: float
+    rate_type: str
+
+
 PNL_NOTES: tuple[str, ...] = (
     "Prepared by management from the company's accounting records.",
     "Amounts are unaudited and stated in US dollars.",
 )
 
 
-def draw_dscr_target(rng: random.Random) -> float:
-    """The target decision DSCR from the documented mixture."""
+def draw_dscr_target(rng: random.Random) -> tuple[float, bool]:
+    """(target decision DSCR, stress_safe): the documented mixture; only the comfortable group is stress-safe."""
     group = weighted_choice(rng, {"near_threshold": 0.40, "comfortable": 0.40, "weak": 0.20})
     if group == "near_threshold":
-        return round(rng.choice(THRESHOLDS) + rng.uniform(-0.05, 0.05), 3)
+        return round(rng.choice(THRESHOLDS) + rng.uniform(-0.05, 0.05), 3), False
     if group == "comfortable":
-        return round(rng.uniform(1.5, 3.0), 3)
-    return round(rng.uniform(0.8, 1.1), 3)
+        return round(rng.uniform(1.5, 3.0), 3), True
+    return round(rng.uniform(0.8, 1.1), 3), False
 
 
 def existing_annual_service(schedule_payment: float, observed_payment: float, mca_payment: float) -> float:
@@ -46,22 +72,47 @@ def existing_annual_service(schedule_payment: float, observed_payment: float, mc
     return 12.0 * (max(schedule_payment, observed_payment) + mca_payment)
 
 
-def solve_amount_and_noi(
-    product: str, amount: float, rate: float, term: int, existing: float, verified: float, dscr: float
-) -> tuple[float, float]:
-    """(requested amount, NOI): NOI = dscr x total service, capped at 70% of verified revenue.
+def stress_applies(product: str, amount: float) -> bool:
+    """NBC-4.5 scope: every line of credit and every request above $100,000."""
+    return product == "line_of_credit" or amount > STRESS_AMOUNT_ABOVE
 
-    When the cap binds the amount is reduced to the largest whole $1,000 that keeps the target; never below the
-    NBC-1.1 product minimum (then NOI is the cap and the DSCR ends up below the target).
+
+def required_noi(
+    request: LoanTerms, amount: float, existing: float, verified: float, dscr: float, stress_safe: bool
+) -> float:
+    """NOI that gives the target DSCR, raised for a stress-safe case so it passes both NBC-4.5 stress tests."""
+    service = existing + proposed_annual_debt_service(request.product, amount, request.rate_pct, request.term_months)
+    noi = dscr * service
+    if stress_safe and stress_applies(request.product, amount):
+        noi = max(noi, STRESS_SAFETY_MARGIN * service + REVENUE_STRESS_SHARE * verified)
+        if request.rate_type == "variable":
+            stressed = existing + proposed_annual_debt_service(
+                request.product, amount, request.rate_pct + RATE_STRESS_ADD_PCT, request.term_months
+            )
+            noi = max(noi, RATE_STRESS_SAFETY_MARGIN * stressed)
+    return noi
+
+
+def solve_amount_and_noi(
+    request: LoanTerms, existing: float, verified: float, dscr: float, stress_safe: bool
+) -> tuple[float, float]:
+    """(requested amount, NOI) with NOI at most 70% of verified revenue.
+
+    When the cap binds, the amount steps down in $1,000 until the required NOI fits (never below the NBC-1.1
+    product minimum; then NOI is the cap and the case ends up below its target).
     """
-    per_dollar = proposed_annual_debt_service(product, 1.0, rate, term)
     cap = MAX_NOI_SHARE_OF_REVENUE * verified
-    noi = dscr * (existing + per_dollar * amount)
-    if noi > cap:
-        affordable = (cap / dscr - existing) / per_dollar
-        minimum = PRODUCT_LIMITS[product][0]
-        amount = max(float(minimum), math.floor(affordable / 1_000) * 1_000.0)
-        noi = min(dscr * (existing + per_dollar * amount), cap)
+    amount = request.amount
+    if required_noi(request, amount, existing, verified, dscr, stress_safe) > cap:
+        minimum = float(PRODUCT_LIMITS[request.product][0])
+        thousands = int(amount // 1_000)
+        amount = minimum
+        while thousands * 1_000.0 > minimum:
+            if required_noi(request, thousands * 1_000.0, existing, verified, dscr, stress_safe) <= cap:
+                amount = thousands * 1_000.0
+                break
+            thousands -= 1
+    noi = min(required_noi(request, amount, existing, verified, dscr, stress_safe), cap)
     return amount, cents(noi)
 
 

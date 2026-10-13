@@ -155,7 +155,7 @@ def login(request: Request, next_path: str | None = Query(default=None, alias="n
     verifier, challenge = new_pkce_pair()
     try:
         target = client.authorization_url(state, challenge)
-    except (OAuthError, OSError) as error:
+    except OAuthError as error:
         logger.warning("sign-in could not start: %s", error)
         return signin_error("provider_error")
     serializer: SignedSerializer = oauth_state_serializer(app_settings(request))
@@ -181,7 +181,7 @@ def callback(
         return signin_error("state_mismatch")
     try:
         identity = client.fetch_identity(client.exchange_code(code, str(saved.get("v", ""))))
-    except (OAuthError, OSError) as failure:
+    except OAuthError as failure:
         logger.warning("sign-in callback failed: %s", failure)
         return signin_error("provider_error")
 

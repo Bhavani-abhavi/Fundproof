@@ -90,5 +90,7 @@ def latest_rate(client: PoliteClient, start: date, series_id: str = PRIME_SERIES
     if not points:
         raise NotAvailable(f"FRED returned no {series_id} observations since {start.isoformat()}")
     observed, value = max(points)
-    record = SOURCE.record(fetched, vintage=f"{series_id} observation of {observed.isoformat()}", geography="United States")
+    record = SOURCE.record(
+        fetched, vintage=f"{series_id} observation of {observed.isoformat()}", geography="United States"
+    )
     return RateObservation(series_id=series_id, observation_date=observed, value_pct=value, source=record)

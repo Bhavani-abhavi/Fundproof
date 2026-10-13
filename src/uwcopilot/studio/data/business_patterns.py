@@ -60,7 +60,9 @@ def parse_county_rows(rows: list[list[Any]]) -> dict[str, int]:
     return counts
 
 
-def fetch_county_counts(client: PoliteClient, state_fips: str, naics: str, year: int = DEFAULT_YEAR) -> EstablishmentCounts:
+def fetch_county_counts(
+    client: PoliteClient, state_fips: str, naics: str, year: int = DEFAULT_YEAR
+) -> EstablishmentCounts:
     """Establishments for one NAICS code in every county of a state. Raises MissingApiKey without CENSUS_API_KEY."""
     key = require_key("CENSUS_API_KEY")
     url, params = county_request(year, state_fips, naics)

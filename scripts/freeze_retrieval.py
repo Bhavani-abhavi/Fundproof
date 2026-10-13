@@ -271,7 +271,7 @@ def run(args: argparse.Namespace) -> tuple[list[FrozenHitsRecord], dict[str, Any
     load_start = load_average()
     questions = load_eval_questions(args.questions)
     mode = args.mode
-    reason = "requested explicitly with --mode"
+    reason = f"requested: --mode {args.mode}"
     records: list[FrozenHitsRecord]
     if mode in (MODE_HYBRID_RERANK, "auto"):
         try:

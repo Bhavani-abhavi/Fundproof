@@ -159,11 +159,6 @@ def add_months(day: date, months: int) -> date:
     return date(total // 12, total % 12 + 1, 1)
 
 
-def month_key(day: date) -> str:
-    """'YYYY-MM' for a date."""
-    return f"{day.year:04d}-{day.month:02d}"
-
-
 def random_day(rng: random.Random, start: date, end: date) -> date:
     """A uniformly drawn date between start and end, inclusive."""
     return start + timedelta(days=rng.randint(0, (end - start).days))
@@ -183,11 +178,6 @@ def money(value: float, symbol: bool = True) -> str:
     sign = "-" if value < 0 else ""
     prefix = "$" if symbol else ""
     return f"{sign}{prefix}{abs(value):,.2f}"
-
-
-def whole_money(value: float) -> str:
-    """'$1,234,000' for amounts printed without cents (limits, premiums on some layouts)."""
-    return f"${value:,.0f}"
 
 
 def percent(value: float, decimals: int = 1) -> str:

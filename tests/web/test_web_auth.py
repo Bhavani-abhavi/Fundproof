@@ -317,6 +317,17 @@ def test_oauth_cancel_and_provider_errors(make_settings) -> None:
         assert response.headers["location"] == "/signin?error=provider_error"
 
 
+def test_oauth_provider_unreachable_is_a_provider_error(make_settings) -> None:
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route to host", request=request)
+
+    settings = make_settings(**SPACE_ENV)
+    app = create_app(settings, oauth_transport=httpx.MockTransport(unreachable))
+    with TestClient(app, base_url="https://astra6-fundproof.hf.space", follow_redirects=False) as test_client:
+        response = test_client.get("/api/auth/login")
+        assert response.status_code == 302 and response.headers["location"] == "/signin?error=provider_error"
+
+
 def test_oauth_never_redirects_off_site(make_settings) -> None:
     with space_client(make_settings, FakeProvider()) as test_client:
         query = start_login(test_client, next_path="https://evil.example/steal")

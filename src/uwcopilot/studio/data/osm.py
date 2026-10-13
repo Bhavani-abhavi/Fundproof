@@ -102,5 +102,7 @@ def pois_near(
     """Every POI with any of the tags within radius_miles of the site, nearest first, with provenance."""
     query = build_query(lat, lon, radius_miles, tags)
     fetched = client.get(OVERPASS_URL, {"data": query})
-    record = SOURCE.record(fetched, vintage="live OpenStreetMap data at the request date", geography=f"{lat:.5f},{lon:.5f}")
+    record = SOURCE.record(
+        fetched, vintage="live OpenStreetMap data at the request date", geography=f"{lat:.5f},{lon:.5f}"
+    )
     return parse_elements(fetched.json(), lat, lon), record

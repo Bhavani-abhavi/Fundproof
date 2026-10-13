@@ -45,9 +45,7 @@ class TractPoint:
 
 def gazetteer_url(year: int = DEFAULT_YEAR) -> str:
     """URL of the national tract Gazetteer zip for a year."""
-    return (
-        f"https://www2.census.gov/geo/docs/maps-data/data/gazetteer/{year}_Gazetteer/{year}_Gaz_tracts_national.zip"
-    )
+    return f"https://www2.census.gov/geo/docs/maps-data/data/gazetteer/{year}_Gazetteer/{year}_Gaz_tracts_national.zip"
 
 
 def read_gazetteer_text(body: bytes) -> str:

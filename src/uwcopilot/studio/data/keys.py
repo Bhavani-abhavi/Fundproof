@@ -8,6 +8,7 @@ Rules (CLAUDE.md rule 4 and the Studio addendum F):
 
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 from uwcopilot.common.paths import ENV_FILE
 from uwcopilot.common.settings import env_reader
@@ -23,14 +24,22 @@ KEY_PURPOSES: dict[str, str] = {
 }
 
 
-def read_key(name: str, env_file: Path | None = ENV_FILE, environ: Mapping[str, str] | None = None) -> str | None:
+EnvFile = Path | None | Literal["default"]
+
+
+def resolve_env_file(env_file: EnvFile) -> Path | None:
+    """'default' means the repo .env file (looked up at call time, so tests can replace ENV_FILE); None skips it."""
+    return ENV_FILE if env_file == "default" else env_file
+
+
+def read_key(name: str, env_file: EnvFile = "default", environ: Mapping[str, str] | None = None) -> str | None:
     """The key's value, or None when it is not set. Only names listed in KEY_PURPOSES can be read."""
     if name not in KEY_PURPOSES:
         raise ValueError(f"unknown Studio key {name!r}; known: {sorted(KEY_PURPOSES)}")
-    return env_reader(env_file, environ)(name)
+    return env_reader(resolve_env_file(env_file), environ)(name)
 
 
-def require_key(name: str, env_file: Path | None = ENV_FILE, environ: Mapping[str, str] | None = None) -> str:
+def require_key(name: str, env_file: EnvFile = "default", environ: Mapping[str, str] | None = None) -> str:
     """The key's value; raises MissingApiKey (naming the variable, never a value) when it is not set."""
     value = read_key(name, env_file, environ)
     if value is None:
@@ -38,7 +47,7 @@ def require_key(name: str, env_file: Path | None = ENV_FILE, environ: Mapping[st
     return value
 
 
-def key_status(env_file: Path | None = ENV_FILE, environ: Mapping[str, str] | None = None) -> dict[str, bool]:
+def key_status(env_file: EnvFile = "default", environ: Mapping[str, str] | None = None) -> dict[str, bool]:
     """{variable: is it set?} for every Studio key. Used by the coverage report; it never returns a value."""
-    read = env_reader(env_file, environ)
+    read = env_reader(resolve_env_file(env_file), environ)
     return {name: read(name) is not None for name in KEY_PURPOSES}

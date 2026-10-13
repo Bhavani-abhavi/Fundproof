@@ -1,0 +1,124 @@
+# Fundproof web app: ONE container that serves the FastAPI API (/api/*) and the Next.js static export (every
+# other path) on port 7860. A Hugging Face Docker Space builds this same file (README.md metadata: sdk docker,
+# app_port 7860). See docs/deployment.md.
+#
+#   docker build -t fundproof:dev .
+#   docker run --rm -p 7860:7860 fundproof:dev          # then open http://127.0.0.1:7860
+#
+# Three stages:
+#   1. frontend     node:22-slim builds frontend/out with `npm ci` + `npm run build` (exact versions from the lockfile)
+#   2. python-deps  python:3.11-slim + uv installs the locked Python dependencies into /app/.venv (no dev group)
+#   3. runtime      python:3.11-slim with only the virtualenv, the code, config/, corpus/ and frontend/out;
+#                   runs as the non-root user "user" (uid 1000, the Hugging Face Spaces convention)
+#
+# Behind a TLS-inspecting proxy (like the machine this file was first built on), pass the proxy's CA bundle as an
+# OPTIONAL build secret; it is only mounted while packages download and never ends up in the image:
+#   docker build --secret id=extra_ca_certs,src=/path/to/ca-bundle.crt -t fundproof:dev .
+# Without that secret (GitHub Actions, Hugging Face) the default certificate stores are used.
+
+# Base images pinned by digest (the tag is kept for readers). Reproducible: the same bytes on every build.
+ARG NODE_IMAGE=node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
+ARG PYTHON_IMAGE=python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+
+# ---------------------------------------------------------------------------------------------------------------
+# Stage 1: the static frontend (frontend/out)
+# ---------------------------------------------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS frontend
+
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    npm_config_update_notifier=false
+
+WORKDIR /build/frontend
+
+# Install first (cached while package.json and package-lock.json do not change), then copy the source.
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN --mount=type=secret,id=extra_ca_certs,required=false \
+    if [ -f /run/secrets/extra_ca_certs ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca_certs; fi \
+    && npm ci --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------------------------------------------------------
+# Stage 2: the locked Python dependencies (/app/.venv)
+# ---------------------------------------------------------------------------------------------------------------
+FROM ${PYTHON_IMAGE} AS python-deps
+
+# Same uv version as the lockfile was written with. Python itself comes from the base image, never downloaded.
+ARG UV_VERSION=0.11.32
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
+
+WORKDIR /app
+
+RUN --mount=type=secret,id=extra_ca_certs,required=false \
+    if [ -f /run/secrets/extra_ca_certs ]; then export PIP_CERT=/run/secrets/extra_ca_certs; fi \
+    && pip install "uv==${UV_VERSION}"
+
+# Dependencies only (cached while pyproject.toml and uv.lock do not change). --locked fails if uv.lock is stale.
+# README.md is copied because pyproject.toml names it as the package readme (any Markdown file works).
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=secret,id=extra_ca_certs,required=false \
+    if [ -f /run/secrets/extra_ca_certs ]; then export SSL_CERT_FILE=/run/secrets/extra_ca_certs; fi \
+    && uv sync --locked --no-dev --no-install-project
+
+# Then the project itself, installed in editable mode: the virtualenv points at /app/src.
+COPY src ./src
+RUN --mount=type=secret,id=extra_ca_certs,required=false \
+    if [ -f /run/secrets/extra_ca_certs ]; then export SSL_CERT_FILE=/run/secrets/extra_ca_certs; fi \
+    && uv sync --locked --no-dev
+
+# ---------------------------------------------------------------------------------------------------------------
+# Stage 3: the runtime image
+# ---------------------------------------------------------------------------------------------------------------
+FROM ${PYTHON_IMAGE} AS runtime
+
+# The commit shown by GET /api/health. The deploy workflow writes the real hash into this default in the bundle
+# it uploads (scripts/deploy_space.py); a plain local build shows null.
+ARG UWC_GIT_SHA=
+
+LABEL org.opencontainers.image.title="Fundproof" \
+      org.opencontainers.image.description="Fundproof prototype (Founder Studio + Lender Desk). Educational planning tool. Not financial, legal or lending advice." \
+      org.opencontainers.image.source="https://github.com/vajja1405/Underwriting-Copilot-"
+
+# UWCOPILOT_ROOT tells uwcopilot.common.paths where config/, corpus/ and data/ are.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/app/.venv/bin:$PATH \
+    UWCOPILOT_ROOT=/app \
+    HOME=/home/user \
+    UWC_GIT_SHA=${UWC_GIT_SHA}
+
+# Hugging Face runs the container as uid 1000; create that user so files and $HOME have an owner.
+RUN useradd --create-home --uid 1000 user
+
+WORKDIR /app
+
+# Code and data files are owned by root and read-only for the app; only data/ (the local store) is writable.
+COPY --from=python-deps /app/.venv /app/.venv
+COPY src ./src
+COPY config ./config
+COPY corpus ./corpus
+COPY --from=frontend /build/frontend/out ./frontend/out
+# Compile the project's own modules now (the dependencies were compiled by uv), because the app cannot write
+# __pycache__ into the root-owned src/ at runtime; this saves compiling them on every start.
+RUN python -m compileall -q /app/src \
+    && mkdir -p /app/data && chown user:user /app/data
+
+USER user
+
+EXPOSE 7860
+
+# Liveness: /api/health touches nothing but settings and is exempt from rate limiting.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7860/api/health', timeout=4).status == 200 else 1)"]
+
+# One worker (the rate limiter and a generated session secret are per process). --no-access-log: the app writes
+# its own redacted access log (uwcopilot.web.access_log); uvicorn's would record raw query strings.
+# --no-proxy-headers: client IPs come only from the app's documented X-Forwarded-For rule (UWC_TRUSTED_PROXY_HOPS).
+CMD ["uvicorn", "uwcopilot.web.app:app", "--host", "0.0.0.0", "--port", "7860", "--no-access-log", "--no-proxy-headers"]

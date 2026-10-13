@@ -277,5 +277,7 @@ def apply_substitutions(application: dict, substitutions: dict[str, Any]) -> dic
 def check_overrides(substitutions: dict[str, Any]) -> dict[str, str]:
     """The "check:<check_id>" levers of a substitution dict, as {check_id: "resolved" | "confirmed"}."""
     return {
-        lever[len(CHECK_PREFIX) :]: str(value) for lever, value in substitutions.items() if lever.startswith(CHECK_PREFIX)
+        lever[len(CHECK_PREFIX) :]: str(value)
+        for lever, value in substitutions.items()
+        if lever.startswith(CHECK_PREFIX)
     }

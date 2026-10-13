@@ -16,7 +16,9 @@
 Conventions used throughout (the same as the Northwind guidelines): "at least" and "minimum" include the stated
 value; "more than" and "above" exclude it; "below" and "less than" exclude it. Dollar amounts are US dollars.
 Ratios are rounded to two decimal places before they are compared with a threshold. Percentages are rounded to
-one decimal place. Experience and time in operation are counted in whole calendar months.
+one decimal place. Ratios and percentages are computed from the dollar amounts as exact decimals and rounded half
+up: an exact half rounds up (14.95% is 15.0%; 1.095 is 1.10). Experience and time in operation are counted in
+whole calendar months.
 
 Why this program exists: NBC-2.1 requires 24 months in operation and NBC-3.2 verifies revenue from 12 months of
 bank statements, so a business that has not opened yet can never meet the Northwind guidelines. This program
@@ -34,7 +36,11 @@ loans only, it replaces:
 - NBC-3.1 required documents, with NSP-1.3;
 - NBC-3.2 to NBC-3.5 revenue verification and account conduct (a startup has no operating history to verify),
   with NSP-3.1 to NSP-6.1;
-- NBC-4.1, NBC-4.2 and NBC-4.5 (historical DSCR and stress tests), with NSP-4.1 and NSP-4.2.
+- NBC-4.1, NBC-4.2 and NBC-4.5 (historical DSCR and stress tests), with NSP-4.1 and NSP-4.2;
+- NBC-4.4 (leverage and stacking, measured on historical NOI and bank statements), with NSP-3.2: every loan or
+  seller note that funds the project is listed in the sources of funds, and its payments are part of the projected
+  annual debt service (NSP-1.2). Business debt that exists before this loan is not captured by the startup
+  application; the credit memo records it as not evaluated.
 
 The following Northwind sections apply unchanged: NBC-1.2 (definitions, including principal), NBC-2.2
 (prohibited industries), NBC-2.3 (restricted industries), NBC-4.3 (compensating factors), NBC-5.1 (collateral
@@ -56,6 +62,8 @@ Its probability of default is recorded as not applicable, never estimated.
   working-capital reserve (NSP-5.1).
 - **Equity injection**: owner cash equity invested in the project, as a percentage of total project cost. Loans,
   seller notes, grants and other sources are not equity.
+- **Other debt**: every loan or seller note, other than the requested startup term loan, that funds part of the
+  project. Each one is listed in the sources of funds with its amount and its monthly payment in year 2.
 - **Projection**: the plan's 36-month financial projection, summarized for each of years 1, 2 and 3 as P10, P50
   and P90 values (the 10th, 50th and 90th percentiles of the plan's simulated or estimated outcomes) of revenue
   and of net operating income.
@@ -63,7 +71,8 @@ Its probability of default is recorded as not applicable, never estimated.
 - **Projected NOI**: projected net operating income: revenue minus operating expenses, before debt service,
   depreciation and owner distributions.
 - **Projected annual debt service**: 12 times the fully amortizing monthly payment of the requested startup term
-  loan at the note rate and term (the NBC-4.1 formula for term loans).
+  loan at the note rate and term (the NBC-4.1 formula for term loans), plus 12 times the monthly payment of every
+  other loan and seller note (other debt).
 - **Projected DSCR**: year-2 base-case (P50) projected NOI divided by projected annual debt service. Year 2 is used
   because year 1 includes the opening ramp-up.
 - **Material assumption**: an input of the projection (for example rent, price, volume, wages or build-out cost),
@@ -74,7 +83,7 @@ Its probability of default is recorded as not applicable, never estimated.
 - **Top drivers**: the material assumptions that move year-2 projected net income the most in the plan's
   sensitivity (tornado) analysis, ranked 1, 2 and 3.
 - **Supporting document**: a document that backs a material assumption: a signed quote, a lease or letter of
-  intent, a contractor bid, or comparable data with its source.
+  intent, a contractor bid, or comparable data with its source. It counts only when it is in the file.
 - **Principal**: as defined in NBC-1.2 (an individual owning 20% or more, or the control person).
 
 ## NSP-1.3 Required documents
@@ -92,7 +101,9 @@ Every startup file must include:
 
 Additional documents: collateral documents (NBC-5.1) when collateral is pledged or the request is above
 $250,000. The evidence that specific rules need is listed in those rules: bank statements showing the equity
-(NSP-3.1), resumes and references (NSP-2.1), and supporting documents for the top drivers (NSP-6.1).
+(NSP-3.1), resumes and references (NSP-2.1), and supporting documents for the top drivers (NSP-6.1). Evidence
+counts only when the document itself is in the file: a statement in the application that the equity is verified,
+that experience is evidenced or that an assumption is backed is not accepted without it.
 
 A file missing any required document is placed in "request more information" status. It is not approved, and it
 is not declined for the missing document alone.
@@ -119,7 +130,8 @@ management of a comparable business.
 3. Lowest principal credit score below 660: referred for a decline-for-review decision (R-NSP-04).
 4. No principal has had a bankruptcy discharge or dismissal within the last 7 years, and no principal has a tax
    lien that is not on an approved repayment plan. Either one is referred for a decline-for-review decision, and
-   no exception may be granted (NBC-7.4).
+   no exception may be granted (NBC-7.4). The same applies to the applicant entity when it was formed before the
+   application.
 
 ## NSP-2.3 Industry
 
@@ -144,7 +156,10 @@ Industry codes of the six Fundproof business types:
 | restaurant_cafe | Restaurant, cafe, coffee or dessert shop | Restricted (NBC-2.3, open less than 36 months) |
 | retail_storefront | Small retail storefront | Eligible |
 
-Every other Northwind industry code keeps its NBC-2.2 or NBC-2.3 category.
+Every other Northwind industry code keeps its NBC-2.2 or NBC-2.3 category. An application may give a more
+specific Northwind industry code than its business type (for example bakery for a restaurant or cafe). When the
+business type and the industry code fall in different categories, the stricter category applies: prohibited
+before restricted, restricted before eligible.
 
 ## NSP-2.4 Legal entity
 
@@ -164,7 +179,9 @@ status until an eligible entity is formed.
 ## NSP-3.2 Sources and uses of funds
 
 - Uses are listed by category: build-out, equipment, real estate, initial inventory, soft costs (permits, design,
-  legal and fees), working-capital reserve and other. Sources are the loan, owner cash equity and other sources.
+  legal and fees), working-capital reserve and other. Sources are the loan, owner cash equity, other debt (each
+  loan or seller note with its monthly payment, NSP-1.2) and other sources that are never repaid (grants, landlord
+  allowances). A loan or seller note may not be listed as an "other" source.
 - Total sources must equal total uses within $1.00, and the loan amount in the sources must equal the requested
   amount within $1.00. Otherwise the file is in "request more information" status until a corrected statement is
   provided.
@@ -193,6 +210,13 @@ operating history:
 
 These are the NBC-4.5 shocks and thresholds. Stress results are recorded in the credit memo even when no referral
 is triggered.
+
+How the revenue stress relates to NSP-4.1: because the lost revenue is removed from NOI dollar for dollar (every
+cost is treated as fixed, the most conservative reading), a plan passes the revenue stress only when year-2
+base-case NOI is at least the annual debt service plus 20% of year-2 base-case revenue. NOI can never be above
+revenue (NSP-1.2), so a plan that passes the revenue stress also has a projected DSCR of about 1.25 or more. In
+practice the revenue stress, not the NSP-4.1 minimum, is the binding test, and a file in the NSP-4.1 exception
+band (1.10 to 1.25) also fails the revenue stress. This is an illustrative program choice.
 
 ## NSP-4.3 Projection assumptions
 
@@ -223,11 +247,13 @@ A smaller reserve is a referral to a Senior Underwriter (R-NSP-08).
 ## NSP-6.1 Material assumptions and supporting documents
 
 - The plan identifies its top drivers (NSP-1.2): the three material assumptions that move year-2 projected net
-  income the most.
-- Each top driver must be backed by a supporting document (NSP-1.2) or have VERIFIED status. Each top driver that
-  is not backed is a request for that document, and the file is in "request more information" status until it
-  is provided.
-- A plan that does not identify its top drivers is in "request more information" status.
+  income the most, ranked 1, 2 and 3 (every material assumption, ranked from 1, when the plan lists fewer than
+  three).
+- Each top driver must be backed by a supporting document in the file (NSP-1.2) or have VERIFIED status. Each top
+  driver that is not backed is a request for that document, and the file is in "request more information" status
+  until it is provided.
+- A plan that does not identify its top drivers, or leaves one of ranks 1, 2 and 3 empty, is in "request more
+  information" status.
 
 ## NSP-7.1 Collateral
 
@@ -271,6 +297,10 @@ and is referred to the Chief Credit Officer (R-NSP-10).
 - Only a Senior Underwriter, or a higher authority under NBC-7.2, may approve a startup term loan. An Underwriter
   may refer a startup file or request more information, but may not approve it.
 - Approval authority by exposure follows NBC-7.2 (a Senior Underwriter up to $500,000 of total exposure).
+- A Senior Underwriter may approve a file that needs at most one policy exception (NBC-7.2). A file that needs two
+  or more exceptions (NSP-2.1, NSP-2.2, NSP-3.1 and NSP-4.1 exception bands), or that is referred to the Chief
+  Credit Officer or the Credit Committee (R-NSP-06 below 1.10, R-NSP-09 below 0.80, R-NSP-10), is decided by that
+  authority, not by a Senior Underwriter.
 - No startup file is approved or declined automatically (NBC-7.1). Software, models and AI assistants have no
   approval or decline authority (NBC-8.3).
 

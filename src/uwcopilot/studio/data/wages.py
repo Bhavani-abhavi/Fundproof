@@ -34,8 +34,15 @@ PRIVATE_OWNERSHIP = "5"
 MIN_NAICS_DIGITS = 5
 ALL_INDUSTRIES = "10"
 # QCEW codes for NAICS sectors that span several two-digit codes (from the QCEW industry-titles file).
-SECTOR_RANGES: dict[str, str] = {"31": "31-33", "32": "31-33", "33": "31-33", "44": "44-45", "45": "44-45",
-                                 "48": "48-49", "49": "48-49"}
+SECTOR_RANGES: dict[str, str] = {
+    "31": "31-33",
+    "32": "31-33",
+    "33": "31-33",
+    "44": "44-45",
+    "45": "44-45",
+    "48": "48-49",
+    "49": "48-49",
+}
 # ASSUMPTION (project author): paid hours per week behind a QCEW weekly wage. QCEW has no hours; replace with BLS
 # OEWS hourly wages for the occupation once BLS_API_KEY is set.
 HOURS_PER_WEEK: dict[str, Any] = {

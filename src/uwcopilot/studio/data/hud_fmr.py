@@ -48,7 +48,9 @@ def parse_fmr(data: dict[str, Any]) -> tuple[str, str, dict[str, float]]:
         raise UpstreamError("www.huduser.gov", "answer has no 'data' object")
     basic = body.get("basicdata")
     if isinstance(basic, list):  # areas with small-area FMRs return one entry per ZIP code; use the area-wide entry
-        basic = next((item for item in basic if item.get("zip_code") in (None, "MSA level")), basic[0] if basic else None)
+        basic = next(
+            (item for item in basic if item.get("zip_code") in (None, "MSA level")), basic[0] if basic else None
+        )
     if not isinstance(basic, dict):
         raise NotAvailable("HUD returned no basic Fair Market Rent data for this area")
     rents = {name: float(basic[name]) for name in BEDROOM_FIELDS if basic.get(name) not in (None, "")}
@@ -66,4 +68,6 @@ def fetch_fmr(client: PoliteClient, entity_id: str, year: int) -> FairMarketRent
     )
     area, data_year, rents = parse_fmr(fetched.json())
     record = SOURCE.record(fetched, vintage=f"FY{data_year or year}", geography=entity_id)
-    return FairMarketRents(entity_id=entity_id, area_name=area, year=data_year or str(year), rents_by_bedrooms=rents, source=record)
+    return FairMarketRents(
+        entity_id=entity_id, area_name=area, year=data_year or str(year), rents_by_bedrooms=rents, source=record
+    )

@@ -224,12 +224,14 @@ class HfOAuthClient:
         self._timeout_s = timeout_s
         self._endpoints: OidcEndpoints | None = None
 
-    def _client(self) -> httpx.Client:
-        """A short-lived HTTP client."""
-        return httpx.Client(transport=self._transport, timeout=self._timeout_s)
-
-    def _get_json(self, response: httpx.Response, what: str) -> dict[str, Any]:
-        """The JSON object of a successful response, or OAuthError."""
+    def _request_json(self, method: str, url: str, what: str, **kwargs: Any) -> dict[str, Any]:
+        """Send one request and return its JSON object. Network failures, HTTP errors and non-JSON answers all
+        become OAuthError, so callers handle a single exception type."""
+        try:
+            with httpx.Client(transport=self._transport, timeout=self._timeout_s) as client:
+                response = client.request(method, url, **kwargs)
+        except httpx.HTTPError as error:
+            raise OAuthError(f"{what} failed: {type(error).__name__}") from error
         if response.status_code != httpx.codes.OK:
             raise OAuthError(f"{what} failed with HTTP {response.status_code}")
         try:
@@ -244,8 +246,7 @@ class HfOAuthClient:
         """The provider endpoints, read once from {OPENID_PROVIDER_URL}/.well-known/openid-configuration."""
         if self._endpoints is None:
             url = f"{self.settings.provider_url}/.well-known/openid-configuration"
-            with self._client() as client:
-                data = self._get_json(client.get(url), "OpenID discovery")
+            data = self._request_json("GET", url, "OpenID discovery")
             values = [data.get(name) for name in ("authorization_endpoint", "token_endpoint", "userinfo_endpoint")]
             if not all(isinstance(value, str) and is_http_url(value) for value in values):
                 raise OAuthError("OpenID discovery is missing the authorization, token or userinfo endpoint")
@@ -275,8 +276,7 @@ class HfOAuthClient:
             "code_verifier": code_verifier,
         }
         auth = (self.settings.client_id, self.settings.client_secret.get_secret_value())
-        with self._client() as client:
-            data = self._get_json(client.post(self.endpoints().token, data=form, auth=auth), "token exchange")
+        data = self._request_json("POST", self.endpoints().token, "token exchange", data=form, auth=auth)
         token = data.get("access_token")
         if not isinstance(token, str) or not token:
             raise OAuthError("token exchange returned no access_token")
@@ -285,8 +285,7 @@ class HfOAuthClient:
     def fetch_identity(self, access_token: str) -> HfIdentity:
         """The user's subject id, username and display name from the userinfo endpoint."""
         headers = {"Authorization": f"Bearer {access_token}"}
-        with self._client() as client:
-            data = self._get_json(client.get(self.endpoints().userinfo, headers=headers), "userinfo")
+        data = self._request_json("GET", self.endpoints().userinfo, "userinfo", headers=headers)
         subject, username = data.get("sub"), data.get("preferred_username")
         if not isinstance(subject, str) or not subject:
             raise OAuthError("userinfo has no subject")

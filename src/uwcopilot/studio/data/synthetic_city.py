@@ -51,8 +51,8 @@ TRUE_DEMAND_NOTES: dict[str, str] = {
     "x income appeal / listing density, capped at 0.95, x noise",
     "laundromat": "machine turns/day = (renter gravity (decay 0.6 mi))^0.9 x decreasing income effect x Huff "
     "competition share x latent appeal x noise",
-    "retail_storefront": "transactions/day = (drive-by + walk-in + their interaction) x inverted-U income effect x Huff "
-    "competition share x latent appeal x noise",
+    "retail_storefront": "transactions/day = (drive-by + walk-in + their interaction) x inverted-U income effect "
+    "x Huff competition share x latent appeal x noise",
 }
 
 
@@ -231,13 +231,17 @@ def generate_roads(rng: np.random.Generator, layout: Layout) -> list[tuple[list[
                 mid = piece[len(piece) // 2]
                 busy = math.exp(-math.hypot(*mid) / (0.35 * half))
                 aadt = (6000 + 30000 * busy) * rng.lognormal(0, 0.35)
-                roads.append((piece, int(aadt), 3 if busy > 0.4 else 4, f"SYN-ART-{'NS' if vertical else 'EW'}{offset:+.0f}"))
+                roads.append(
+                    (piece, int(aadt), 3 if busy > 0.4 else 4, f"SYN-ART-{'NS' if vertical else 'EW'}{offset:+.0f}")
+                )
     # One local street through every tract centroid, so every candidate site has a frontage road.
     for index, (x, y) in enumerate(zip(layout.x, layout.y, strict=True)):
         angle = rng.uniform(0, math.pi)
         dx, dy = 0.2 * math.cos(angle), 0.2 * math.sin(angle)
         aadt = 2500 * rng.lognormal(0, 0.4)
-        roads.append(([(float(x - dx), float(y - dy)), (float(x + dx), float(y + dy))], int(aadt), 5, f"SYN-LOCAL-{index}"))
+        roads.append(
+            ([(float(x - dx), float(y - dy)), (float(x + dx), float(y + dy))], int(aadt), 5, f"SYN-LOCAL-{index}")
+        )
     return roads
 
 
@@ -255,7 +259,9 @@ def sample_points(
     return np.clip(np.column_stack([layout.x[chosen], layout.y[chosen]]) + jitter, -half, half)
 
 
-def tag_plan(values: dict[str, np.ndarray], layout: Layout, near_highway: np.ndarray) -> dict[str, tuple[np.ndarray, int]]:
+def tag_plan(
+    values: dict[str, np.ndarray], layout: Layout, near_highway: np.ndarray
+) -> dict[str, tuple[np.ndarray, int]]:
     """{tag: (placement weights per tract, count)} for every tag the generator knows how to place."""
     n = len(layout.x)
     pop = values["resident_population"]
@@ -322,8 +328,12 @@ def tags_for(tag: str) -> dict[str, str]:
 
 
 def generate_pois(
-    rng: np.random.Generator, layout: Layout, values: dict[str, np.ndarray], near_highway: np.ndarray,
-    required_tags: set[str], origin: tuple[float, float],
+    rng: np.random.Generator,
+    layout: Layout,
+    values: dict[str, np.ndarray],
+    near_highway: np.ndarray,
+    required_tags: set[str],
+    origin: tuple[float, float],
 ) -> list[Poi]:
     """Every POI of the city. A required tag the plan does not know is placed in proportion to population."""
     plan = tag_plan(values, layout, near_highway)
@@ -430,13 +440,21 @@ def compute_true_demand(
     market += 0.006 * gravity(values["daytime_workers"], distances, 0.5) * office_boost
     competitors = ["amenity=restaurant", "amenity=cafe", "amenity=fast_food", "amenity=ice_cream", "shop=bakery"]
     truth["restaurant_cafe"] = (
-        market * (0.6 + 0.8 * logistic(income, 60000, 15000)) * huff(competitors, 0.4, 0.15)
-        * np.exp(0.25 * appeal) * noise(0.2)
+        market
+        * (0.6 + 0.8 * logistic(income, 60000, 15000))
+        * huff(competitors, 0.4, 0.15)
+        * np.exp(0.25 * appeal)
+        * noise(0.2)
     )
     local = gravity(values["households"], distances, 2.0)
     truth["car_wash"] = (
-        0.05 * aadt**0.85 * (1 + 0.4 * np.tanh(local / 20000)) * (0.5 + 0.7 * logistic(income, 45000, 12000))
-        * huff(["amenity=car_wash"], 1.2, 0.9) * np.exp(0.2 * appeal) * noise(0.2)
+        0.05
+        * aadt**0.85
+        * (1 + 0.4 * np.tanh(local / 20000))
+        * (0.5 + 0.7 * logistic(income, 45000, 12000))
+        * huff(["amenity=car_wash"], 1.2, 0.9)
+        * np.exp(0.2 * appeal)
+        * noise(0.2)
     )
     lodging_pull = 0.5 * pull(list(TOURISM_TAGS), 2.0) + 0.3 * pull(["highway=motorway_junction"], 0.8) * (aadt / 50000)
     lodging_pull += 0.2 * pull(["amenity=hospital", "aeroway=aerodrome"], 2.0)
@@ -450,17 +468,23 @@ def compute_true_demand(
     truth["short_term_rental"] = 28 * np.clip(str_occupancy / (1 + 0.01 * density) * noise(0.15), 0.03, 0.95)
     renters = gravity(values["renter_households"], distances, 0.6)
     truth["laundromat"] = (
-        0.08 * renters**0.9 * (1.4 - 0.9 * logistic(income, 50000, 12000))
-        * huff(["shop=laundry", "shop=dry_cleaning"], 0.5, 0.5) * np.exp(0.25 * appeal) * noise(0.2)
+        0.08
+        * renters**0.9
+        * (1.4 - 0.9 * logistic(income, 50000, 12000))
+        * huff(["shop=laundry", "shop=dry_cleaning"], 0.5, 0.5)
+        * np.exp(0.25 * appeal)
+        * noise(0.2)
     )
     drive = 0.002 * aadt
     walk = 0.012 * gravity(values["resident_population"], distances, 0.5)
     walk += 0.008 * gravity(values["daytime_workers"], distances, 0.4)
     income_fit = np.clip(1 - 0.3 * ((income - 60000) / 40000) ** 2, 0.5, 1.1)
     truth["retail_storefront"] = (
-        (drive + walk + 0.3 * np.sqrt(drive * walk)) * income_fit
+        (drive + walk + 0.3 * np.sqrt(drive * walk))
+        * income_fit
         * huff(["shop=convenience", "shop=variety_store", "shop=kiosk", "shop=supermarket"], 0.4, 0.3)
-        * np.exp(0.2 * appeal) * noise(0.2)
+        * np.exp(0.2 * appeal)
+        * noise(0.2)
     )
     return truth
 

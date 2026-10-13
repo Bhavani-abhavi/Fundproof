@@ -68,7 +68,9 @@ def clean_extras(rng: random.Random, eligible: list[float], last4: str, vendors:
     for index, amount in enumerate(eligible):
         if rng.random() < 0.25:
             value = cents(amount * rng.uniform(0.02, 0.08))
-            extras.append(ExtraDeposit(index, f"ONLINE TRANSFER FROM SAVINGS ...{last4}", value, "transfer", "transfer"))
+            extras.append(
+                ExtraDeposit(index, f"ONLINE TRANSFER FROM SAVINGS ...{last4}", value, "transfer", "transfer")
+            )
         if rng.random() < 0.06:
             value = cents(rng.uniform(100, 2_500))
             extras.append(ExtraDeposit(index, f"VENDOR REFUND {rng.choice(vendors)}", value, "refund", "refund"))
@@ -76,12 +78,18 @@ def clean_extras(rng: random.Random, eligible: list[float], last4: str, vendors:
             extras.append(ExtraDeposit(index, "CHARGEBACK REVERSAL", cents(rng.uniform(50, 900)), "refund", "refund"))
         if rng.random() < 0.03:
             value = cents(amount * rng.uniform(0.02, 0.06))
-            extras.append(ExtraDeposit(index, "OWNER CAPITAL CONTRIBUTION", value, "owner_contribution", "owner_contribution"))
+            extras.append(
+                ExtraDeposit(index, "OWNER CAPITAL CONTRIBUTION", value, "owner_contribution", "owner_contribution")
+            )
         if rng.random() < 0.10:
             value = cents(rng.uniform(150, 2_500))
-            extras.append(ExtraDeposit(index, f"DEPOSIT REF {rng.randint(10000, 99999)}", value, "unidentified", "unidentified"))
+            extras.append(
+                ExtraDeposit(index, f"DEPOSIT REF {rng.randint(10000, 99999)}", value, "unidentified", "unidentified")
+            )
     if rng.random() < 0.12:
-        extras.append(ExtraDeposit(rng.randrange(12), "IRS TAX REFUND", cents(rng.uniform(500, 8_000)), "one_time", "one_time"))
+        extras.append(
+            ExtraDeposit(rng.randrange(12), "IRS TAX REFUND", cents(rng.uniform(500, 8_000)), "one_time", "one_time")
+        )
     if rng.random() < 0.06:
         value = cents(rng.uniform(1_000, 15_000))
         extras.append(ExtraDeposit(rng.randrange(12), "INSURANCE CLAIM PAYMENT", value, "one_time", "one_time"))
@@ -115,7 +123,9 @@ def plan_revenue(rng: random.Random, plans: list[ProblemPlan], verified: float, 
     if gap_plan.cause == "benign_unidentified_revenue":
         count = rng.randint(6, 14)
         extras = [
-            ExtraDeposit(rng.randrange(12), f"DEPOSIT REF {rng.randint(10000, 99999)}", amount, "unidentified", "revenue")
+            ExtraDeposit(
+                rng.randrange(12), f"DEPOSIT REF {rng.randint(10000, 99999)}", amount, "unidentified", "revenue"
+            )
             for amount in spread(rng, extra_total, count)
         ]
         return RevenuePlan(extras, verified + extra_total, gap)
@@ -164,7 +174,12 @@ def apply_statement_problems(rng: random.Random, plans: list[ProblemPlan], state
 
 
 def stated_revenue(
-    rng: random.Random, plans: list[ProblemPlan], verified: float, true_revenue: float, gross: float, others: list[float]
+    rng: random.Random,
+    plans: list[ProblemPlan],
+    verified: float,
+    true_revenue: float,
+    gross: float,
+    others: list[float],
 ) -> float:
     """The application's stated revenue: benign band in clean packets; per cause for a revenue gap.
 
@@ -276,11 +291,7 @@ def apply_identity_problem(rng: random.Random, case: CreditCase, plan: ProblemPl
         value = fein_typo(rng, case.fein) if plan.cause == "benign_typo" else synthetic_fein(rng)
         case.doc_feins[doc_type] = value
     else:
-        if plan.cause == "benign_typo":
-            value = typo(rng, case.legal_name)
-        else:
-            lead = rng.choice([word for word in DESCRIPTIVE_WORDS if word not in case.legal_name])
-            value = f"{lead} {' '.join(case.legal_name.split()[1:])}"
+        value = typo(rng, case.legal_name) if plan.cause == "benign_typo" else different_name(rng, case.legal_name)
         case.doc_names[doc_type] = value
     plan.details.update(doc_type=doc_type, value=value)
     return True
@@ -292,9 +303,14 @@ def transposable(owner: Party) -> bool:
     return owner.ownership_pct.is_integer() and len(text) == 2 and text[0] != text[1] and "0" not in text
 
 
-def apply_owner_problem(rng: random.Random, case: CreditCase, plan: ProblemPlan) -> None:
-    """The formation document's members differ from the application's owners table (NBC-6.1)."""
-    members = [Party(**vars(owner)) for owner in case.owners]
+def alter_members(rng: random.Random, plan: ProblemPlan, owners: list[Party]) -> list[Party]:
+    """A copy of the owners as another ownership document shows them, for an owner_mismatch problem.
+
+    benign_typo: one whole-number share has its two digits transposed (35 -> 53); unsupported_unexplained: 6-15
+    points move from one owner to another (60%) or a non-control owner is missing (40%). plan.details records the
+    variant, the owner and the latent option.
+    """
+    members = [Party(**vars(owner)) for owner in owners]
     candidates = [index for index, owner in enumerate(members) if transposable(owner)]
     if plan.cause == "benign_typo" and not candidates:
         plan.cause = "unsupported_unexplained"
@@ -315,7 +331,18 @@ def apply_owner_problem(rng: random.Random, case: CreditCase, plan: ProblemPlan)
         index = rng.randrange(1, len(members))
         plan.details.update(variant="drop", owner_id=members[index].owner_id, latent="unresolved")
         del members[index]
-    case.formation_members = members
+    return members
+
+
+def different_name(rng: random.Random, name: str) -> str:
+    """Another business name with the same suffix (an unexplained name difference)."""
+    lead = rng.choice([word for word in DESCRIPTIVE_WORDS if word not in name])
+    return f"{lead} {' '.join(name.split()[1:])}"
+
+
+def apply_owner_problem(rng: random.Random, case: CreditCase, plan: ProblemPlan) -> None:
+    """The formation document's members differ from the application's owners table (NBC-6.1)."""
+    case.formation_members = alter_members(rng, plan, case.owners)
 
 
 def apply_injection(case: CreditCase, plan: ProblemPlan) -> None:

@@ -159,7 +159,7 @@ class PoliteClient:
         cached = CachedResponse(
             body=response.content,
             sha256=sha256_bytes(response.content),
-            retrieved_at=datetime.now(UTC),
+            retrieved_at=datetime.now(UTC).replace(microsecond=0),
             url=url,
             params=stored_params,
             status_code=response.status_code,

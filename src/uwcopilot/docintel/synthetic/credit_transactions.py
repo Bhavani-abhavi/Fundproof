@@ -20,7 +20,6 @@ from uwcopilot.docintel.synthetic.common import cents, month_end
 from uwcopilot.docintel.synthetic.credit_case import Debt, Statement, Txn
 
 MAX_ROWS = 24
-MIN_ROWS = 10
 NSF_FEE = 35.00
 
 
@@ -180,14 +179,18 @@ def fixed_rows(rng: random.Random, plan: StatementPlan, index: int, maker: RowMa
         settled = sum(row.amount for row in maker.rows if row.description.startswith("CARD SETTLEMENT"))
         if settled > 0:
             fee = cents(settled * rng.uniform(0.018, 0.029))
-            maker.add(month_end(start) - timedelta(days=2), f"CARD PROCESSING FEE {plan.card_processor}", "W", fee, "other")
+            maker.add(
+                month_end(start) - timedelta(days=2), f"CARD PROCESSING FEE {plan.card_processor}", "W", fee, "other"
+            )
     for number in range(plan.nsf_by_month[index]):
         posted = nearest_business_day(start, rng.randint(5, 26))
         label = "NSF FEE" if number % 2 == 0 else "OVERDRAFT FEE"
         maker.add(posted, label, "W", NSF_FEE, "nsf_fee")
 
 
-def expense_rows(rng: random.Random, plan: StatementPlan, index: int, maker: RowMaker, total: float, slots: int) -> None:
+def expense_rows(
+    rng: random.Random, plan: StatementPlan, index: int, maker: RowMaker, total: float, slots: int
+) -> None:
     """Payroll, suppliers and utilities that add up to `total` (the rest of the month's spending)."""
     start = plan.months[index]
     days = business_days(start, month_end(start))
@@ -235,7 +238,9 @@ def build_month(rng: random.Random, plan: StatementPlan, index: int, opening: fl
     rows = sorted(maker.rows, key=lambda row: (row.posted, 0 if row.kind == "D" else 1, row.order))
     for position, row in enumerate(rows):
         row.order = position
-    statement = Statement(month=start, period_start=start, period_end=month_end(start), opening=cents(opening), rows=rows)
+    statement = Statement(
+        month=start, period_start=start, period_end=month_end(start), opening=cents(opening), rows=rows
+    )
     running = statement.opening
     for row in rows:
         running = cents(running + row.amount if row.kind == "D" else running - row.amount)

@@ -178,7 +178,9 @@ def instantiate_options(key: str, params: dict[str, Any]) -> list[ResolutionOpti
     """The template's options with every placeholder filled from params; priors are the documented ones."""
     options = []
     for option in resolution_templates()[key]["options"]:
-        substitutions = {fill_key(lever, params): fill_value(value, params) for lever, value in option["substitutions"].items()}
+        substitutions = {
+            fill_key(lever, params): fill_value(value, params) for lever, value in option["substitutions"].items()
+        }
         options.append(
             ResolutionOption(
                 option_id=option["option_id"],

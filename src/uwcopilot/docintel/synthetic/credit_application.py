@@ -92,10 +92,16 @@ def average_daily_balance(statements: list[Statement]) -> float:
 
 
 def average_monthly(statements: list[Statement], category: str) -> float:
-    """Sum of one withdrawal category over the statements, divided by the number of statements."""
+    """Sum of one withdrawal category over the statements, divided by the number of statements.
+
+    The sum is accumulated statement by statement, in the same order as docintel/deposits.py, so the rounded
+    result is identical to the cent.
+    """
     if not statements:
         return 0.0
-    total = sum(row.amount for item in statements for row in item.rows if row.kind == "W" and row.category == category)
+    total = 0.0
+    for item in statements:
+        total += sum(row.amount for row in item.rows if row.kind == "W" and row.category == category)
     return round(total / len(statements), 2)
 
 
@@ -221,7 +227,9 @@ def application_as_documented(case: CreditCase) -> dict:
         "new_loans_last_90_days": new_loans(present, case.application_date),
         "tax_lien_unresolved": case.tax_lien,
         "largest_customer_revenue_pct": case.largest_customer_pct,
-        "collateral": [{"collateral_type": item.collateral_type, "value": round(item.value, 2)} for item in case.collateral],
+        "collateral": [
+            {"collateral_type": item.collateral_type, "value": round(item.value, 2)} for item in case.collateral
+        ],
         "owners": owners(case),
         "documents_provided": documents_provided(case),
         "notes": case.remarks,

@@ -12,6 +12,10 @@ instruct a reviewer, a system or an AI assistant ("ignore previous instructions"
 
 The patterns were fixed before the synthetic applications were generated and were not tuned on them. They reuse
 the retrieval-side patterns from uwcopilot.rag.prompt and add three that target decisions on an application.
+
+A startup application also has short code fields the applicant writes (the metro id, each assumption's name and
+unit, the simulator version). They appear in the evidence, so they are screened too, after separators and camelCase
+are turned into spaces: "ignore_all_previous_rules" is read as "ignore all previous rules".
 """
 
 import re
@@ -62,9 +66,19 @@ class InjectionHit(BaseModel):
     excerpt: str
 
 
+CODE_SEPARATORS = re.compile(r"[_.:+/\\-]+")
+CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
 def detect(text: str) -> list[str]:
     """Names of the instruction-like patterns found in text (empty when none)."""
     return [item.name for item in ALL_PATTERNS if item.pattern.search(text)]
+
+
+def code_as_words(code: str) -> str:
+    """A code with its separators and camelCase boundaries turned into spaces ("approve_thisLoan" -> "approve this
+    Loan"), so the patterns can see the words."""
+    return CODE_SEPARATORS.sub(" ", CAMEL_CASE_BOUNDARY.sub(" ", code))
 
 
 def free_text_fields(application: AnyApplication) -> dict[str, str]:
@@ -84,16 +98,37 @@ def free_text_fields(application: AnyApplication) -> dict[str, str]:
     for owner in application.owners:
         fields[f"owners.{owner.owner_id}.name"] = owner.name
     if isinstance(application, StartupCreditApplication):
-        for item in application.material_assumptions:
-            fields[f"material_assumptions.{item.name}.source"] = item.source or ""
+        for index, item in enumerate(application.material_assumptions):
+            fields[f"material_assumptions[{index}].source"] = item.source or ""
+    return fields
+
+
+def code_fields(application: AnyApplication) -> dict[str, str]:
+    """Short code fields an applicant writes that reach the evidence (startup applications only).
+
+    Fields are keyed by position, never by their own text, so a crafted name cannot travel inside a field key.
+    """
+    if not isinstance(application, StartupCreditApplication):
+        return {}
+    fields = {"applicant.metro_id": application.applicant.metro_id}
+    for index, item in enumerate(application.material_assumptions):
+        fields[f"material_assumptions[{index}].name"] = item.name
+        fields[f"material_assumptions[{index}].unit"] = item.unit
+    simulation = application.projections.simulation
+    if simulation is not None:
+        fields["projections.simulation.simulator_version"] = simulation.simulator_version
     return fields
 
 
 def screen_application(application: AnyApplication) -> list[InjectionHit]:
-    """Check every free-text field; return one hit per field that contains instruction-like text."""
+    """Check every free-text and code field; return one hit per field that contains instruction-like text."""
     hits = []
     for field, text in free_text_fields(application).items():
         patterns = detect(text)
         if patterns:
             hits.append(InjectionHit(field=field, patterns=patterns, excerpt=text[:MAX_EXCERPT_CHARS]))
+    for field, code in code_fields(application).items():
+        patterns = detect(code_as_words(code))
+        if patterns:
+            hits.append(InjectionHit(field=field, patterns=patterns, excerpt=code[:MAX_EXCERPT_CHARS]))
     return hits

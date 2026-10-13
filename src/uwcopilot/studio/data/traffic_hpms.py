@@ -138,7 +138,9 @@ def nearest_road(
     return NearestRoad(segment=segment, distance_miles=distance, source=record)
 
 
-def county_segment_count(client: PoliteClient, state: str, county_fips: str, year: int = DEFAULT_YEAR) -> tuple[int, SourceRecord]:
+def county_segment_count(
+    client: PoliteClient, state: str, county_fips: str, year: int = DEFAULT_YEAR
+) -> tuple[int, SourceRecord]:
     """How many segments with AADT > 0 the HPMS layer has in one county (used by the coverage report)."""
     fetched = client.get(layer_url(state, year), county_count_request(county_fips))
     data = fetched.json()

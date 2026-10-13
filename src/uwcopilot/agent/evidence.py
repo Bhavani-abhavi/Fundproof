@@ -31,7 +31,7 @@ from uwcopilot.agent.applications import (
     StartupCreditApplication,
 )
 from uwcopilot.agent.credit_calculations import ADVANCE_RATES
-from uwcopilot.agent.injection import InjectionHit, free_text_fields
+from uwcopilot.agent.injection import InjectionHit, code_fields, free_text_fields
 from uwcopilot.agent.insurance_calculations import building_cost_per_sqft, location_tiv
 from uwcopilot.agent.policy import INJECTION_EVIDENCE_ID, PolicyResult, money, pct
 from uwcopilot.agent.programs import load_program_chunks
@@ -280,10 +280,15 @@ def sources_and_uses_fact(app: StartupCreditApplication) -> str:
     uses = app.sources_and_uses.uses
     sources = app.sources_and_uses.sources
     use_text = ", ".join(f"{name} {money(value)}" for name, value in uses.model_dump().items())
+    debt_text = "".join(
+        f", {item.kind} {money(item.amount)} (monthly payment {money(item.monthly_payment)})"
+        for item in sources.other_debt
+    )
     return (
         f"Uses: {use_text}; total {money(uses.total())}. Sources: loan {money(sources.loan)}, owner cash equity "
-        f"{money(sources.owner_cash_equity)}, other {money(sources.other)}; total {money(sources.total())}. Owner "
-        f"cash equity verified by bank statements: {yes_no(app.sources_and_uses.equity_verified_by_statements)}"
+        f"{money(sources.owner_cash_equity)}{debt_text}, other (not repaid) {money(sources.other)}; total "
+        f"{money(sources.total())}. Owner cash equity marked as verified by bank statements: "
+        f"{yes_no(app.sources_and_uses.equity_verified_by_statements)}"
     )
 
 
@@ -390,11 +395,32 @@ def tool_result_text(result: ToolResult) -> str:
 
 def injection_check_text(application: AnyApplication, hits: list[InjectionHit]) -> str:
     """What the injection screen checked and what it found (pattern names only, never the text)."""
-    checked = ", ".join(free_text_fields(application))
+    checked = ", ".join([*free_text_fields(application), *code_fields(application)])
     if not hits:
         return f"Injection screen checked {checked}: no instruction-like text found."
     found = "; ".join(f"{hit.field} ({', '.join(hit.patterns)})" for hit in hits)
     return f"Injection screen checked {checked}: instruction-like text found in {found}."
+
+
+def evidence_id_for_code_field(field: str) -> str | None:
+    """The APP-* fact that shows a startup code field (None for free text, which never enters the evidence)."""
+    if field == "applicant.metro_id":
+        return "APP-metro_id"
+    if field.startswith("material_assumptions[") and field.endswith((".name", ".unit")):
+        return "APP-material_assumptions"
+    if field == "projections.simulation.simulator_version":
+        return "APP-simulation"
+    return None
+
+
+def flagged_facts(hits: list[InjectionHit]) -> dict[str, list[str]]:
+    """{APP-* id: pattern names} for facts that show a code field the injection screen flagged (a prompt warning)."""
+    flags: dict[str, set[str]] = {}
+    for hit in hits:
+        evidence_id = evidence_id_for_code_field(hit.field)
+        if evidence_id is not None:
+            flags.setdefault(evidence_id, set()).update(hit.patterns)
+    return {evidence_id: sorted(names) for evidence_id, names in flags.items()}
 
 
 def application_facts(application: AnyApplication) -> dict[str, tuple[str, str]]:
@@ -450,7 +476,8 @@ def build_evidence(
         )
     for result in tool_results:
         add(result.result_id, "tool_result", f"{result.tool} result", tool_result_text(result))
+    fact_flags = flagged_facts(injection_hits)
     for evidence_id, (title, text) in application_facts(application).items():
-        add(evidence_id, "application_fact", title, text)
+        add(evidence_id, "application_fact", title, text, fact_flags.get(evidence_id))
     add(INJECTION_EVIDENCE_ID, "check", "Injection screen", injection_check_text(application, injection_hits))
     return items

@@ -215,7 +215,9 @@ class PageWriter:
         """Print the footer row and close the page."""
         footer = [
             Segment(SYNTHETIC_FOOTER, LEFT_MARGIN, size=FOOTER_SIZE),
-            Segment(f"Page {self.page_in_doc} of {self.document.pages_label}", self.right, size=FOOTER_SIZE, align="right"),
+            Segment(
+                f"Page {self.page_in_doc} of {self.document.pages_label}", self.right, size=FOOTER_SIZE, align="right"
+            ),
         ]
         self.draw_row(footer, FOOTER_BASELINE)
         if self.canvas is not None:
@@ -291,8 +293,3 @@ def wrap_text(text: str, font: str, size: float, width: float) -> list[str]:
     if current:
         lines.append(current)
     return lines
-
-
-def text_width(text: str, size: float = DEFAULT_SIZE, font: str = "Helvetica") -> float:
-    """Width of a text in points."""
-    return stringWidth(text, font, size)

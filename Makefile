@@ -138,3 +138,130 @@ test-ollama-live:  ## One live smoke call to the local Ollama server (needs `mak
 
 startup-applications:  ## Make the 6 SYNTHETIC startup credit examples (one per business type); eval/startup_applications/
 	uv run python scripts/make_startup_applications.py
+
+# Web app backend (src/uwcopilot/web). Serves /api and the static export in frontend/out, like the container does.
+
+.PHONY: web-serve
+
+web-serve:  ## Serve the web app on http://127.0.0.1:7860 (API + frontend/out; dev login OFF; build the frontend first)
+	uv run uvicorn uwcopilot.web.app:app --host 127.0.0.1 --port 7860 --no-access-log
+
+# Web app frontend (frontend/, Next.js static export). Needs Node 22 + npm. See docs/web/frontend.md.
+
+.PHONY: web-install web-build web-lint web-dev web-test web-screenshots
+
+web-install:  ## Install the exact frontend dependencies from frontend/package-lock.json (npm ci)
+	cd frontend && npm ci
+
+web-build:  ## Build the static frontend into frontend/out (served by the FastAPI app and the container)
+	cd frontend && npm run build
+
+web-lint:  ## Frontend checks: ESLint, TypeScript, WCAG contrast of the design tokens
+	cd frontend && npm run lint && npm run typecheck && npm run check:contrast
+
+web-dev:  ## Local dev: API with DEV LOGIN on :8000 + Next dev server on http://localhost:3000 (proxies /api)
+	@trap 'kill 0' EXIT INT TERM; \
+	UWC_DEV_AUTH=1 uv run uvicorn uwcopilot.web.app:app --host 127.0.0.1 --port 8000 --reload & \
+	cd frontend && UWC_API_DEV_ORIGIN=http://127.0.0.1:8000 npm run dev
+
+web-test:  ## Web checks: backend tests (tests/web) + frontend lint, typecheck and contrast
+	uv run pytest tests/web -q
+	$(MAKE) web-lint
+
+web-screenshots:  ## Screenshots of frontend/out at 1280/375 px, light + dark -> docs/web/screenshots/ (Playwright)
+	PLAYWRIGHT_BROWSERS_PATH=$${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers} uv run --no-project --with playwright==1.56.0 python frontend/scripts/screenshots.py $(if $(LIVE_URL),--live-url $(LIVE_URL),)
+
+# Founder Studio S1: metros, data snapshots and the coverage report. Downloads only public data; needs network.
+
+.PHONY: studio-metros studio-data studio-coverage studio-fixtures studio-test
+
+METRO ?= all
+
+studio-metros:  ## Fill the real metros' CBSA codes and county FIPS from the Census delineation file (+ population rank)
+	uv run python scripts/studio_fetch_delineation.py
+
+studio-data:  ## Download a metro's data snapshot (METRO=<id>|all); exits 1 naming each unreachable host or missing key
+	uv run python -m uwcopilot.studio.data.snapshot --metro $(METRO)
+
+studio-coverage:  ## Data coverage per metro x business type x factor -> results/studio_metro_coverage.json (offline)
+	uv run python scripts/studio_metro_coverage.py
+
+studio-fixtures:  ## Re-record the Studio test fixtures from keyless live hosts (never in CI)
+	uv run python tests/studio/fixtures/record_fixtures.py
+
+studio-test:  ## Studio tests only (offline, recorded fixtures)
+	uv run pytest tests/studio -q
+
+# Phase 2: document intelligence
+
+.PHONY: packets
+
+packets:  ## Make the SYNTHETIC document packets (150 credit + 150 insurance, seed 42) -> data/processed/packets/, eval/packets/manifest.json
+	uv run python scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 --seed 42 --test-credit 30 --test-insurance 30
+
+# Innovation S1b: frozen retrieval, generation eval on a local model, LLM migration gate. The eval targets call the
+# local Ollama server (one job at a time, data/cache/ollama.lock) and are never part of CI.
+
+.PHONY: freeze-retrieval eval-generation eval-generation-repro llm-migration-gate
+
+CONFIG ?= qwen3b_v1_k3
+CHAMPION ?= qwen3b_v1_k3
+CHALLENGER ?= qwen15b_v1_k3
+
+freeze-retrieval:  ## Freeze hybrid_rerank top-5 hits per eval question (needs `make index`) -> eval/generation/frozen_hits.jsonl + manifest
+	uv run python scripts/freeze_retrieval.py
+
+eval-generation:  ## Frozen RAG generation eval for CONFIG=<id> on Ollama (hours) -> results/generation/<id>.jsonl, results/generation_metrics.json
+	uv run python scripts/eval_generation.py --config $(CONFIG)
+
+eval-generation-repro:  ## R5: rerun 20 seeded questions of CONFIG with the cache off; count bit-identical answers
+	uv run python scripts/eval_generation.py --config $(CONFIG) --reproducibility 20
+
+llm-migration-gate:  ## Champion vs challenger non-inferiority (margins: config/release_gate.yaml) -> results/llm_migration_*.json + certificate
+	uv run python scripts/llm_migration_gate.py --champion $(CHAMPION) --challenger $(CHALLENGER)
+
+# Deployment (S11): the container image, its local smoke test, and the Hugging Face Space bundle. See docs/deployment.md.
+# Behind a TLS-inspecting proxy, pass its CA bundle: make docker-build EXTRA_CA_CERTS=/path/to/ca-bundle.crt
+
+.PHONY: docker-build docker-run docker-smoke space-bundle
+
+DOCKER_IMAGE ?= fundproof:dev
+DOCKER_PORT ?= 7860
+DOCKER_SMOKE_NAME ?= fundproof-smoke
+EXTRA_CA_CERTS ?=
+# A literal comma, because a comma inside $(if ...) separates its arguments.
+comma := ,
+
+docker-build:  ## Build the container image DOCKER_IMAGE (frontend export + locked Python deps) from the Dockerfile
+	docker build $(if $(EXTRA_CA_CERTS),--secret id=extra_ca_certs$(comma)src=$(EXTRA_CA_CERTS),) -t $(DOCKER_IMAGE) .
+
+docker-run:  ## Run DOCKER_IMAGE on http://127.0.0.1:7860 (dev login off, data lost when it stops; Ctrl+C stops it)
+	docker run --rm -p 127.0.0.1:$(DOCKER_PORT):7860 $(DOCKER_IMAGE)
+
+docker-smoke:  ## Start DOCKER_IMAGE, smoke-test it, stop it -> results/deployment_metrics.json (runs.local-container)
+	@docker rm -f $(DOCKER_SMOKE_NAME) >/dev/null 2>&1 || true
+	docker run -d --rm --name $(DOCKER_SMOKE_NAME) -p 127.0.0.1:$(DOCKER_PORT):7860 $(DOCKER_IMAGE) && \
+	uv run python scripts/smoke_deploy.py --url http://127.0.0.1:$(DOCKER_PORT) --target local-container \
+		--docker-image $(DOCKER_IMAGE) --container $(DOCKER_SMOKE_NAME); \
+	status=$$?; docker stop $(DOCKER_SMOKE_NAME) >/dev/null 2>&1; exit $$status
+
+space-bundle:  ## Write the Space bundle (what the deploy workflow uploads) to build/space, for inspection
+	rm -rf build/space
+	uv run python scripts/deploy_space.py bundle --out build/space --git-sha $$(git rev-parse HEAD)
+
+# Founder Studio S3: Monte Carlo feasibility (SYNTHETIC worlds, offline)
+
+.PHONY: studio-feasibility
+
+studio-feasibility:  ## Validate the feasibility simulator on SYNTHETIC worlds -> results/studio_feasibility_metrics.json
+	uv run python scripts/eval_studio_feasibility.py
+
+# Founder Studio S2: SiteIQ location scoring (SYNTHETIC cities with known truth, offline)
+
+.PHONY: studio-siteiq studio-siteiq-test
+
+studio-siteiq:  ## Validate SiteIQ on 10 SYNTHETIC cities (+ real-metro sanity table) -> results/studio_siteiq_metrics.json
+	uv run python scripts/eval_studio_siteiq.py
+
+studio-siteiq-test:  ## SiteIQ tests only (offline, fixtures)
+	uv run pytest tests/studio -q -k siteiq

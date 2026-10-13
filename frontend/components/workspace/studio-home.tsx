@@ -55,12 +55,12 @@ function OptionList({ title, items, emptyText }: { title: string; items: OptionL
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">{emptyText}</p>
       ) : (
-        <ul className="flex flex-wrap gap-2">
+        <ul className="flex min-w-0 flex-wrap gap-2">
           {items.map((item) => (
             <li key={item.key}>
-              <Badge variant="outline" className="gap-1.5 py-1">
+              <Badge variant="outline" className="inline-block max-w-full whitespace-normal rounded-md py-1 text-left leading-snug">
                 {item.label}
-                {item.detail ? <span className="text-muted-foreground">· {item.detail}</span> : null}
+                {item.detail ? <span className="whitespace-nowrap text-muted-foreground"> · {item.detail}</span> : null}
               </Badge>
             </li>
           ))}

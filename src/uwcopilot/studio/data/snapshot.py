@@ -28,7 +28,7 @@ from uwcopilot.studio.data.city_open_data import DATASETS as CITY_DATASETS
 from uwcopilot.studio.data.errors import HostUnreachable, MissingApiKey, NotAvailable, StudioDataError, UpstreamError
 from uwcopilot.studio.data.fabric import FactorValue
 from uwcopilot.studio.data.http import PoliteClient
-from uwcopilot.studio.data.keys import key_status
+from uwcopilot.studio.data.keys import key_status, require_key
 from uwcopilot.studio.data.osm import OVERPASS_URL
 from uwcopilot.studio.data.paths import SNAPSHOTS_DIR
 from uwcopilot.studio.data.provenance import SourceRecord
@@ -112,6 +112,7 @@ def acs_step(build: SnapshotBuild, client: PoliteClient) -> Callable[[StepResult
     """ACS 5-year values per tract, county by county (needs CENSUS_API_KEY)."""
 
     def action(step: StepResult) -> None:
+        require_key("CENSUS_API_KEY")  # fail before any request when the key is missing
         labels = census_acs.verify_variables(client)
         for county in build.metro.counties:
             table = census_acs.fetch_tracts(client, county.state_fips, county.county_fips)
@@ -190,8 +191,9 @@ def wage_factor(wage: wages.QcewWage) -> FactorValue:
         unit="USD/hour",
         status="DATA",
         reason=(
-            f"BLS QCEW {wage.year} Q{wage.quarter} private average weekly wage {wage.avg_weekly_wage:.0f} USD for NAICS "
-            f"{wage.used_naics} (requested {wage.requested_naics}) in {wage.area_code}, divided by assumed weekly hours"
+            f"BLS QCEW {wage.year} Q{wage.quarter} private average weekly wage {wage.avg_weekly_wage:.0f} USD "
+            f"for NAICS {wage.used_naics} (requested {wage.requested_naics}) in {wage.area_code}, "
+            "divided by assumed weekly hours"
         ),
         assumptions=[
             f"hours per week {hours['low']:g}-{hours['high']:g} (mode {hours['mode']:g}): ASSUMPTION; {hours['note']}"
@@ -228,7 +230,9 @@ def roads_step(build: SnapshotBuild, client: PoliteClient) -> Callable[[StepResu
         postal_by_fips = state_postal_by_fips(build)
         with_aadt = 0
         for county in build.metro.counties:
-            count, record = traffic_hpms.county_segment_count(client, postal_by_fips[county.state_fips], county.county_fips)
+            count, record = traffic_hpms.county_segment_count(
+                client, postal_by_fips[county.state_fips], county.county_fips
+            )
             step.sources.append(record)
             with_aadt += count > 0
         build.layers["roads"] = {
@@ -280,7 +284,9 @@ def enhancement_steps(build: SnapshotBuild) -> None:
         build.steps.append(step)
 
 
-def build_snapshot(metro: MetroConfig, client: PoliteClient, profiles: dict[str, Profile], today: date) -> SnapshotBuild:
+def build_snapshot(
+    metro: MetroConfig, client: PoliteClient, profiles: dict[str, Profile], today: date
+) -> SnapshotBuild:
     """Run every step for one real metro and return what was collected."""
     if metro.data_label != "PUBLIC":
         raise ValueError(f"{metro.id} is SYNTHETIC; there is nothing to download")

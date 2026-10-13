@@ -32,7 +32,9 @@ def summary(page: PageWriter, statement: Statement) -> dict[str, Cited]:
     """Opening balance, totals and closing balance, as printed."""
     return {
         "opening_balance": page.field("Opening balance", money(statement.shown_opening), statement.shown_opening),
-        "total_deposits": page.field("Total deposits", money(statement.shown_total_deposits), statement.shown_total_deposits),
+        "total_deposits": page.field(
+            "Total deposits", money(statement.shown_total_deposits), statement.shown_total_deposits
+        ),
         "total_withdrawals": page.field(
             "Total withdrawals", money(statement.shown_total_withdrawals), statement.shown_total_withdrawals
         ),

@@ -16,6 +16,9 @@ validate_decision() refuses, with reasons, a decision that the guidelines do not
   $500,000 / $15,000,000 (NBC-7.2, HM-9.2); above that the file must be referred;
 - a startup file (SYNTHETIC startup program) can only be approved by a senior_underwriter, up to $500,000 of
   requested amount (NSP-9.1); an underwriter may still refer it or request more information;
+- a startup file referred to the Chief Credit Officer or the Credit Committee, or one that needs two or more policy
+  exceptions, cannot be approved at this checkpoint (NSP-9.1, NBC-7.2): its roles are underwriter and senior
+  underwriter only, so the file must be referred. (The credit line does not enforce this yet.)
 - approving against a refer or decline-for-review recommendation is a policy exception: senior_underwriter only;
 - an approval or decline that differs from the recommendation is an override and needs an override_reason from the
   approved list (NBC-8.2, HM-10.2). Referring or requesting information is never an override.
@@ -29,7 +32,16 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from uwcopilot.agent.applications import AnyApplication, CreditApplication, StartupCreditApplication
 from uwcopilot.agent.insurance_calculations import schedule_tiv
 from uwcopilot.agent.policy import PolicyResult, blocking_functions_in, money
-from uwcopilot.agent.vocab import FAKE_LLM_STAMP, MATCHING_ACTION, REVIEWER_ACTIONS, ReviewerAction, ReviewerRole
+from uwcopilot.agent.policy_startup import EXCEPTION_RULES
+from uwcopilot.agent.vocab import (
+    CHIEF_CREDIT_OFFICER,
+    CREDIT_COMMITTEE,
+    FAKE_LLM_STAMP,
+    MATCHING_ACTION,
+    REVIEWER_ACTIONS,
+    ReviewerAction,
+    ReviewerRole,
+)
 
 # Approval limits by role: credit and startup credit use the requested exposure (NBC-7.2, NSP-9.1), insurance the
 # account TIV (HM-9.2). An underwriter cannot approve any startup file (NSP-9.1), so that limit is zero.
@@ -40,6 +52,11 @@ APPROVAL_LIMITS: dict[str, dict[str, float]] = {
 }
 # Lines whose files only a senior_underwriter may approve (NSP-9.1).
 SENIOR_APPROVAL_ONLY_LINES = frozenset({"startup_credit"})
+# NSP-9.1 / NBC-7.2: on these lines, a file referred to one of these authorities is decided by that authority, and a
+# Senior Underwriter may approve at most this many policy exceptions.
+HIGHER_AUTHORITY_LINES = frozenset({"startup_credit"})
+HIGHER_AUTHORITIES: tuple[str, ...] = (CHIEF_CREDIT_OFFICER, CREDIT_COMMITTEE)
+SENIOR_MAX_EXCEPTIONS = 1
 APPROVED_OVERRIDE_REASONS: tuple[str, ...] = (
     "documented_compensating_factor",
     "data_error_in_model_input",
@@ -76,6 +93,28 @@ def authority_exposure(application: AnyApplication) -> float:
     if isinstance(application, StartupCreditApplication):
         return application.loan_request.amount
     return schedule_tiv(application)
+
+
+def higher_authority_reasons(policy: PolicyResult) -> list[str]:
+    """Why no checkpoint role may approve this file (NSP-9.1, NBC-7.2); empty when a senior underwriter may.
+
+    Only lines in HIGHER_AUTHORITY_LINES are checked. The file can still be referred or sent back for information.
+    """
+    if policy.line not in HIGHER_AUTHORITY_LINES:
+        return []
+    reasons = []
+    reserved = [target for target in policy.referral_targets if target in HIGHER_AUTHORITIES]
+    if reserved:
+        reasons.append(
+            f"approval of this file is reserved to the {' and the '.join(reserved)} (NSP-9.1, NBC-7.2); refer it"
+        )
+    exceptions = sorted({finding.rule for finding in policy.findings if finding.rule in EXCEPTION_RULES})
+    if len(exceptions) > SENIOR_MAX_EXCEPTIONS:
+        reasons.append(
+            f"this file needs {len(exceptions)} policy exceptions ({', '.join(exceptions)}); a senior_underwriter may "
+            "approve only one (NBC-7.2); refer it to the Chief Credit Officer or the Credit Committee"
+        )
+    return reasons
 
 
 def is_override(action: str, recommendation: str) -> bool:
@@ -116,6 +155,7 @@ def validate_decision(
             errors.append("cannot approve a file that is missing required documents or data")
         if policy.line in SENIOR_APPROVAL_ONLY_LINES and not senior:
             errors.append("only a senior_underwriter may approve a startup file (NSP-9.1)")
+        errors.extend(higher_authority_reasons(policy))
         limit = APPROVAL_LIMITS[policy.line][decision.role]
         exposure = authority_exposure(application)
         if exposure > limit:
@@ -139,6 +179,8 @@ def allowed_actions(policy: PolicyResult) -> list[str]:
         if action in ("approve", "decline") and policy.blocking_open:
             continue
         if action == "approve" and policy.recommendation == "request_more_information":
+            continue
+        if action == "approve" and higher_authority_reasons(policy):
             continue
         actions.append(action)
     return actions

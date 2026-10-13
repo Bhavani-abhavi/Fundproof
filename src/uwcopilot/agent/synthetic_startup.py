@@ -220,6 +220,14 @@ STARTUP_SCENARIOS: tuple[StartupSpec, ...] = (
 )
 
 
+def scenario_spec(scenario: str) -> StartupSpec:
+    """The spec of one named scenario (tests start from "clean_car_wash" and change one thing)."""
+    for spec in STARTUP_SCENARIOS:
+        if spec.scenario == scenario:
+            return spec
+    raise KeyError(scenario)
+
+
 def annual_service(amount: float, rate_pct: float, term_months: int) -> float:
     """Projected annual debt service of a startup term loan (the NBC-4.1 term loan formula)."""
     return proposed_annual_debt_service("term_loan", amount, rate_pct, term_months)

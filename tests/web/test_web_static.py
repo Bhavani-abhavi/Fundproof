@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -36,7 +37,7 @@ def export_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def site(make_settings, export_dir: Path) -> TestClient:
+def site(make_settings, export_dir: Path) -> Iterator[TestClient]:
     """A client for an app whose static folder is the fake export."""
     with TestClient(create_app(make_settings(UWC_STATIC_DIR=str(export_dir)))) as test_client:
         yield test_client

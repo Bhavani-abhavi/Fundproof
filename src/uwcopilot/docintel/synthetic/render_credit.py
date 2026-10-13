@@ -39,7 +39,6 @@ from uwcopilot.docintel.synthetic.render_helpers import (
 
 FORM_DATE_STYLE = "mdy"
 REMARKS_WIDTH = 500.0
-OWNER_COLUMNS = (("Name", 54.0), ("Type", 205.0), ("Title", 275.0), ("Ownership %", 435.0), ("Control", 445.0))
 FORMATION_TITLES = {
     "llc": "ARTICLES OF ORGANIZATION - SUMMARY (SYNTHETIC)",
     "corporation": "ARTICLES OF INCORPORATION - SUMMARY (SYNTHETIC)",
@@ -194,7 +193,9 @@ def render_balance_sheet(writer: DocumentWriter, case: CreditCase) -> BalanceShe
 
 def render_debt_schedule(writer: DocumentWriter, case: CreditCase) -> DebtSchedule:
     """Schedule of existing business debt (merchant cash advances are not listed)."""
-    page, name, _ = statement_title(writer, case, "debt_schedule", "Schedule of Business Debt as of", case.application_date)
+    page, name, _ = statement_title(
+        writer, case, "debt_schedule", "Schedule of Business Debt as of", case.application_date
+    )
     note(page, "SYNTHETIC schedule prepared by the applicant")
     page.skip(6)
     result = DebtSchedule(doc_id=writer.doc_id, business_name=name)
@@ -274,7 +275,9 @@ def render_credit_report(writer: DocumentWriter, case: CreditCase) -> CreditRepo
     field_date(page, "Report date", case.application_date, "iso")
     page.field("Requested for", case.legal_name, case.legal_name)
     page.skip(6)
-    table_header(page, [("Name", 54.0, "left"), ("Credit score", 330.0, "right"), ("Bankruptcy in last 7 years", 360.0, "left")])
+    table_header(
+        page, [("Name", 54.0, "left"), ("Credit score", 330.0, "right"), ("Bankruptcy in last 7 years", 360.0, "left")]
+    )
     result = CreditReport(doc_id=writer.doc_id)
     for owner in case.principals():
         printed, positions = table_row(
@@ -314,7 +317,11 @@ def render_formation(writer: DocumentWriter, case: CreditCase) -> FormationDocum
     table_header(page, [("Name", 54.0, "left"), ("Ownership %", 400.0, "right")])
     for member in case.formation_members:
         printed, positions = table_row(
-            page, [Cell("name", member.name, 54.0, max_width=250.0), Cell("pct", percent(member.ownership_pct), 400.0, "right")]
+            page,
+            [
+                Cell("name", member.name, 54.0, max_width=250.0),
+                Cell("pct", percent(member.ownership_pct), 400.0, "right"),
+            ],
         )
         result.members.append(
             ExtractedOwner(
@@ -326,7 +333,10 @@ def render_formation(writer: DocumentWriter, case: CreditCase) -> FormationDocum
     control = next((index for index, member in enumerate(case.formation_members) if member.is_control_person), None)
     if control is not None:
         printed = page.row(
-            [Segment("Control person", LEFT_MARGIN, font="Helvetica-Bold"), Segment(case.formation_members[control].name, 230.0)]
+            [
+                Segment("Control person", LEFT_MARGIN, font="Helvetica-Bold"),
+                Segment(case.formation_members[control].name, 230.0),
+            ]
         )
         result.members[control].is_control_person = page.cite(printed, 1, True)
     return result

@@ -106,7 +106,9 @@ def credit_documents(case: CreditCase) -> list[DocumentSpec]:
             )
         )
     specs.append(
-        DocumentSpec("credit_report", "credit_report", "Credit report", lambda writer: render_credit_report(writer, case))
+        DocumentSpec(
+            "credit_report", "credit_report", "Credit report", lambda writer: render_credit_report(writer, case)
+        )
     )
     if "formation_document" not in case.missing_documents:
         specs.append(

@@ -406,6 +406,7 @@ STARTUP_DOCUMENTS: tuple[str, ...] = (
     "owner_resumes_and_references",
     "lease_or_letter_of_intent",
     "contractor_or_equipment_quotes",
+    "comparable_data_with_source",
 )
 STARTUP_SCHEMA_VERSION = "startup-application-v1"
 STARTUP_APPLICATION_ID_PATTERN = r"^APP-S-\d{3,8}$"
@@ -431,6 +432,19 @@ class StartupApplicant(Strict):
     planned_opening_date: date  # planned, or actual when the business has already opened (NSP-1.2)
     metro_id: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
     site_description: str = Field(default="", max_length=500)
+
+    @model_validator(mode="after")
+    def industry_fits_business_type(self) -> "StartupApplicant":
+        """NSP-2.3: the code of one Fundproof business type is used only for that business type.
+
+        A more specific Northwind code (for example bakery or cannabis_retail) is accepted for any business type;
+        the policy then applies the stricter category of the two codes.
+        """
+        if self.industry in STARTUP_INDUSTRIES and self.industry != self.business_type:
+            raise ValueError(
+                f"industry code {self.industry} belongs to business type {self.industry}, not {self.business_type}"
+            )
+        return self
 
 
 class StartupOwner(Owner):
@@ -469,16 +483,36 @@ class UsesOfFunds(Strict):
         return round(sum(self.model_dump().values()), 2)
 
 
+class OtherDebtSource(Strict):
+    """A loan or seller note that funds part of the project besides the startup loan (NSP-1.2, NSP-3.2).
+
+    monthly_payment is the payment due in year 2; it is added to the projected annual debt service.
+    """
+
+    kind: Literal["seller_note", "other_loan"]
+    amount: float = Field(gt=0)
+    monthly_payment: float = Field(ge=0)
+
+
 class SourcesOfFunds(Strict):
-    """Sources of funds in USD (NSP-3.2). Only owner_cash_equity counts as equity (NSP-1.2)."""
+    """Sources of funds in USD (NSP-3.2). Only owner_cash_equity counts as equity (NSP-1.2).
+
+    other_debt lists every other loan or seller note, with its payment; other is only for sources that are never
+    repaid and are not owner cash (grants, landlord allowances).
+    """
 
     loan: float = Field(ge=0)
     owner_cash_equity: float = Field(ge=0)
+    other_debt: list[OtherDebtSource] = Field(default_factory=list, max_length=10)
     other: float = Field(default=0, ge=0)
+
+    def other_debt_total(self) -> float:
+        """Total of the other loans and seller notes, rounded to cents."""
+        return round(sum(item.amount for item in self.other_debt), 2)
 
     def total(self) -> float:
         """Total sources, rounded to cents."""
-        return round(self.loan + self.owner_cash_equity + self.other, 2)
+        return round(self.loan + self.owner_cash_equity + self.other_debt_total() + self.other, 2)
 
 
 class SourcesAndUses(Strict):
@@ -514,6 +548,20 @@ class ProjectionYear(Strict):
             raise ValueError(f"year {self.year}: revenue P10 <= P50 <= P90 does not hold")
         if not self.noi_p10 <= self.noi_p50 <= self.noi_p90:
             raise ValueError(f"year {self.year}: NOI P10 <= P50 <= P90 does not hold")
+        return self
+
+    @model_validator(mode="after")
+    def noi_not_above_revenue(self) -> "ProjectionYear":
+        """NSP-1.2: NOI is revenue minus operating expenses, so it can never be above revenue.
+
+        This holds percentile by percentile too: when NOI is at most revenue on every simulated path, each NOI
+        percentile is at most the same revenue percentile.
+        """
+        for label in ("p10", "p50", "p90"):
+            noi = getattr(self, f"noi_{label}")
+            revenue = getattr(self, f"revenue_{label}")
+            if noi > revenue:
+                raise ValueError(f"year {self.year}: NOI {label.upper()} is above revenue {label.upper()}")
         return self
 
 

@@ -36,8 +36,25 @@ GEOCODER = "https://geocoding.geo.census.gov/geocoder/geographies"
 HPMS_TX = "https://geo.dot.gov/server/rest/services/Hosted/HPMS_FULL_TX_2024/FeatureServer/0/query"
 QCEW_AREA = "https://data.bls.gov/cew/data/api/2025/2/area/C2642.csv"
 QCEW_TITLES = "https://data.bls.gov/cew/doc/titles/area/area_titles.csv"
-QCEW_KEEP_INDUSTRIES = {"10", "722511", "72251", "722513", "722515", "811192", "81119", "8111", "811", "812310",
-                        "81231", "721110", "72111", "445131", "44513", "4451", "445"}
+QCEW_KEEP_INDUSTRIES = {
+    "10",
+    "722511",
+    "72251",
+    "722513",
+    "722515",
+    "811192",
+    "81119",
+    "8111",
+    "811",
+    "812310",
+    "81231",
+    "721110",
+    "72111",
+    "445131",
+    "44513",
+    "4451",
+    "445",
+}
 GAZETTEER = "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_tracts_national.zip"
 DELINEATION = (
     "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/"
@@ -64,7 +81,9 @@ def fetch(client: httpx.Client, url: str, params: dict[str, str] | None = None) 
     return response
 
 
-def save(name: str, url: str, params: dict[str, str], response: httpx.Response, body: str, excerpt_of: str = "") -> None:
+def save(
+    name: str, url: str, params: dict[str, str], response: httpx.Response, body: str, excerpt_of: str = ""
+) -> None:
     """Write one fixture file. excerpt_of describes how the body was trimmed (empty for a full body)."""
     origin = f"recorded from the live API on {today()} by {SCRIPT}"
     record = {
@@ -97,13 +116,24 @@ def csv_excerpt(text: str, keep: Callable[[dict[str, str]], bool]) -> str:
 
 def record_geocoder(client: httpx.Client) -> None:
     """Address lookup and coordinates lookup."""
-    params = {"address": PUBLIC_ADDRESS, "benchmark": "Public_AR_Current", "vintage": "Current_Current",
-              "layers": "Census Tracts", "format": "json"}
+    params = {
+        "address": PUBLIC_ADDRESS,
+        "benchmark": "Public_AR_Current",
+        "vintage": "Current_Current",
+        "layers": "Census Tracts",
+        "format": "json",
+    }
     response = fetch(client, f"{GEOCODER}/onelineaddress", params)
     save("geocoder/onelineaddress.json", f"{GEOCODER}/onelineaddress", params, response, response.text)
     match = response.json()["result"]["addressMatches"][0]["coordinates"]
-    params = {"x": f"{match['x']:.6f}", "y": f"{match['y']:.6f}", "benchmark": "Public_AR_Current",
-              "vintage": "Current_Current", "layers": "Census Tracts", "format": "json"}
+    params = {
+        "x": f"{match['x']:.6f}",
+        "y": f"{match['y']:.6f}",
+        "benchmark": "Public_AR_Current",
+        "vintage": "Current_Current",
+        "layers": "Census Tracts",
+        "format": "json",
+    }
     response = fetch(client, f"{GEOCODER}/coordinates", params)
     save("geocoder/coordinates.json", f"{GEOCODER}/coordinates", params, response, response.text)
 
@@ -118,11 +148,21 @@ def record_fred(client: httpx.Client) -> None:
 
 def record_hpms(client: httpx.Client) -> None:
     """Segments near the public building, and a county count (Harris County, TX)."""
-    params = {"geometry": "-95.369483,29.760724", "geometryType": "esriGeometryPoint", "inSR": "4326",
-              "spatialRel": "esriSpatialRelIntersects", "distance": "161", "units": "esriSRUnit_Meter",
-              "where": "aadt > 0", "outFields": "route_id,routename,aadt,f_system,data_year,begin_point,end_point",
-              "returnGeometry": "true", "outSR": "4326", "geometryPrecision": "6", "resultRecordCount": "50",
-              "f": "geojson"}
+    params = {
+        "geometry": "-95.369483,29.760724",
+        "geometryType": "esriGeometryPoint",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+        "distance": "161",
+        "units": "esriSRUnit_Meter",
+        "where": "aadt > 0",
+        "outFields": "route_id,routename,aadt,f_system,data_year,begin_point,end_point",
+        "returnGeometry": "true",
+        "outSR": "4326",
+        "geometryPrecision": "6",
+        "resultRecordCount": "50",
+        "f": "geojson",
+    }
     response = fetch(client, HPMS_TX, params)
     save("hpms/segments_near.json", HPMS_TX, params, response, response.text)
     params = {"where": "county_id = 201 AND aadt > 0", "returnCountOnly": "true", "f": "json"}
@@ -142,8 +182,14 @@ def record_qcew(client: httpx.Client) -> None:
     """Excerpts of the Houston-area QCEW slice and of the area titles file."""
     response = fetch(client, QCEW_AREA)
     body = csv_excerpt(response.text, lambda row: row["industry_code"] in QCEW_KEEP_INDUSTRIES)
-    save("qcew/area_C2642_2025q2.json", QCEW_AREA, {}, response, body,
-         f"rows kept: industry_code in {sorted(QCEW_KEEP_INDUSTRIES)} (all ownerships)")
+    save(
+        "qcew/area_C2642_2025q2.json",
+        QCEW_AREA,
+        {},
+        response,
+        body,
+        f"rows kept: industry_code in {sorted(QCEW_KEEP_INDUSTRIES)} (all ownerships)",
+    )
     response = fetch(client, QCEW_TITLES)
     wanted = {"C" + code[:4] for code in FIVE_CBSAS}
     body = csv_excerpt(response.text, lambda row: row["area_fips"] in wanted)
@@ -157,8 +203,14 @@ def record_gazetteer(client: httpx.Client) -> None:
         text = archive.read(archive.namelist()[0]).decode("utf-8")
     lines = text.splitlines()
     kept = [lines[0]] + [line for line in lines[1:] if line.split("\t")[1].startswith("48201")][:6]
-    save("census_geography/gazetteer_excerpt.json", GAZETTEER, {}, response, "\n".join(kept) + "\n",
-         "the unzipped text file's header and the first 6 rows with GEOID starting 48201")
+    save(
+        "census_geography/gazetteer_excerpt.json",
+        GAZETTEER,
+        {},
+        response,
+        "\n".join(kept) + "\n",
+        "the unzipped text file's header and the first 6 rows with GEOID starting 48201",
+    )
 
 
 def record_delineation(client: httpx.Client) -> None:
@@ -174,8 +226,14 @@ def record_delineation(client: httpx.Client) -> None:
     header_index = next(i for i, row in enumerate(rows) if "CBSA Code" in row)
     kept = rows[: header_index + 1] + [row for row in rows[header_index + 1 :] if row and row[0] in FIVE_CBSAS]
     kept += [row for row in rows if row and row[0].startswith(("Note:", "Source:"))]
-    save("delineation/list1_2023_rows.json", DELINEATION, {}, response, json.dumps(kept, indent=1),
-         "the sheet as rows of strings: title rows, header, the rows of the five v1 CBSAs and the note rows")
+    save(
+        "delineation/list1_2023_rows.json",
+        DELINEATION,
+        {},
+        response,
+        json.dumps(kept, indent=1),
+        "the sheet as rows of strings: title rows, header, the rows of the five v1 CBSAs and the note rows",
+    )
 
 
 def record_pep(client: httpx.Client) -> None:
@@ -187,39 +245,75 @@ def record_pep(client: httpx.Client) -> None:
     totals.sort(key=lambda row: int(row["POPESTIMATE2025"]), reverse=True)
     keep = {row["CBSA"] for row in totals[:10]}
     body = csv_excerpt(text, lambda row: row["CBSA"] in keep and (not row["STCOU"] or row["CBSA"] == "26420"))
-    save("ranking/cbsa_est2025_excerpt.json", PEP, {}, response, body,
-         "rows kept: every row of the ten largest metropolitan CBSAs except county rows (Houston county rows kept)")
+    save(
+        "ranking/cbsa_est2025_excerpt.json",
+        PEP,
+        {},
+        response,
+        body,
+        "rows kept: every row of the ten largest metropolitan CBSAs except county rows (Houston county rows kept)",
+    )
 
 
 def record_city_categories(client: httpx.Client) -> None:
     """Aggregated license counts by category (no names, no addresses) and dataset metadata excerpts."""
     chicago = "https://data.cityofchicago.org/resource/r5kz-chrr.json"
-    params = {"$select": "license_description, business_activity, count(*) AS n",
-              "$where": "upper(business_activity) like '%LAUNDROMAT%' OR upper(business_activity) like '%CAR WASH%' "
-              "OR license_description in ('Hotel', 'Shared Housing Unit Operator', 'Vacation Rental')",
-              "$group": "license_description, business_activity", "$order": "n DESC", "$limit": "25"}
+    params = {
+        "$select": "license_description, business_activity, count(*) AS n",
+        "$where": "upper(business_activity) like '%LAUNDROMAT%' OR upper(business_activity) like '%CAR WASH%' "
+        "OR license_description in ('Hotel', 'Shared Housing Unit Operator', 'Vacation Rental')",
+        "$group": "license_description, business_activity",
+        "$order": "n DESC",
+        "$limit": "25",
+    }
     response = fetch(client, chicago, params)
     save("city_open_data/chicago_categories.json", chicago, params, response, response.text)
     nyc = "https://data.cityofnewyork.us/resource/w7w3-xahh.json"
-    params = {"$select": "business_category, count(*) AS n", "$group": "business_category", "$order": "n DESC",
-              "$limit": "40"}
+    params = {
+        "$select": "business_category, count(*) AS n",
+        "$group": "business_category",
+        "$order": "n DESC",
+        "$limit": "40",
+    }
     response = fetch(client, nyc, params)
     save("city_open_data/nyc_categories.json", nyc, params, response, response.text)
-    for name, url in (("chicago", "https://data.cityofchicago.org/api/views/r5kz-chrr.json"),
-                      ("nyc", "https://data.cityofnewyork.us/api/views/w7w3-xahh.json")):
+    for name, url in (
+        ("chicago", "https://data.cityofchicago.org/api/views/r5kz-chrr.json"),
+        ("nyc", "https://data.cityofnewyork.us/api/views/w7w3-xahh.json"),
+    ):
         response = fetch(client, url)
         data = response.json()
-        excerpt = {"id": data.get("id"), "name": data.get("name"), "attribution": data.get("attribution"),
-                   "license": data.get("license"), "columns": [column["fieldName"] for column in data["columns"]]}
-        save(f"city_open_data/{name}_metadata.json", url, {}, response, json.dumps(excerpt, indent=1),
-             "fields kept: id, name, attribution, license, column field names")
+        excerpt = {
+            "id": data.get("id"),
+            "name": data.get("name"),
+            "attribution": data.get("attribution"),
+            "license": data.get("license"),
+            "columns": [column["fieldName"] for column in data["columns"]],
+        }
+        save(
+            f"city_open_data/{name}_metadata.json",
+            url,
+            {},
+            response,
+            json.dumps(excerpt, indent=1),
+            "fields kept: id, name, attribution, license, column field names",
+        )
 
 
 def main() -> int:
     """Record every keyless fixture."""
     with httpx.Client(timeout=TIMEOUT_S, follow_redirects=True, trust_env=True) as client:
-        for step in (record_geocoder, record_fred, record_hpms, record_acs_variables, record_qcew, record_gazetteer,
-                     record_delineation, record_pep, record_city_categories):
+        for step in (
+            record_geocoder,
+            record_fred,
+            record_hpms,
+            record_acs_variables,
+            record_qcew,
+            record_gazetteer,
+            record_delineation,
+            record_pep,
+            record_city_categories,
+        ):
             step(client)
     return 0
 

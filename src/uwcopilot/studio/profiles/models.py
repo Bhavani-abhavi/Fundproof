@@ -124,7 +124,8 @@ class Curve(StrictModel):
 class NaicsCode(StrictModel):
     """A NAICS industry code used to query Business Patterns and BLS wages.
 
-    verified stays false until the code is checked against the Census NAICS reference (blocked in this build).
+    verified stays false until the code is checked against the Census NAICS reference (www.census.gov/naics
+    answered 403 from the build environment on 2026-10-12).
     """
 
     code: str

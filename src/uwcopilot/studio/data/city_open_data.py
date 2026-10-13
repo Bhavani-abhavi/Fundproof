@@ -6,7 +6,8 @@ Two documented datasets are wired (dataset ids and category values were checked 
 - NYC Department of Consumer and Worker Protection "Issued Licenses" (data.cityofnewyork.us, dataset w7w3-xahh).
 Other cities raise NotAvailable until a documented dataset is recorded.
 
-Only the category fields, the coordinates and the expiration date are requested ($select): no business or owner names, so
+Only the category fields, the coordinates and the expiration date are requested ($select): no business or owner
+names, so
 no personal data is pulled. A profile with no matching license category in a city raises NotAvailable.
 """
 
@@ -54,7 +55,9 @@ DATASETS: dict[str, CityLicenseDataset] = {
                 ("business_activity", "Operation of an Automatic Car Wash"),
             ),
             "laundromat": (("business_activity", "Operation of a Laundromat - Self Service"),),
-            "retail_storefront": (("business_activity", "Retail Sales of General Merchandise and Non-Perishable Food"),),
+            "retail_storefront": (
+                ("business_activity", "Retail Sales of General Merchandise and Non-Perishable Food"),
+            ),
             "motel": (("license_description", "Hotel"),),
             "short_term_rental": (
                 ("license_description", "Shared Housing Unit Operator"),
@@ -114,7 +117,9 @@ def licenses_request(
     }
 
 
-def parse_licenses(rows: list[dict[str, Any]], dataset: CityLicenseDataset, lat: float, lon: float, radius_miles: float) -> list[Poi]:
+def parse_licenses(
+    rows: list[dict[str, Any]], dataset: CityLicenseDataset, lat: float, lon: float, radius_miles: float
+) -> list[Poi]:
     """POIs within radius_miles of the site (the box query is trimmed to a circle), nearest first."""
     if not isinstance(rows, list):
         raise UpstreamError(dataset.adapter, "expected a JSON list of rows")
@@ -127,7 +132,9 @@ def parse_licenses(rows: list[dict[str, Any]], dataset: CityLicenseDataset, lat:
         distance = haversine_miles(lat, lon, poi_lat, poi_lon)
         if distance <= radius_miles:
             tags = {name: str(row.get(name, "")) for name in dataset.category_fields}
-            pois.append(Poi(poi_id=f"{dataset.adapter}/{index}", lat=poi_lat, lon=poi_lon, tags=tags, distance_miles=distance))
+            pois.append(
+                Poi(poi_id=f"{dataset.adapter}/{index}", lat=poi_lat, lon=poi_lon, tags=tags, distance_miles=distance)
+            )
     pois.sort(key=lambda poi: poi.distance_miles or 0.0)
     return pois
 
@@ -139,5 +146,7 @@ def licensed_businesses_near(
     dataset = dataset_for(adapter)
     params = licenses_request(dataset, profile_id, lat, lon, radius_miles, today)
     fetched = client.get(dataset.resource_url, params)
-    record = dataset.source.record(fetched, vintage=f"live portal data at {fetched.retrieved_at.date()}", geography=f"{lat:.5f},{lon:.5f}")
+    record = dataset.source.record(
+        fetched, vintage=f"live portal data at {fetched.retrieved_at.date()}", geography=f"{lat:.5f},{lon:.5f}"
+    )
     return parse_licenses(fetched.json(), dataset, lat, lon, radius_miles), record

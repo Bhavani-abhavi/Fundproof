@@ -22,9 +22,14 @@ STARTUP_PROGRAM_DOC_ID = "northwind_startup_program"
 
 
 def load_program_chunks(programs_dir: Path = PROGRAMS_DIR) -> list[Chunk]:
-    """Every section of every *.md program document (sorted by file name). An absent folder gives []."""
+    """Every section of every *.md program document (sorted by file name; README.md is not a program).
+
+    An absent folder gives [].
+    """
     chunks: list[Chunk] = []
     for path in sorted(programs_dir.glob("*.md")):
+        if path.name == "README.md":
+            continue
         source_file = f"corpus/programs/{path.name}"
         chunks.extend(parse_guideline_markdown(path.read_text(encoding="utf-8"), source_file))
     return chunks

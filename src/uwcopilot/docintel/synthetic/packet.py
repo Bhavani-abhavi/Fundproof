@@ -25,7 +25,7 @@ from uwcopilot.docintel.synthetic.credit_application import application_as_docum
 from uwcopilot.docintel.synthetic.credit_generate import generate_credit_case
 from uwcopilot.docintel.synthetic.credit_packet import SCAN_RATES as CREDIT_SCAN_RATES
 from uwcopilot.docintel.synthetic.credit_packet import credit_documents, loan_packet, mark_scanned
-from uwcopilot.docintel.synthetic.credit_records import credit_record, injection_doc_key
+from uwcopilot.docintel.synthetic.credit_records import credit_record
 from uwcopilot.docintel.synthetic.documents import (
     RenderedDocument,
     doc_id_map,
@@ -36,10 +36,11 @@ from uwcopilot.docintel.synthetic.documents import (
     render_documents,
     sha256_hex,
 )
+from uwcopilot.docintel.synthetic.insurance_application import insurance_as_documented
 from uwcopilot.docintel.synthetic.insurance_generate import generate_insurance_case
 from uwcopilot.docintel.synthetic.insurance_packet import SCAN_RATES as INSURANCE_SCAN_RATES
 from uwcopilot.docintel.synthetic.insurance_packet import insurance_documents, insurance_submission
-from uwcopilot.docintel.synthetic.insurance_records import insurance_as_documented, insurance_record
+from uwcopilot.docintel.synthetic.insurance_records import insurance_record
 from uwcopilot.docintel.synthetic.problems import ProblemPlan, choose_problems, make_problem, scenario_name
 from uwcopilot.docintel.truth import FieldTruth, InjectedProblem, InjectionTruth, PacketTruth
 
@@ -66,7 +67,9 @@ def field_truths(oracle: PacketExtraction) -> list[FieldTruth]:
     for item in flatten_fields(oracle):
         if item.doc_id is None or item.page is None:
             raise ValueError(f"oracle field {item.field} has no citation")
-        rows.append(FieldTruth(field=item.field, key=item.key, value=item.value, doc_id=item.doc_id, page_number=item.page))
+        rows.append(
+            FieldTruth(field=item.field, key=item.key, value=item.value, doc_id=item.doc_id, page_number=item.page)
+        )
     return rows
 
 
@@ -168,11 +171,10 @@ def build_insurance_packet(packet_id: str, seed: int, split: str, draw: bool) ->
     return assemble(packet_id, "insurance", split, seed, plans, rendered, oracle, problems, application, draw)
 
 
-def build_packet(packet_id: str, line: str, seed: int, split: str, draw: bool = True) -> tuple[bytes | None, PacketTruth]:
+def build_packet(
+    packet_id: str, line: str, seed: int, split: str, draw: bool = True
+) -> tuple[bytes | None, PacketTruth]:
     """One SYNTHETIC packet: (PDF bytes or None when draw=False, PacketTruth). seed is the packet's own seed."""
     if line == "credit":
         return build_credit_packet(packet_id, seed, split, draw)
     return build_insurance_packet(packet_id, seed, split, draw)
-
-
-__all__ = ["build_packet", "injection_doc_key"]

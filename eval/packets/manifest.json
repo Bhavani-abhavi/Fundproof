@@ -1,0 +1,3845 @@
+{
+ "data_label": "SYNTHETIC",
+ "generator_version": "synthetic-packets-v1",
+ "seed": 42,
+ "created_with": "scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 --seed 42 --test-credit 30 --test-insurance 30",
+ "json_only": false,
+ "counts": {
+  "credit": 150,
+  "insurance": 150,
+  "test_credit": 30,
+  "test_insurance": 30
+ },
+ "packets": [
+  {
+   "packet_id": "PKT-C-001",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "0a5730ffa838bb6790475adfaeba9cc09208feb0b506711571f664a2aed8579a",
+   "truth_sha256": "975926fd5018ade91c6dd00b4a9ddb2961f59459a7bf4d35319bc7d20f4dd038",
+   "n_pages": 22,
+   "n_scanned_pages": 5,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-002",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "92db00e2a974af572389cc93bca76eb2f2ce0be37b24ef23ac3e6c97def67f62",
+   "truth_sha256": "88c8385714e5b575c6f58d0171b6cbd5d45d5750a86b52aea4011e7ebf5b5ce0",
+   "n_pages": 21,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-003",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "a93477e0810c7b9c9b145e166f609d8f0ae2d99ff857b8279e1122f52a8666b7",
+   "truth_sha256": "2a1f71647f4ac1d89791460b56a81a267af831334b2130a031e03a801b3aaf6d",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-004",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "957893392bf28978eb6af1cd11c9e4b3fd24d76f389a7df47ee81f4dd59729a9",
+   "truth_sha256": "c23818dbadfbd89493ecb700cfd3e3c301612bd1664de601eb6b489d3dbdfe0b",
+   "n_pages": 22,
+   "n_scanned_pages": 5,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-005",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+prompt_injection",
+   "pdf_sha256": "cdb9065a17fc7e36135921f95dda7a12de4a948c05f18950c92489e34e9af740",
+   "truth_sha256": "4f93550bd03b8d3bfaa6c123d80cf2bd4780b91a9db8eed529184485c5f8ec06",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-006",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "01efe8d275241257f066b07f09daa8b48712bdf521e0625e7a1530e504539334",
+   "truth_sha256": "265c90c4e62cbf92a921d37258880fb69f6b0524a93192ecdc9e2f9ebadc61b6",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-007",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document+prompt_injection",
+   "pdf_sha256": "df6ada80dbe88ecba7ed71a4625c8be7b07406d4013b9aa58a9dc28b7f56fe60",
+   "truth_sha256": "e8701b3c7f9c47448b0e5b966f11239251b1f47ffb8c0da97b71337e350d7d61",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "missing_document",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-008",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "0a4b9997ffb5d64e1a03c2d0a2599b3606579290fc6a880ac826ec79870acb74",
+   "truth_sha256": "3a3bca7725b3c8296eb054b864d9e0c7369a2d603fd511e1fa50a00e5867fca3",
+   "n_pages": 24,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-009",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "prompt_injection",
+   "pdf_sha256": "40915f7b00e1990c5b96e3024a98a3c1387f502ed977f5c02b03810735eabea0",
+   "truth_sha256": "94d25215af95bd2a8534fa5568ae2c5ad61a268db1ed5776c8e8d7f986c22e54",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-010",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "9ae8f57fc2f986df94eb061f2c2e8404c19e5dd8c91bb23058c696c07d9a6a8a",
+   "truth_sha256": "b5210d278ece793bb542ceed73c05c70de1128a042c8916c380346b310502f17",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-011",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "9dd816a479a5eccb65bcf40ea9722194eafed979171d92c57a5522b3515cb2c6",
+   "truth_sha256": "a209269f770259f4f14b444d501f5353d5b1b41be2e6cd7f97009d4dce7cb660",
+   "n_pages": 23,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-012",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "9d6ed89239dd6ef390b7c5ae53422e7b0fae25d8e15ad93a1fb51475ac26634b",
+   "truth_sha256": "d8d16e4670741bc79e3ce881ee913569977f685d8f723780d29fecf097b511c3",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-013",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+prompt_injection",
+   "pdf_sha256": "9e5a09bff744839bcbd3aada6dd96a5bb72092d15e3cec92f077dd74c86d02ba",
+   "truth_sha256": "98bfd5d08c079d071d17fcde69e2c216fc6b051fd94b5dee942d58212f2abe9c",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-014",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "4e1ca528cd8e0854def198119ad4f8728e70ea004dc142f3d0587a201103190c",
+   "truth_sha256": "2cf158c70c1d54c899ecaff87e15f03b0373e275640f9c286b2109c5c330c7ea",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-015",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+debt_payment_mismatch",
+   "pdf_sha256": "8f60196488917c179bc7308279beb73b6d0c8de4524d7cbe0f7095b652e38f6d",
+   "truth_sha256": "cb0550df47c37c6edc955eb5b2b902607453698bd3e5bfb6452eabf3e7de881f",
+   "n_pages": 22,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "revenue_gap",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-016",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+owner_mismatch",
+   "pdf_sha256": "11bbed219c76b1a0eedec1b5b3a8c70cc2c1c9f70658ee1df04940a415dd81bb",
+   "truth_sha256": "83f78bd717b366cb4e5633ed43a25247ab9888a3cb607eb8ddb1db2e38822867",
+   "n_pages": 24,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-017",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "30041cfac54d758063cf5744e1b81512a3abb913fe320c73797e30837ca49475",
+   "truth_sha256": "55160ef3f22f6e5c9f9e36dccf43c3cfe2bd73a9a95849288b517951de3aedf1",
+   "n_pages": 24,
+   "n_scanned_pages": 7,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-018",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "5cc4b507f1b5e8e49f8cb5a6d5444d59885b7b4a739d20007c5733eb38a6ad30",
+   "truth_sha256": "d69da005ea46432c0e8163887eb8d944fb8fb6bd71dff05480355d7e761953ed",
+   "n_pages": 21,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-019",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "74fbd5598ade13d76c489d27fd9a2ab8a4088e1883b112e9573411be2954c175",
+   "truth_sha256": "72ef1dd127b3aa3ffb6ba241f031ec8cfebc2079c8936f5c67427f9bd3f612ed",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-020",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c1e6d89713613e8da0ce3094d357790cd377528a75472bc81c4d81593144cef4",
+   "truth_sha256": "0a4f02885cfe7d1d355eac53545d7176c5e165e9ca6dec960051db04347182d6",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-021",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "prompt_injection",
+   "pdf_sha256": "2c444ae3863f2aeb889ec1e2de5dd997e75e08e926a6359baec803a7a4bda0a0",
+   "truth_sha256": "b8887fb1d71e5028e6992df9f138e59d65216ac8b696bb381f9337bac2e7b1d9",
+   "n_pages": 23,
+   "n_scanned_pages": 7,
+   "problem_types": [
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-022",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "b89f6a5f3d890630626433f5e7b63fdec8162aa251e58ab8116f7eec3824a789",
+   "truth_sha256": "109182a40eeaa08d74754ef790756b8d7d263705560f358dcbaebd9b42aafd32",
+   "n_pages": 21,
+   "n_scanned_pages": 6,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-023",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "c5357b20645d3fc2174701894019c78b3b74f352ac53f0f7ffc3acaac4286cb5",
+   "truth_sha256": "e16a1901a10864b3fcd965cb441950937ae246807bae12bd67ab74193d35a7ca",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-024",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document+prompt_injection",
+   "pdf_sha256": "a88f18662c90749e33a6d5a15dcc6bf1949b1b6e2f70ac42c46b091dd096ba84",
+   "truth_sha256": "32dae95633f7cedaa74e3a16b484034ea268d7db808c132c5456598628b7cbeb",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_document",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-025",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch+prompt_injection",
+   "pdf_sha256": "e501d1bcf02262afa02f46476b69dcefa09e6069fddc554473441342b48f0fca",
+   "truth_sha256": "1e7ddac762c205294a17e694bf3cfded9e26acc3e94c6e866e7d7cc963e7241c",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "debt_payment_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-026",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "bf1e99156f6e7327cfbab90bbd79de7351bc31d461715af9a84400a865fb11a9",
+   "truth_sha256": "c4c74ee0024a74cf95c39e0b55fd5530e89b43e01b74230141bf76845fac3467",
+   "n_pages": 23,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-027",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c31b45fdc774cf8b4a171a5f6a99ec4c2bf77b13a913ee50cc9ad63a84160671",
+   "truth_sha256": "091568fa54f7c56b94fb97cd6d3e03e9d92152c91c7761a102630b6cd32a548f",
+   "n_pages": 22,
+   "n_scanned_pages": 6,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-028",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "7ab58227853a3c0be57e5419d4812c31e030f8cefc38d2081b3681aa389cf697",
+   "truth_sha256": "9dea6f6ca35e4df919435dd41581cf8804cc70614084925ad67e7d92fd03932a",
+   "n_pages": 24,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-029",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "4dc1a5bee10a05528a95d87c9224baf4f79cfb8052db1efbb889b1c292da4cf1",
+   "truth_sha256": "eed32de2a3970cb46c9a971cd783e9ffd67f80dcc127cc83a73418e34a1a999d",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-030",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "a7f21fabfb68b6db4cce5e97c1ec41263c84e87789a908841c344f0da4662024",
+   "truth_sha256": "d9fd7e70202b3d8e65d77cd7fe968c9e1aef95478d9d0c124f413332cb635e4c",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-031",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "006d297822100c9d646fbb0e7e7257e8a6d7384638793105677f6129e93cf740",
+   "truth_sha256": "737be8e92e39517caf9b89a9b3e84a59048f4afaf99a9c267e51d026e9846d84",
+   "n_pages": 24,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-032",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "5eafa41575fb30ab2ff91607451eb85aa40177aab7d1fc16da496e83ddb26522",
+   "truth_sha256": "9411d8bcf3fc5473cb8fae3bffae40fd277d35d7d47b0099a59e8cc67d15612b",
+   "n_pages": 20,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-033",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+missing_document",
+   "pdf_sha256": "da9b62ec4ebb348adee80c5ddcc93692818eeaf9344bef17092574b7168d6941",
+   "truth_sha256": "9ce57f2bbca55bc5d12bab89efaeecbf91b9dda8918b64c87de9c497f8a5f0d6",
+   "n_pages": 21,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "revenue_gap",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-034",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "c9e9152095e6d33b7490e87b541d4bb0d15cd6ab1b3f72db7120b633bf2ca8d6",
+   "truth_sha256": "923eb540a825cefaeed255c37d1c29f0e8c616f585742f9653dec320b8974d15",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-035",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "c395192f243d27467c2d55ce4e84808f3aee112d76bf32505f3bb164049824f9",
+   "truth_sha256": "41d579e63410b05332ac68016d8a22f6c7bfd21480eea8f7f1ecdb77f1069195",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-036",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "5c18fcc914ee86969d1274e990be3039552d4fc7aef3a42246520c413570f8da",
+   "truth_sha256": "ef24eb772a4e05d6698b7e56e55970dd1b5218863fb98ce5be15f7deaeee4fd2",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-037",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "53aea30b26e4b0f3bbb4f8879777d25965a273bd1eb06af849d014aa65bbbf1b",
+   "truth_sha256": "dd02aa88198d0d86dc226815df2315b8f200dbfedd806934bdee4568b2caa841",
+   "n_pages": 24,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-038",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "balance_discontinuity",
+   "pdf_sha256": "46583127ac6528fd713209554075de200a9620c2a84cb5117c28d16333dca927",
+   "truth_sha256": "31a4d6b01abcec8554419fe9f17cf0b151bfcf5f8cf68e66092ecfacd75140d4",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "balance_discontinuity"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-039",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+fein_mismatch",
+   "pdf_sha256": "e405e2967f2509c4d678935fae46884179f8cd3670888221fa7914cfcd1698da",
+   "truth_sha256": "2089a73ad2912f65a05d6ef768606e49c0973cf9953fce6ed9491f758c4d0237",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap",
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-040",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "c155f1b92bb15c0b80bc44579a9c38ab1bf1ad251b0dab6105f7d1eac66da597",
+   "truth_sha256": "a3ccf4e008670ca3cae7d56d4cf99ac7b52a9eebd1008722330f47f0f7a7422a",
+   "n_pages": 24,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-041",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "f5b966d7f9c64b0d7a366fa6e0a2c9c16824d8d38c8bd0a83214c106d30c7c40",
+   "truth_sha256": "a8e77b4dafa55089863cf121e20a400a002a9c23fa451d97eecd08ed45a87418",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-042",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+fein_mismatch",
+   "pdf_sha256": "ab6feb2bb8ea3ef663b886f75d9c907e31c83a419fb39155d55ad1d4b2331fbe",
+   "truth_sha256": "009267dcda720675bec0688a0152276e89f3695344a73415c15e4de27b3c190b",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap",
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-043",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "d3f1a31d724fabbd675a0b2e10ebae69d32e09d37a96a2893ac2ca3c0faf16ff",
+   "truth_sha256": "cf201e8ce593eba8996578289b70db6e3ac479dc3609f98328701c6343a4536c",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-044",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_document",
+   "pdf_sha256": "066588b2b7db9be453663cd677d7b076d30a2a603ec509d58ca05e7d2da5d29e",
+   "truth_sha256": "578c629e20e9428d943b47c5eefcd2f98dc6c6db4d87abac65b661bf96f44bc3",
+   "n_pages": 22,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-045",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+name_mismatch+owner_mismatch",
+   "pdf_sha256": "0b882550a65d5b0b3fa43d8c41f276a9aee78fb6aeb01d7a9f29542ad6171c8a",
+   "truth_sha256": "473244230cbc7c709a6b118016d7d9eaf103244fe87e4f811b13cca2ade1f80f",
+   "n_pages": 23,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "name_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-046",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+prompt_injection",
+   "pdf_sha256": "0747f98840d554982f33c8ed396522b3d402976f08735ed9a262d263e1a6b64f",
+   "truth_sha256": "1bd3d9d96cc914cee09f1d607cba7721dbc5e67657e66151d7b43879a1eb81ea",
+   "n_pages": 22,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "missing_pages",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-047",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "288268b23d8c8e8e44eb5c5cdcfad08e52e39e8fad7057a133c443a28f288ff2",
+   "truth_sha256": "66521f0c867fb6878b70a64f4b2caf0897082f066e9d8e8575570f5ef6d39ed4",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-048",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap+owner_mismatch",
+   "pdf_sha256": "dcde16f819ac7e2820debf3810abe06a881caafa5f5405dbe6c3af6b3526d883",
+   "truth_sha256": "8af9fcf960893b2cb346b4050e058f7b3fac52040bd6c18adfddbfe43ed5b62a",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-049",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "55d3ac8e2531b7f990fd66c997a999312830d6c359c4d8ae14ad63ea4c32a3bb",
+   "truth_sha256": "779f34152248dca9d6fa483b376b06114479eb9a7b775d6fcbd87e097ee1cbdf",
+   "n_pages": 23,
+   "n_scanned_pages": 6,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-050",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "name_mismatch+debt_payment_mismatch",
+   "pdf_sha256": "969dbdb0f6933fff10abf9ebc4a977af0f74bae5f1a2eca17b045aec191af1bf",
+   "truth_sha256": "0857094558ca2b5e34660e53a0adcb3cbb0b4c1b1790f8e7ea1234cc76e02baa",
+   "n_pages": 24,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "name_mismatch",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-051",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "owner_mismatch",
+   "pdf_sha256": "4dca343173ecc457a3ab6258c1db53af666517b0e76f2f0a2064ba2b1822ea90",
+   "truth_sha256": "b46f643c1816eebe958dc7601f35aac67fc2b67b1d8a9a1964fa136371adb78f",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-052",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "46adc52b9c84eca8da297d4382c178bf11b72e4d81388a878dca33e1b223b488",
+   "truth_sha256": "84b2124affe3b3f9b736808347570b1fd4aee1b77982ab79d431909d3ce671b3",
+   "n_pages": 23,
+   "n_scanned_pages": 6,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-053",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "cd1536699bbebdc5669830642b2a9406aae5d6af7448289a8cf26317ccc863e1",
+   "truth_sha256": "cc12a1c95e413c1676d36d1ebdf98b17bffee427e27a1010847f8214be34a982",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-054",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "bd53b8e11ecc689a85836bd9e77e1234ad7562396e6dcb34136302107657172f",
+   "truth_sha256": "9b35b796ec1895144f6e3eacb46eba5c979aa103aa9ff7545e4764d7b1378d38",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-055",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "1ca9cf4cb43f536ad0a6b7f7f91742ff2d35e5721e7aba3e4b26b73372656a16",
+   "truth_sha256": "8bf17d92e1eb70225238bc91439188eb5e68bedd42ed271b7560037f775efb0f",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-056",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+prompt_injection",
+   "pdf_sha256": "b190fcd9a54546026b5f5d1cf70ef67a0fd98e81754dc841f00e5ad149d26e98",
+   "truth_sha256": "f6664c807b8bf7ae13accefcb6070d6df7acc0a486448a1cf8cd8d4625a656d6",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-057",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "f3bb298a1ab4270895f3ff31b748c7345a5c3a648d184ac26a568870fb9bdf42",
+   "truth_sha256": "7e7cf00f324dd99246afaf2486894976e4feac83d4e8629bc700bf440f35f34c",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-058",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "9c86467a1b346322b5c4b366c17ef612e0a5b806ae40297a69d813e79c4289cb",
+   "truth_sha256": "ac9c236c85a838748d8ca8a596a0598cf40095a7520fc66999a5db07143823dd",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-059",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "d2218e9f8ce9c3668cf4fe234bf6f647c2e2c24b6a99c4e3374dc36b9ff52037",
+   "truth_sha256": "38aa31d9024769f8e0b27f933b6c51b6467384e54b8aef92e9f5f06bb5e9c031",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-060",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap+missing_document",
+   "pdf_sha256": "f8f04e1d90d5e3419d13559b7d3620af41821aacce7b5390cfaa7c4d0ecbe7d6",
+   "truth_sha256": "818b782c6df9d1a35a37e1afcbc42f6b75dbdc0228e593b3fe369581638b3102",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-061",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "fein_mismatch",
+   "pdf_sha256": "06f871eb4fe37935588648ce1a57a6f327a27d36b7430e036794e0ae82db0af3",
+   "truth_sha256": "5d132a8be60b73ae023e6ee80cab8948aacb1aeb9fb75f63fd431a26dcf4fc7c",
+   "n_pages": 23,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-062",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+debt_payment_mismatch+prompt_injection",
+   "pdf_sha256": "2ddfa573196adf18bd14a16013d7ce3ea855f35ced30223cf7ed09df75b0a2b3",
+   "truth_sha256": "97d391dc080417d474dbfd9ab5b4d4d4a0daa450f9879495c5b64366829c2f27",
+   "n_pages": 21,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_pages",
+    "debt_payment_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-063",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap+debt_payment_mismatch",
+   "pdf_sha256": "9b23f4cf1c73d6320382ad92c73839af8febcb7aa8348b86d6e3ba6963ae0e64",
+   "truth_sha256": "55cd3237c9501977510b9efd561b4e1383fb60a370e60acb5f37e2f172e3da5a",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-064",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "e3dda84a39e68782648de0a97a268dd5a3e7d1686639bfc1d9c22dc662f0fcac",
+   "truth_sha256": "2e6b48c90f86cb8074b29df58ab0251767bf96776180e78d0e275f22f048528c",
+   "n_pages": 21,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-065",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+fein_mismatch",
+   "pdf_sha256": "5926c1dfc0affcf7487b7d426c3e57ee7061f590b4ab2c7362203e47f9af0b51",
+   "truth_sha256": "54bb27ca4a3b8a91851c30ad44bef3b01ded16ba3b49a7dc2cc2977f3a7656c8",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap",
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-066",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "8e3efd97f47c4cf5bc4cb2a0bb1f21f2ff104bf33a6bc8d3c73821c1fe5cc1af",
+   "truth_sha256": "6f03217c6d1d26cba0f67b33c430fb3f2bbaf3d8d99bd1a7c793983d59497816",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-067",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "e9a68a11bfe8b0893205c80150a1c991a118b0aff247ec4c87f6ebe648978df5",
+   "truth_sha256": "3d894e63180df5c628ad2005adc64ac419d0c3e0a93bf76d412f394082324c3b",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-068",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "762121c520f03b66874b056ec17c959bca9a9549e2061952c80eb9b243b2baa0",
+   "truth_sha256": "32faa3e7e4fad26956ec6edb6d74c9bbb63ee12cc213cb5fa97506e350a9d1f6",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-069",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+name_mismatch",
+   "pdf_sha256": "d39bf83ba9477d84becfaddf2d3fab0f4391bae3fb1c5d232d7c7ad772456b0d",
+   "truth_sha256": "541855a8e8b40a0a5162d4090b4284620a789e1e173c9d9843eb217567d042e2",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages",
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-070",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+missing_document",
+   "pdf_sha256": "426c473116eb14bfcc27c3b45ffa66ed37e1c3aedd7d52dd03ba166194779fc1",
+   "truth_sha256": "6fe5ca3fd4c5af82f4b624c7849be6b6e8eef4e3438c708a6a014de2f02e4d48",
+   "n_pages": 20,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-071",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "owner_mismatch",
+   "pdf_sha256": "4f78142ed06894d14711d16edf9c5d7fbc5dc3efbfb83387f7a8dd5081ac970e",
+   "truth_sha256": "27f1c26ad0ca4fe9dcfc2c05f9d5ecb770f9a818e86b3d448b242cad1c25f2a2",
+   "n_pages": 23,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-072",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "955f5492264c9e20ed715c11ed734c42e982b21f29d3bce675a1ff172d8db17e",
+   "truth_sha256": "287e1edc22bce010d3c793c784e49e4203bcfa418b12b60eb4558fa908729a6e",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-073",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "356e8608aa5afec9f56fc6a445849018ed7cabb8dee9fed49de5b0b2c0a3b315",
+   "truth_sha256": "2dd4188dac3a1fcc115cc705dfa513d23a7c0ec239353aaf0041640613ea11e1",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-074",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "95bb7d6ed98f5768817c81211ef984f38dc6d33e2f6a09a0a3c2da37f47d4d04",
+   "truth_sha256": "85abc7a967d6baa26b922222222a4e7648db0b7aca736ca8c017bab91c761ef6",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-075",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "d2ab9404750ca2a952fce2c4db5a9d1572d9eea61be2cffd4f619a688738fb65",
+   "truth_sha256": "311d7adb4a313ba71aed5a5cf8c48070a749ec2f67cdd9ac6c9894c42be22169",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-076",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "27248f1fe915bc19ffdb9b22c6925fbb21d01038740ac8d0df675e6226968d6e",
+   "truth_sha256": "c3a0092638151d7a506718a17db972601b81fffbc66c93563ef0ec1c2d20cba3",
+   "n_pages": 23,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-077",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_pages+owner_mismatch",
+   "pdf_sha256": "5fa220a17522bd084d6181ca940bd401538d8ea531132e67ba675b538b3d94c9",
+   "truth_sha256": "5a5f8d7ce8e70a18f1cbdb12da11f2442d8cd08f610ff1b9286b0619fe3adacc",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_pages",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-078",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document+fein_mismatch",
+   "pdf_sha256": "ef6b74531f0073a81cebdca2f2ff6fdde908439e6fe81c14e23cd269f3b67feb",
+   "truth_sha256": "04fadc7f10bc4d2553856d9151e6de70fb06e5a83b83cdb5077991f32f073dfe",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "missing_document",
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-079",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "77780862b25c28d57c50a2a9b655e2c73a93974355d27ad2bada90b6267b36d1",
+   "truth_sha256": "bb3c4a3cd0950e78e28bb38c72c47d723819fc559e5f2c2047e6cf3c02973cd4",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-080",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "8a8598782941cf9d7dae7232e55d8f865afecf0d44cea27cef43f11d4d6601ee",
+   "truth_sha256": "f3592d9a8febde61b804b31212fc1f4216fcd9926efbb854842991c2baa4e4de",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-081",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "6419d998bfe1e540356db2287f5b210b82df1caec86ed4407154eaf4b2f66a14",
+   "truth_sha256": "9c543ce0b81085e939c774081843d87a6eb902ae28d97ec8261991cc2d448e36",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-082",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "e62697be8e15ac3e5b2c51897389f8c86a0012122a782db22d442a1d689a9e08",
+   "truth_sha256": "642880168a335bc73b1a686f3f6e02f9cbbc492dcb6a2e66554201a03eb61572",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-083",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "fein_mismatch+prompt_injection",
+   "pdf_sha256": "4f21600ff25b821a6aed122d743509b5aefe4981d3f0b245a0eb02e5d7a2b297",
+   "truth_sha256": "f6d8aa86bbc0278504e028b00b990c1133e447c1ff2dc8e54870c973d4db3f22",
+   "n_pages": 22,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "fein_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-084",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "7bf80d4a6a25c64f5b2ad56d726b317186b425e5077d4ee6cc07affc98f9ce0a",
+   "truth_sha256": "d3ebddd2708f307e70858c9e0362583f719e52e6a8d81efbcbece00e8076b46a",
+   "n_pages": 24,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-085",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+prompt_injection",
+   "pdf_sha256": "bfaa0b217a490d3d2b1a487d0448dcdcdd3a9699ce080f6f50375d2b8dee88f3",
+   "truth_sha256": "7e7f951f88c994a84a6492f93ff9d1f804caa12decc79b916e26393c459238a6",
+   "n_pages": 23,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-086",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "ee1f04f34ab6ddc09c0cc7d8ac77767ceec500d541aaf80b133efbf09f153b08",
+   "truth_sha256": "9e6716e38e2160a28379dc4278c637bf2669873ab9cb8d4797d18dade024abc7",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-087",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "9d146041670bc21e476fd23f0714f3a542ec2ad63d011a2c65efac25ffcf0a6f",
+   "truth_sha256": "3fdd104e1eb192ee41123b4b20da0421f2f715bfc02700640532552afc829b89",
+   "n_pages": 20,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-088",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "2957d9c4fa2d76f491d16f757cb71a2807b43b29173ea4f1a56e49503b67c112",
+   "truth_sha256": "ff747b7fc71b1bc55771017aefe9309963b3bbbe695f5cf17a2b85951857156d",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-089",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "e4161a01e2476b3876f83af40e698a51245675bf4d7399e96f1cfcfb171b6e60",
+   "truth_sha256": "ff7ace656698838c497c433b2096494053bf703f70ac7d303f88219ef956d113",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-090",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "fein_mismatch+debt_payment_mismatch",
+   "pdf_sha256": "855d9dcfb498f89467c7f5598083e71362aa48f3a8f63a9199897a6a724da1a6",
+   "truth_sha256": "ea714eff57cc7f7b84dc544536aeb55b11d13bc37de698efb40b564ab60e966d",
+   "n_pages": 23,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "fein_mismatch",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-091",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document+owner_mismatch",
+   "pdf_sha256": "e6101b691d935e5f21223f27c321236cb1e1a202678869f4d790c579aed69611",
+   "truth_sha256": "a3093799217be7a12ba90ee2a34d4264ff93ffe170f3ce60a3ee76d5f2016ec7",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_document",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-092",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "a5494f654fa116980149f06500551c26c9807b3d58296d5074a7c43d7c216ce9",
+   "truth_sha256": "9a561ae8ead12ac4d39b08c1b783476b4363a789434ae1938d55d4268fa042b3",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-093",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "e31c24227ae78022c7c0a81a3c8b6c8697d7e9124275aab01af0fe48708de17b",
+   "truth_sha256": "03c9f2ecd99ac65b3848f8f17a9e3811deb2be92eb847822d8b7f90e958df258",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-094",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_document+owner_mismatch",
+   "pdf_sha256": "e4b634506ae50d3f19c42f7767aec1fb7902b6c5d510f9d98d9293da9f178740",
+   "truth_sha256": "5ec09eaa56cf2cb6237b29718d3a74cb9bb66f55c9b1e1e5ebab77a13e68390f",
+   "n_pages": 21,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "missing_document",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-095",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "8c47aa66afc7bf926be07b2c370122f3a1f54938f7c513a29976d906ef4c04b4",
+   "truth_sha256": "21e5f4a3458b89878e70f0afb95993bef3c6a600853e70b4256e2c196de46a9e",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-096",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "4614dba788d05d4fda006594c56143db6327af5ddefd29f910d3d239e2f6be60",
+   "truth_sha256": "67499511f95b369821a47ccbf95c313cbe27096b9ce85edec95ea18971bb1484",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-097",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "6dcda6dcf0983dce32b316fc437fdee961d05ff434b0eacc9f8b47b3cdf9b0a0",
+   "truth_sha256": "fbe86a0ae8fbb8bd5b80eef4b551a7fdb36344ba2f841c2ede228e573fb36d2b",
+   "n_pages": 22,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-098",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+balance_discontinuity+debt_payment_mismatch",
+   "pdf_sha256": "a1cafa7a33abee1bae3a103ee7ace676b840c46b08eed54be844d1a355a6943e",
+   "truth_sha256": "66c4803056b70d934336744194ba4dc757f48d02c3c3a9df9d7d37239b25daa9",
+   "n_pages": 20,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages",
+    "balance_discontinuity",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-099",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "69515cb2c7e53c767b75383253375323f740969d4d791d7beb05f150dc800ac6",
+   "truth_sha256": "6e3a3ceb07047d368863a35b228bde33111cafa2b8890f2c5b95ce4adc7d9a8f",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-100",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "1369f215d2a4e2672840160c0aa18192e61bfb6e9636651390d2bb376e66a0c5",
+   "truth_sha256": "8b5fe9f2196014a572c4c53894cbf95d060d254df0368dbf22e5c1673a55e3e7",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-101",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "82c74ddc61d28a7504a7e2948e218bda5dcc4aabb6c0d49d25ac8b648d1c520a",
+   "truth_sha256": "87b75eb705fd6252f19aa28c7dad171070f1930281c3be6db543bbde1fe9ebd9",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-102",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_pages",
+   "pdf_sha256": "5466dc1d8abadaea12a008bbda43ed521a8a3aa56ca2e50610431efeb00572b8",
+   "truth_sha256": "c186316dfa3651081563321234a31f42034f13861522b3aa4ef18803b8b6be01",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-103",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "614304f9e05b745486aad7b70886861241669434fcf129e463b05d14fb6956d2",
+   "truth_sha256": "86af182120807803766fae38e44fca4ea8b8da8104cd75f6d7e24ebfce9a43cb",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-104",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "a3c26f7ff83428ad022bba971fbc07d90562860e910adc471a78ec346b3bfb96",
+   "truth_sha256": "e8ef5ac8f25c0815f466b0c4188e4c5565f9106a49896d48ff891cb580a16f76",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-105",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "ca3ddfb49d3e8769c4ffbca9fb0b9f6608c6bb0498ffcc83c16fb6ae454e8af7",
+   "truth_sha256": "856b265d305bc723120cd455234468d0f20884f200161b23ff374381851d827f",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-106",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "6b2e6bd80c672943596836ac40459f49134673182d3a05371f0d21c0c31c9dee",
+   "truth_sha256": "50f7b6d897f1942370133b53ace000f4d6b0fab188920db3c03ce179f3843dfa",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-107",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+prompt_injection",
+   "pdf_sha256": "d6baa5390e332e86b500c7fe33476a36d7aebc78e3c695fa7a95464e68ff665a",
+   "truth_sha256": "84ce2031785fcb58524167ba7603950201d18dcbaf4395486e0ce153e2ea4e14",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-108",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "debt_payment_mismatch",
+   "pdf_sha256": "5a0ab8e4e4ab47fa428fce09d450ffbadffb532af6c2e280357dea5ce8113c77",
+   "truth_sha256": "6eed31a64fbb4969becc94883f51c31975da425beb1acd0279ad87c60a14983a",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-109",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "0536c034e4ca2ea8aa601806bd95049c0fba62f92b49971c685b2a39a0fa7359",
+   "truth_sha256": "b4e95ecb1e6ded3fe44e18e632fc0ecb509ec9cd84fce839af1f3ed41d22222c",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-110",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "prompt_injection",
+   "pdf_sha256": "d4484903b26dbd05e9119d1ce4a0d066367c2d33125fff14dc4fc51814d80ee7",
+   "truth_sha256": "381d45446ce717f1cf95328e3563775418f10a50805a46f7f659ef0e7befd4fc",
+   "n_pages": 23,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-111",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "5bd90f225fefee72a3d20cf5cd90cfd6798b80a359aec714a4a0452b4ccafcdc",
+   "truth_sha256": "f5c2e5711c9ee503c52cd71e7db6515659c5cc88b1efc29199cf4370f0e553c5",
+   "n_pages": 22,
+   "n_scanned_pages": 8,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-112",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "ff91c22540b45d03a6b08ddc72c4cad4a7e546fdd26df16b8646f6232a4400db",
+   "truth_sha256": "91bf4fb4c7cecf8d3e15e0c3a33061bb99de311ce5ec9e93e5bcb35dad018373",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-113",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c7db55d430e2ade9e849a9355ec7ea2e2b339d54fc25472ef32b8daee59efc43",
+   "truth_sha256": "df19dcb8e96ff9ebb996993faf0d681934f0ffd26eb849039450ec65ec3b8723",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-114",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+prompt_injection",
+   "pdf_sha256": "e3e906558239c0c7e2ec923a6e3b33ef8d9a71052e66aa866fb9cd540c5b4f5d",
+   "truth_sha256": "1bc59a448ba85a2c3dcecec792c260f24a2e45f75691e2f721208af834bda229",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-115",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "d857aa605cbb46a9d0110d332b96ac5680b9c18cd459033d0c57b298ef7d63d1",
+   "truth_sha256": "5a72bb3cbc8ccfcdbb27ec54503d86f1415b46b0499e009a2668558902315aa4",
+   "n_pages": 22,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-116",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "owner_mismatch",
+   "pdf_sha256": "3eb5e6554429626223c16466fc5cf94021a8f120a200a8f44ac12024ac7363be",
+   "truth_sha256": "b5f3ed14b9b0c14013f4b54735b46464408a1f13021db9c8c79d15a41f8dba2b",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-117",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "bad0b7e8213bb78343942133abbfd74e6ce0510fecebadb826e7809a924ec1b2",
+   "truth_sha256": "1bc9638d34c1ad188f32e1fac3fd0684382454bc2332d6ec587c0c05c9a4b8fc",
+   "n_pages": 22,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-118",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "774ff02d8a90c304c97dbb315dfab100e0b6b3b58b5486dcbcdb62109f093402",
+   "truth_sha256": "f652a76dfbab4fff29cf7cdf715d91f106244e45d85bc72271c64076e695560f",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-119",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "ac11d8bcbcbd938b6eb761c7dd68726560d70c0c85b82097a03d8805a95fcf33",
+   "truth_sha256": "a60ec5fa25c0cafe60d7c4e5bdca76adffd2baf24be17ec0ac9344e12b67a94c",
+   "n_pages": 24,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-120",
+   "line": "credit",
+   "split": "test",
+   "scenario": "owner_mismatch+debt_payment_mismatch",
+   "pdf_sha256": "7f7fbc44435411ee6c99697e4b4aae4bdd7c10461e273d1667b1e1c523b7dec0",
+   "truth_sha256": "1a40a1dcf65047fac0695a70555d2d37271e07cd8ad5213430f81be3e33e4a0f",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "owner_mismatch",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-121",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "3b1a58158ed110cbe788be7ca62a98ea093ef880e8ab94f835cc96890ede070c",
+   "truth_sha256": "c59595df9f502ce31933c113cd66530e5cc321e5f4c1e41fb44e2a691866bbed",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-122",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "3b7bb1b29b7f714fb1e79239170cb5ef20a81e9bab360fdb7b8a174569f58a4c",
+   "truth_sha256": "8f5e7af095455cc2e40938d5f44faf5530940750717a2867acbddb1e64594b95",
+   "n_pages": 23,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-123",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "648b304bd78b528d12ffd76dad56104bf5a8efb36da577c7d603024e12b7c5a9",
+   "truth_sha256": "1f6712d2764f58547b4aab3f024e3b3bb40d882e14e8f0888e6f619eedf3f834",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-124",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "2bcc77d2021a5b6cbb4835e738ac4ac41cc72e4f554aae97ba9d83eac111e4b4",
+   "truth_sha256": "9d305075d1dd82916c6c695ddd135f9e72c8c6a4149414e9a41c6d206d4d75c1",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-125",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "3b3d4518afb0d2d36f219617b62fe028de14e210a83e36945d41d950760f85ec",
+   "truth_sha256": "6914b20988f04ee4f4993362c5d4001998db93b150596efa7f137dc55f82066a",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-126",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_document",
+   "pdf_sha256": "da045b71656d120a832b64d154ea9661faaf385ad0663e99bd01e53ab13d1f2a",
+   "truth_sha256": "68489fc45570023b2fb5a10319210ed4f13983349e671c10b462f9ca06dbd79d",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-127",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages",
+   "pdf_sha256": "d9212ddbeaf7aec1e90221f9e11d4a628c2c8307b6534ace75d669f2e3f6ce87",
+   "truth_sha256": "ba1522891f5516c2ec56fe14f191d7edaddcea275b6e9ec70a1c1a0691db8f57",
+   "n_pages": 20,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-128",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_document+prompt_injection",
+   "pdf_sha256": "e7962542f986f650b56a21648a2e02e66a55bc4f005bd513f06731330e4c928f",
+   "truth_sha256": "c095418405087e4284a4aa1c20968b43827bda038cff3ca3db3d06047ce41acc",
+   "n_pages": 22,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "missing_document",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-129",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "balance_discontinuity",
+   "pdf_sha256": "e2a7ea7553b2baac9127d9db1624c8649b3a3b9eb8d5c1e0c22fd804cbdc04c9",
+   "truth_sha256": "f540e6a93db6258c35b4619dac34fd2987e98df4031bbb216855615b6450ca4a",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "balance_discontinuity"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-130",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c325da64fcc150b13bd9e6c2e1ee1c77318cd5772c13c960d638fdc2a09bce32",
+   "truth_sha256": "06530ee87dd55f0789dce46271026ee0a86b9220b660ee4105af6a1cae7201b4",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-131",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "539900c7f7751ed94a290482c33ab9ee88df4c11aa67433a6569df9f8d91576a",
+   "truth_sha256": "a71370932e669f2b27aba889d2e097d2ab94f11fb959226613afcfc22c8767a6",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-132",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "8fa91dd5a43909f51e3019fccb5b550ed7817bec9efc937884ebd8fd4bb0b523",
+   "truth_sha256": "52e893c2b6f92ad39908ddb2f4e70bd91f27bf538be3df1b35fedb6fb440fda9",
+   "n_pages": 21,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-133",
+   "line": "credit",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "cbde778b9cfbd2305a73c69b9a5235e4f137394ee6f4335a5ad9447009dd9c1f",
+   "truth_sha256": "508ed39bb8e5dccd9ed7f818bbde61b457ed7abbfad7a887e8de2388825aa9cf",
+   "n_pages": 23,
+   "n_scanned_pages": 0,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-134",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "dad6389595919b1275fd7265091a349e76a17ea0550f94a491f0573c2d0a3211",
+   "truth_sha256": "5d612a1b44872ef9e73260117f9b40d825eb5045af7bdf8fdd7e60d88dd7991a",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-135",
+   "line": "credit",
+   "split": "test",
+   "scenario": "revenue_gap+owner_mismatch",
+   "pdf_sha256": "b8ce19af78dcb02ce714eb37f1523214f5117d0074ac8a8818142566ab09279f",
+   "truth_sha256": "eddff68b9914c6416c5ab1b22c097038753e1017df85083c01f93a7d65e5c931",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-136",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "3cce2c036517bd82bbb16c188af841ff33d769182cc84eae6a8d9db12b1a1c01",
+   "truth_sha256": "27c73e99d475b97d5eb7673a6c844a127e008c6605d1dfbcdddea26065796e3e",
+   "n_pages": 23,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-137",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "67cb3ca7a03b6d9eeb3800f48047ad10661d3f55ef2b2c0181d84d76bc06cf1a",
+   "truth_sha256": "2df440c30d55220760baf4fc3ae94409d03cba69ed220797534e9a7c49f653c8",
+   "n_pages": 21,
+   "n_scanned_pages": 5,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-138",
+   "line": "credit",
+   "split": "test",
+   "scenario": "fein_mismatch",
+   "pdf_sha256": "0f562b5f55d629bd63a5866fe21e0239c3eafe467a22c715a9016abd2a134b92",
+   "truth_sha256": "ea3f6ef9100fb59334aa41c1e9da78e76830b2592225c031d4fba3cf8dbdb880",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-139",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "e41ea03df4563f18d1b1a18ce577b949251ccaa545ba753f48d3b4cc2ae54b5d",
+   "truth_sha256": "46fe1615d4a035618d205f8f0478c20207ec2df785925a45d77da5e751986929",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-140",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "0deba2e92799d178593ddd60ef3e82d9fca367fe33ace1e2752bb8c763a24544",
+   "truth_sha256": "926bac0ae0a8fc68c3904121c77b1bf1f89e941f85c2fa1e82da0bb1cc9887c5",
+   "n_pages": 23,
+   "n_scanned_pages": 5,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-C-141",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+debt_payment_mismatch",
+   "pdf_sha256": "4e8cc199a2d08dcc4f358789e584d4e7e6278caa045c3813c5348b412758e6b3",
+   "truth_sha256": "326ebd5fd3d8171ab04c13084a5f37636386f97e10198f4ffe553286a811c4af",
+   "n_pages": 23,
+   "n_scanned_pages": 7,
+   "problem_types": [
+    "revenue_gap",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-142",
+   "line": "credit",
+   "split": "test",
+   "scenario": "missing_document",
+   "pdf_sha256": "15a04bb19237732f5b27cbe071f9218149dcbe17dec272fade6ebff1c0aaa166",
+   "truth_sha256": "a73fdfef16274897585a6742536f2b4c6fa951a64716645733f11a4e694f2520",
+   "n_pages": 21,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-143",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "d9ed399fda0e9fbb575adeb8cc156abb6be9fb236884af8031a5ea024fae82f4",
+   "truth_sha256": "24c42c0cd13e69de9fad0f4fbeb47a35a1d2d972dafac8e68e2335ebe922e754",
+   "n_pages": 23,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-144",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+debt_payment_mismatch",
+   "pdf_sha256": "7e9114d226de0dc3a6d9a2954f1d5cbdd6171ac55701cbf87d57559ff8fe27b4",
+   "truth_sha256": "0906ca2ad38f45ef318fae3e68ab2dc4477bbd9c276efb31854f3d69e09d3afb",
+   "n_pages": 22,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "debt_payment_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-145",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap+fein_mismatch",
+   "pdf_sha256": "b678917abb7d8cc2c727ae2335f66f50a66518466d4067163c67fced9ee1c669",
+   "truth_sha256": "dfa38e247a51d0b939d6e6c9256771c710a53eb0574416b65e1f7eea7808faec",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "revenue_gap",
+    "fein_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-146",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "7a90d55416213e21deebbc1401ef6d2c63af64928ad921b7a4c94bf57556f737",
+   "truth_sha256": "5351a78b9afe38a40522fb72b3386b1fc8fb63ba793350a7c472b9ee4499cb71",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-147",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+missing_document",
+   "pdf_sha256": "d2e8ff6ad3c25954d44c9163fecaaf690f9a875d0577612a8881e2d04976da23",
+   "truth_sha256": "41feb6fa4f30820f21104d7f2093dc95901616ea4599a0e9763ea142bdb287fc",
+   "n_pages": 21,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "missing_pages",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-148",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "revenue_gap",
+   "pdf_sha256": "6744bad20b9067be652bbbde790a8d5abb489333be54b3691232566ec9a3f3cc",
+   "truth_sha256": "de2ed07573a57e796d8ac5b450de4c9a5ffce3662369a69fa25c26be09f49123",
+   "n_pages": 22,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "revenue_gap"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-149",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "missing_pages+owner_mismatch",
+   "pdf_sha256": "751133454747186154f4b0f9b296fa584ebd9be23eb99b834dd9d273f8a72de9",
+   "truth_sha256": "db7bb0d47e03551d67fe1a6a62b699bba444c95ce973933231e0c7b59e2ebca1",
+   "n_pages": 22,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_pages",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-C-150",
+   "line": "credit",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "53594cc7b2d4147012c3099378cf619edda17bcfd3d65eacc44e3fabfce13853",
+   "truth_sha256": "4961cc5cde36f335f97ffdf7d7e4072c46abb97e82eac03b09e5cbb3c4502db2",
+   "n_pages": 23,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-001",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "7d68257d0e749a1a597692575942cc82036906030eb6724d88683a42daf49512",
+   "truth_sha256": "b587b0f777e7fa846bb28b24b60107bc154c4e87de44ce2af2a45d896d2f5eb7",
+   "n_pages": 11,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-002",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "2ae5abc7d9214fc58a763f9771c50ad3ab44f6b8798d6ddf764ca1d9b07553c3",
+   "truth_sha256": "941473fe7298b1932d25cf51ea0509db0ac2fc96df04c3fda2774fefbccc9ee2",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-003",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "a6e860d735133f89da9daf638a64dea8047776bed63d2ddc19423713a1c7bcb3",
+   "truth_sha256": "268d42b85ae659b4874e02695be0a615f2245dd288764aeaeede5ab7176ffe97",
+   "n_pages": 9,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-004",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch+claims_history_mismatch",
+   "pdf_sha256": "f47df6170924246a19a93ce71c46485ed949f25f1418f5e1a5724774c096fb80",
+   "truth_sha256": "d6795a3b6fa714c30c11203a2038753ed8864a9da14d395a8f0616a47fa2cf67",
+   "n_pages": 11,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "tiv_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-005",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "0eed76da757535480420bdbdf710b067d493d11525cbefab1c9c1835be0aeee5",
+   "truth_sha256": "8ac152a247c4f9718ec9690c84b18a47b2f629aac32195deebee1259b7fd1bad",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-006",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "c8fc0d19ef0d2659f791e31b59a9f3b1b3877edbc7dc8ca67ef4db9266040bac",
+   "truth_sha256": "afd956a8085ceff837b6edbfd3275c85fab0e0b4ad4d8e845ddac3f88af66f6b",
+   "n_pages": 9,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-007",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "87cd0a6443480ba13dda5d25a6bf2f26326141e7309627b9cc4b6bcd9acd814f",
+   "truth_sha256": "4db26167a4536a7a2c877cdb876869247f990540fed719bc6a86ef74cd23ba1e",
+   "n_pages": 8,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-008",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "paid_reserve_mismatch",
+   "pdf_sha256": "0ff8656e5fb0da53dcc47b5722e419b1031a6c0d345c192a7ed605a584dc16dc",
+   "truth_sha256": "e032bf64cb40e6e8ceb1c86b13e85ff27dda44ef42f3b4140276a58bc45a80b7",
+   "n_pages": 10,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "paid_reserve_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-009",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "bace63d98a87fa68eb9d35b4f8b02f8b85b531e419d05be589e33293b3405bb9",
+   "truth_sha256": "8d93a1b4e7ed9f78a06034ff2d673b24394e993bbbf18a1b19d41c78ba60cd7a",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-010",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "7646205b9ac19ae44fb273d6f72afb45c505c1ad59f5d2177cfbc40a76a44045",
+   "truth_sha256": "b7fa35713eaa1e16a9cf807153a20ea05e44f051fe2a648f981af6c52593b2bd",
+   "n_pages": 11,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-011",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch",
+   "pdf_sha256": "ca1a6d6a1a7fca6204b91b894eb3a557e7305efcae410bc83e89d5c5939b4950",
+   "truth_sha256": "a71927a372c527da6a19dc93f5dd7a585fecabbac64f52913389d72c651a2a66",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-012",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "d5240936a58f1c223972441c1222d649dd0094c42e1934c1a9015f22e628e33d",
+   "truth_sha256": "6137a87b558a6fbccf91c9a9955bf770d9a348b9ef3533caba28e5466e9c7f35",
+   "n_pages": 13,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-013",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+claims_history_mismatch+prompt_injection",
+   "pdf_sha256": "cfd2ad82ccc502b1a8af1fb7d3610387f14d4f3b0d12f8344123370e8a374a63",
+   "truth_sha256": "fe66bae2e8635b6c8942c92cf305b924a531d13bad0da413591abb898a606afb",
+   "n_pages": 8,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "tiv_mismatch",
+    "claims_history_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-014",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "claims_history_mismatch+missing_document",
+   "pdf_sha256": "e57d4d3abeeff11408907a86c64ee9e215a35896b7620795b45ccb1c5c956660",
+   "truth_sha256": "26106547e983b3c50d81dceb80175f2b50d6d25c5d3b6e5776dca6ca0428f866",
+   "n_pages": 8,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "claims_history_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-015",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "9e228f0b34e2fe909588a5128fd0be89065f35e12da852b7bf512b1e93a813e8",
+   "truth_sha256": "daad902c533cde5079435c34b4f30bc3543120aa4486440baa6d20d9ea14d1f2",
+   "n_pages": 11,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-016",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "38793d9bb4efa391e74dbd05873c2e605db664d71c9cab5de2cccb6cca57907f",
+   "truth_sha256": "b1b9e03e126cecc85774811f3ef12d3c4daf77988414c3fd113eacf0235d5bb1",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-017",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+missing_document",
+   "pdf_sha256": "60a2a35005ec55a75ba75d2a07af87280e60a2be14111924ebbb1e0cd4922c45",
+   "truth_sha256": "7bbe7285f3c6834fde639f7e83c0dda4dd3ac0a5d328d5c771eb5417f269be79",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-018",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "6b68a339e7a8835a48cfd193416dbeca9b070fb5d44bc1023aa9f5c901156e60",
+   "truth_sha256": "079cc602102260f033a9031456f5f733886af79568e14896fc5cfc92beb8ee92",
+   "n_pages": 11,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-019",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "5e9999d9af466d45fc2057f3a69f543f3d352b19314b7dbe6f99a571c0859e17",
+   "truth_sha256": "220fd2e38c90320366a128895dfa565b96e748db0b047feaeafa41e0a85e2ed1",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-020",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "prompt_injection",
+   "pdf_sha256": "49c26e3e426b6dca5912fbba06d12e8d04d512bbb3135daab8a0764e70ed7d72",
+   "truth_sha256": "342cfad13b39beca476fcb1c0fb583bdf49aaeab9c6301698862520d3848b12e",
+   "n_pages": 10,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-021",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+claims_history_mismatch",
+   "pdf_sha256": "3b5d70b1ded0ea89775390c6b3d342c2a24352556fdb50fb88ec2d85a0487cb8",
+   "truth_sha256": "79b51aab8df93af92716d0bf818d6f6152b06c8ba1683df1e36327d9673fb028",
+   "n_pages": 12,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-022",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "937464035a396119ab38888302c771fd81e43a85362ef9c1b414007113a867fe",
+   "truth_sha256": "94241a22db6215ad0f6c3db679a832e0e3d519badd33965a717d75b0439d479d",
+   "n_pages": 8,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-023",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "621ba594c41703028714bf2c88bff1318268227790e4c761e91a7869b774ff48",
+   "truth_sha256": "8fa4f61db25b06c76cf8f2d3638a418a07f689b95ec62d7e5987b50bc969bcfd",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-024",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "62fc6cc548d787b520073ced7837d82f632b2b62babfc589b1a97460ed96265a",
+   "truth_sha256": "e4a4430500e6bbd39415c26d2976d0afe54090e260ce74fa1218387f2129090f",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-025",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "owner_mismatch",
+   "pdf_sha256": "425fafd7d13027ff1758861d6b3943efbb841ea5afe5d3834f6e5aec384896d9",
+   "truth_sha256": "25901f9d2931bae1726ee9df2c53a2f075e6165372e846bd91e0015d3828f0ab",
+   "n_pages": 8,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-026",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+paid_reserve_mismatch",
+   "pdf_sha256": "f65afecd125b283393a80746ba142e93baab47898910b651cf5940278f202c73",
+   "truth_sha256": "644a92f33fe819903d938d31019a5e8d6b65786baab07d6beb95566a338e69ff",
+   "n_pages": 10,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "paid_reserve_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-027",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "03091eef82083ad723f6356f0658cb819cbfee4b08d0c21a4c40e7b424983b3c",
+   "truth_sha256": "ecff7885494f014cdf243866e5d8f7eb4dae27c9433c1701ab32c020fdbd4b26",
+   "n_pages": 10,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-028",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch+prompt_injection",
+   "pdf_sha256": "a47070e00215cc90d7486f381955b44cfd67eb2ad712302b5f6374dfd086ec7b",
+   "truth_sha256": "369d141cd13dbbd8556059ebe8b4bc97de0f0d811bed3e3d361777156de95900",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-029",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "84e5fc5a6cefd325c69cdb7f7c2903ffcade2cf5fe0dbb94d07595f077029f4f",
+   "truth_sha256": "e4fa324e67765142aa208dfb82a0caf0d7a72b9310302d2f476c37ddf10d1dfc",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-030",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+prompt_injection",
+   "pdf_sha256": "dffc670ec15b3c3ba805f8367798c0e1ed92420ac359c074b2a46275986768cb",
+   "truth_sha256": "afbbcef22b09d76b1598205ddbdbf2f6c5d109beb3922cf0264c2ac41d83afb3",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "tiv_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-031",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c3932c6b263d852e906d02225ec6517c11db9736a014ea0951fda399c7ea5802",
+   "truth_sha256": "72b148b8db0120dc469c679df0b43e95790236c9a2d9acd2be47372bd6cd5d49",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-032",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "90a38245c2da244de766bb5aa6e14d3f690876a951add0eef2e343bad0cccbbd",
+   "truth_sha256": "4620a11f88ea2cff70de4635bfda8c6540dc374144fe759904838fa0b29d827e",
+   "n_pages": 12,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-033",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+missing_document",
+   "pdf_sha256": "28858bd13821ee6531154a685c225623d4a4b6aff2768f346b3823d82aa69dfb",
+   "truth_sha256": "2c7d5c2312566313f953e342c5fbca59e7c996f44fe5f32c6302eb3fcb891e16",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "tiv_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-034",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "paid_reserve_mismatch+prompt_injection",
+   "pdf_sha256": "a5bccc07046c9ef2c7933548f2c1a7b6c0676312807f801fc9a9bc6ad2a73249",
+   "truth_sha256": "d24da14332ac0c263da385c7037ccd7454792f05d4b23543c009c03fc3ebe88c",
+   "n_pages": 11,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "paid_reserve_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-035",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+owner_mismatch",
+   "pdf_sha256": "443958450adcdb277692a0c4d8698efcb9ad628d446ac9f2b65296f30010b453",
+   "truth_sha256": "5e3351bfceba7ae1f67f474dd24de2b240283f2904d81a550cfeca688e4e6f6d",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-036",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "48264af53720df627a1c0584537cc06a6a6a23951ec9bbe5e8c6f0656e2bbe4f",
+   "truth_sha256": "21e0495e7b132ce296658c062212a4f82b2050027b61be14682f90880e937e4f",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-037",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "a4e266cd0bf942a8e50a86cff955b02b1c0ad20da819c324c2d8245af9cf663d",
+   "truth_sha256": "790315ad99175e7fa3121776842b10ebd9828a63a9017e9fe14fb1342b2051a5",
+   "n_pages": 8,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-038",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "f59df27a529722513b43cf075842b8c30fc0ac0affb95e9f6a5e7460b5dd3194",
+   "truth_sha256": "dc4e37f2d4b1f1d3e0250e41763b18392bc49e96b5b1352f6d1b316269993c92",
+   "n_pages": 9,
+   "n_scanned_pages": 0,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-039",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "b3cf13f30cc9c57bf14a4dd04ff25f9367f75c9cef770eefb4c7731ba4619cd1",
+   "truth_sha256": "6a4535788eca85cc2397cf57c59847c7e167461987c879d23c68519f22c3383e",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-040",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch+claims_history_mismatch",
+   "pdf_sha256": "6432086b91d8a3f1636996efe8b554bcfd680b2f9bd3eaccfc8372677becad0e",
+   "truth_sha256": "839a5bd468552c4dc3b87bee94d299d788b2a66f58e72cca24e10fdd1d189808",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-041",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+claims_history_mismatch",
+   "pdf_sha256": "c465ab0ec20807d341489f9226d5703b8c445703e35b9dc52fe244289e974624",
+   "truth_sha256": "308c36797c42af630b3da801660f982e50d125a244e74f293b5967ae0838642d",
+   "n_pages": 10,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-042",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch+prompt_injection",
+   "pdf_sha256": "efaf8d5445c9fef5f548a220a3c0b96da10a8c8a952a68a8b5e55f8e38c097c6",
+   "truth_sha256": "7e062e3739ed3a933635f2ca923c1fbb03735d81b97b4befffeee3d1516cc974",
+   "n_pages": 8,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "tiv_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-043",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "e5e24ee833169a4cf652887109c879114855d1b1829ef41ff375c327952be034",
+   "truth_sha256": "04148e2019d82ac891f9b4ec6465576b451b81e2e6c9220ba9a34e85c4e26e9f",
+   "n_pages": 10,
+   "n_scanned_pages": 0,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-044",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "paid_reserve_mismatch+claims_history_mismatch",
+   "pdf_sha256": "fc6c09a4b1eb748c7101a2fb012272bb4fb9d2c2894b4627d9a52c9e29fea8e1",
+   "truth_sha256": "1fcc4fb9d75625554d57c41cd64737ecee2e6d6329f168d5475f1b409650f480",
+   "n_pages": 9,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "paid_reserve_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-045",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "fba2dc70fbc9439431d36a074615eb0794b42acec47539632b7456177f5ddec3",
+   "truth_sha256": "a89d2b1dd364f1a48c939b5ce2bee33ceccf0ecf32c9163561bf45ef39616521",
+   "n_pages": 8,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-046",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "52aea20ac4bc751c92adf81cbe6c4c5dbf9db3b28ad14f72a95fe242da9e424b",
+   "truth_sha256": "5d29c6cdcedc8f9ad9706302e7c877ff9aeb710a7529db71b618d310ac012b19",
+   "n_pages": 9,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-047",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch",
+   "pdf_sha256": "1d83fcbc3953471fb242555a771ded1a259289fd7a6d17376d175140b2a51c16",
+   "truth_sha256": "4cfa0f98968e6952c2b6456b0ef2ceaa0cef766567c9a8f952943b246a4be92e",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-048",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch+name_mismatch",
+   "pdf_sha256": "2b3777a93d18032c8cb9febb7e9dd9d04e4ab52ac67a2e4713611d41596edaea",
+   "truth_sha256": "10e86d677f24551b43e0837d83e4b95e1dfde0b56588c28a5d66088595fdeb61",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-049",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "48ebd7cdbaa8bd0ba21422a554fc4a1e617f4c7f73faedd7ec5251e1127d8996",
+   "truth_sha256": "22b6e33e21a040fa40d3fb9619963892b3263dadbc2826b2150bd07c9e8d44d1",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-050",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "e9a8ecc61dfd57c036354168dbd0c547b9f992a579b925feb92160d3583e7a32",
+   "truth_sha256": "5745d0508c1067aacf04c23b81d41d2dc2042f9fda676c8935bd300e53b0a4ad",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-051",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "d9e5ee678114636d2ddad167a238c7220d366fcee221d5f36a4c59e99ba9f0c5",
+   "truth_sha256": "bd4d3c2255e8368beac32ec6dae6d24490b925c7acd1340fba70c15ea28ffa88",
+   "n_pages": 9,
+   "n_scanned_pages": 0,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-052",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch+claims_history_mismatch",
+   "pdf_sha256": "3bfa0fac9d593e363b857ea81454965c44d696058b70533c2cdb6246868a6a7b",
+   "truth_sha256": "13a0d6e5bf0ace8ca7663297843eeb5fcb75a756f64a76cb6016404eda313fd9",
+   "n_pages": 9,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-053",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+missing_document",
+   "pdf_sha256": "9eceda383781b24f867a33823a1a8c15492dd36f1dd99637cfd58633e9d67be9",
+   "truth_sha256": "f5653cac7450d3f9dc9de59795ee4e9fee05ef5b642f1a5e5859483358f76059",
+   "n_pages": 8,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-054",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "43751139363e0787f18615daf02e8f1677660bde13f013e9fdbb28422246395e",
+   "truth_sha256": "e18f0ac038a31df01b2b01a4a041c14f1d1c733b01a163fe93d36f33d0977103",
+   "n_pages": 7,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-055",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "326820af314a2d1625f3815a3367eae42d3e6ee8b7f41e51c67a2824ded15512",
+   "truth_sha256": "04eee3e8a94456c2fda7ccd622578299655f527d5a952bde106e0266d462c377",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-056",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "paid_reserve_mismatch+owner_mismatch",
+   "pdf_sha256": "ccac614e18c694e5614e6b5b85fcad38de95f87b5009a2390a0a4c7a8b1af430",
+   "truth_sha256": "758123309a851c59165741e4ce7e6cea1717c26c5c9407f86d96ee75cc3838d2",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "paid_reserve_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-057",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "paid_reserve_mismatch+prompt_injection",
+   "pdf_sha256": "e85a5763bac05b06b48cd8e7580b5caa62164651a0a6cdd910154374fbae1ed4",
+   "truth_sha256": "e74bdbf82a43ed2db17837af768a3c927ba5c1bf8ab76053bd3155804cf2f0b9",
+   "n_pages": 12,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "paid_reserve_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-058",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch",
+   "pdf_sha256": "8d8fdea688c16e0ecd991fb4bdc71a2153e2e1a75d0ff938892d13c22ae14495",
+   "truth_sha256": "ea5daa8e08cb69120e7f3ff62c3d3f0d819f360c516f370bd954385af371db53",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-059",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "05426404fa5687d7d3804d72fe978e0a349f8073e5c6e767d53102df4ba4ff20",
+   "truth_sha256": "8171f4e247d3cd341da77c71721e8680127cc0ed5e9ce9314bcb80178bf0393a",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-060",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "125e80dae6912fb199b480a1d03e0a0eb40d621d1848ed19f547a3acce10e650",
+   "truth_sha256": "2609c5ee58a0ad4cf5feedc3eec43702d882d247807b79cad15f943dca876631",
+   "n_pages": 13,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-061",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "6daffd35d768570418472a2ac2396b34b4d68e145e9c1261f92eeeefca082db6",
+   "truth_sha256": "4bf455bcb7182964eac04cf2280819c16b0bfee051bb329cb2e8dd968a5c6329",
+   "n_pages": 12,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-062",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c9af6990039575c6a6ade6d32d7b89b51c781c140d11fd292f9fe1eb9972916d",
+   "truth_sha256": "8b3a4b6171869e783915bf322681c51b74d17e4747ca83da5c9a735ac42fc91d",
+   "n_pages": 13,
+   "n_scanned_pages": 6,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-063",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "9e3ca88913050ba519780bf3a2404e2868513b65e9598f5ce79a8bfba4fac66c",
+   "truth_sha256": "f961044283c9d626a8a7db9793f0f909434681302e90f6743535e59c4aeea7e4",
+   "n_pages": 8,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-064",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "e6f2183f93bd78f41b49c67fe76f2e929ea033cd7f7b437b2490b41a8f08cc30",
+   "truth_sha256": "4a7ca99720d9afb491ede25738cdb0d329a2f4573028a96b1461c9e2c4a472e3",
+   "n_pages": 11,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-065",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+claims_history_mismatch",
+   "pdf_sha256": "2d69ca67ded831fb6c059e591ab003c98eda1d0a096c5f77c24ccd2f90745601",
+   "truth_sha256": "f1bcad354dbbf98b02e2f670de69c9cc8e9c4314d9941f21eb6fa7a3e5931dee",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-066",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "407254a3afbf6c9e18f08918a3c86a1cf6415905cfd3353848bef0a756114df5",
+   "truth_sha256": "1a0d68c2b125cbd9dd9920003a8d2bc4f6db45d70870a1528e08a393a3ee2e9f",
+   "n_pages": 13,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-067",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "21c64beae6897b571e9a7ad153225e7547b87b51d7badefc12d8dc5040e1394a",
+   "truth_sha256": "7538dbbe71cf161b945f715d73ab744d754e30d349fe6c13f65c2b791d6554c5",
+   "n_pages": 10,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-068",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "missing_document",
+   "pdf_sha256": "3dff68e15c538ac197cbd985373b02632a988c8c674663dacd0fc1b0c268d404",
+   "truth_sha256": "70b68669b6a25b3a8718d1de57bc9dd0b34880592066ab739dc03996a7c9a016",
+   "n_pages": 8,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-069",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "9ca94ba025fb66b71ea815f429396ca78373e2a75e2238c7779d285b16927292",
+   "truth_sha256": "92f9c89f08d020d141a9aa82106e215c39a10596efd4e78ea101e5443576294b",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-070",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+prompt_injection",
+   "pdf_sha256": "3bad9b74a8f608970ac93ab22550e1fc66007c45b32a055159af2f666968b4a5",
+   "truth_sha256": "5ea52395004aed3cc57fab55043dec27dbd2d246876c2ba193c42c86a794eae0",
+   "n_pages": 11,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-071",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "8dc3dfad1dafc8ceb7a455cc9848931c6e566fa12407065e78adc2fa7e7038f5",
+   "truth_sha256": "4b6b787979afd615576df9928569d5c8521bbb54e304bf044bbd2c997042dc61",
+   "n_pages": 8,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-072",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch",
+   "pdf_sha256": "1304d20d2441597efc48e8bfc146f202da4137f741fe29ef05d46e167cd7c09e",
+   "truth_sha256": "d9dcc2b2ad0ca72ae5d3919cfafdc0540115d596c1230718741268372f939e0d",
+   "n_pages": 9,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-073",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch+claims_history_mismatch+missing_document",
+   "pdf_sha256": "6a18bc0b3333696e5be6c39aac82ae7d1ff6af7e4f9da06f15a98ad102e3e97a",
+   "truth_sha256": "a3f1716bf3d384851fd3f3697c84106cea0d4da73885c7c2c5f1d8e918d03ec6",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch",
+    "claims_history_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-074",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch",
+   "pdf_sha256": "96c6bb0a84c7ff69d4508808d16274483fca05dccfb652f700861edec62dcc60",
+   "truth_sha256": "b1ed400f5f9a950890c3ebf5e0b3f5a43825e346a3ed078566c7b99575dcd294",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-075",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "d7f2f7e48a905d9a10efa820e087500c1ce2908c8ad84883f885cd1dfae9c14b",
+   "truth_sha256": "0f5fc8436f3c0ac2cf13fe02b4b1743c3ca2268665cc8cde4277b723ceae5012",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-076",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "ddcc3290b611311e83fb620dfdd233ed54a856d40492dd5202688835d4bddf4d",
+   "truth_sha256": "6802f38acec39174973e1baa73e3bca7e1ce78acae99fb782f539cdd6ee05a7c",
+   "n_pages": 10,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-077",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch",
+   "pdf_sha256": "29a72bbddaa9aa99161d62fe96cac52e4519da9199a6068a9b7d8840426519ad",
+   "truth_sha256": "f2e3c9b766464128369785c0853c920d2c000109ffeb70cc4d844c2ad57ff586",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-078",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "09239cc7525db56679aef2d7ce1313988919ec893586f0b6fdb0a504e789bb71",
+   "truth_sha256": "8ba288c672075b187c4a911d0c93cf112aff5631a10ad9886e276d52b38e444d",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-079",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "6bfa8f6afc36ee8e41a0220658beacedf44912f12c62bf3b0ce278db34e26bd4",
+   "truth_sha256": "5e01074996e15ab6920133bea2e434f957f7c24d2aea875b5a7d79d01949c70a",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-080",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "769371bcc9dbeaebc45ec8a04b5d48fea1132b16a2954011b41cbb5c9963ba3e",
+   "truth_sha256": "a2cf701a042f2c962518df17268ad42113ed63e246985da0bd0f693b665567be",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-081",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "3b3895cb26d8c4f5e812745680fc397878c441ec336603e13d7699931194d60b",
+   "truth_sha256": "ec2f1ed1e91b47ec5a8d6b3fb24b8058e3abf1dd390240470cd5df9f2fa8fe86",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-082",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "a489957202e554a5e17a6206f271fcc3b278fcb61a7ccd9d32bef7a1017fd6a4",
+   "truth_sha256": "41ef73a066b423f0345bbd6def64d7f87515eea3344261882c6e4eddb58951a5",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-083",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "1d00678eb418c09ebf66b256edad4e4f2be691d65b71bd0d8c3eca7c8870c97d",
+   "truth_sha256": "885273d8413ff9c755fcf8f3e9dbb142bc901e3658e78cb5ad9d7098e783ab64",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-084",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "15956917f45dcd9c322ba9dd45be90c148e95aa3d8fa3154eb8bc3aaef5e963e",
+   "truth_sha256": "ef71b9fef7e8e9059ab3a6677800dcba2c27b3531a65a2cf5f0ee3303cf7b8be",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-085",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "ab5ccf886507626921b3afef95de2e6db458638e2b87a3b1876bbb8473729ddf",
+   "truth_sha256": "9595d4a83b665f530cc9810a3bbac56ad4080e7ee4f612ad83878823d9530add",
+   "n_pages": 9,
+   "n_scanned_pages": 0,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-086",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "ed4631d5538e1ff90434b5b3735a4089bbb1ced36cc56509603c389fc2bbe296",
+   "truth_sha256": "d1b951c1a73963319f88fab2c99e7227630898c29243cfdf6a8de0115fa32028",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-087",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "aa206436aad5cda92fd2431a80b5bb331cd3055f34fcae32810c4cccd8f599e1",
+   "truth_sha256": "d7479a4d945dad2ea0d266da362494bad572c5f03ac3812d29e652633d6a6e5f",
+   "n_pages": 12,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-088",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "e1202ff730f0b02ffc31080e4a499f0327f49ae54ea2740ef9d5ad61da7f4d7d",
+   "truth_sha256": "45fbf60253ebb8fd08bd7732449c4cf80e134b843d1b50b6da41f30a710324e1",
+   "n_pages": 12,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-089",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch+claims_history_mismatch",
+   "pdf_sha256": "b1dab2b8af1c782c273f24b5e205f78678e421336fd8a6955d6d00dd8bb35cf1",
+   "truth_sha256": "0d83618b32521fb309ed7f27c34728df8f4ef3370c0efcfdbdbc922fd5de26a3",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-090",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+missing_document+prompt_injection",
+   "pdf_sha256": "9a9f6007b328e72939af4e06113c742c5560c2997677c918f2957cadc4842906",
+   "truth_sha256": "4e4770db52729426e3aae315cb7f746267d57d4d55a8abdc6cb33865dac6d5b1",
+   "n_pages": 9,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "missing_document",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-091",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch+prompt_injection",
+   "pdf_sha256": "c789a8c9e148bdf5e8c7d764f52cb9f62858fe38541bc50e580b6113ca2a0869",
+   "truth_sha256": "970a557c226a185a62c1b576f8fe5704fe4e9ed05684dd9e65392b566f3d683f",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-092",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch+prompt_injection",
+   "pdf_sha256": "0fd13203921c7ca2ca7259d781f51796535ef216fd2a8dd33f1601805da5df1f",
+   "truth_sha256": "4cf29c6d0cfaec1017a0351fc6450792e1bd2e882cd9d73cf5c88b481401d72c",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-093",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "47f00b3bd8b44c295d5691803d21b31001ca1b12cd891d7e1b8656c426ac5124",
+   "truth_sha256": "063e23aabb6892f04ce0df4c09343680acee73222b5da6c0e6d151a1d83ed970",
+   "n_pages": 12,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-094",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "c8a3400b22a52dc3223d6e866b26ca43325186aff9c8bd2fbfc5941bbb308374",
+   "truth_sha256": "fe85524a4461973db0d9002ef4e0a677887e89b76f64baeb9adb01c095bb11de",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-095",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "53550a654f7af0307a87d93d21a3243895af0261ee1a5a7d56395b0004e4a405",
+   "truth_sha256": "f74f3352181a59ef7a652ca20b85d77875d5bc81e84f2fe5c2a8c15d43dabeea",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-096",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "c32189e25fcfcb601bd82248eed3ad82e4de4e4d32c299839742b49b2540d8a8",
+   "truth_sha256": "59014c2d7944310eec1286fe12acab15bd76dcd280f07cfc6692baed75a6d078",
+   "n_pages": 11,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-097",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+claims_history_mismatch",
+   "pdf_sha256": "348daf91d7d0b4c1375d3556472b6e3f5cb294a5e7695c6f4e4cff6543b84192",
+   "truth_sha256": "3accb778c32c2341bb42d551705ce270ad207a3487849b9e7bce3b7e75212677",
+   "n_pages": 11,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-098",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "665866158dd66bf04cbcd093627f3149cf92567d3300c3e5781172c93da0819d",
+   "truth_sha256": "8abe3e740e7106d1c4c3ff0df66b8f61b9fda86f951db78e4d32022519b1f580",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-099",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "b3b61cf3b7fa5811381a2872dd7217fa964304a9a83299c46b3890d5e39b1826",
+   "truth_sha256": "1e0d47aad4413e5baf069339b7b8a1590e2b7e77892d5adf4d9f1e20977da526",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-100",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "899aed8fd00ce6c89999a40ec779193463eb40c4745ece66ae53c3c0ce96cf23",
+   "truth_sha256": "61e699e7ef0bca5f94fb38a5bbb4ffbe87e61d6438da6ae85dd1d49b8129287e",
+   "n_pages": 11,
+   "n_scanned_pages": 6,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-101",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "paid_reserve_mismatch+tiv_mismatch",
+   "pdf_sha256": "d0d3373000868049a0dd23b47b13a2846ec6be499e556f3cc7de52f9b383f62d",
+   "truth_sha256": "1f5319e693782bd47da1cc3b8d333ebf5294c6936285cf63bad17a379999651f",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "paid_reserve_mismatch",
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-102",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "2f5c7a5ca95ea16e48c846fed8d665f3a0b32ff16c16d05fa124e0041daa7562",
+   "truth_sha256": "1644a1cd18fa3e0c2ec485e81bc076bc3f5dee7772e9b77015a2ee3bf072a76d",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-103",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+claims_history_mismatch",
+   "pdf_sha256": "3ed3e4032d2ac936b330036f0c3ac84ae96547de7fb75a817c11849644956bf3",
+   "truth_sha256": "4cc66a54631629f5524ef2897868153d45ed251bd251ad90c222fb4411097877",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-104",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "0b3d2f8b455d56bb00f6897c3ed958cdab44a455bcb8df214eca86d93b928445",
+   "truth_sha256": "db9aec5c3365b1f27a7e16e6879b5df43084133c0d8221ef0890f20a42e64b39",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-105",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "575b2e1337ff0ffc73c03bc4f7b554565612a475e2938d03fe8fb1e4696c3b59",
+   "truth_sha256": "708e699f97eec8c025bbe3f3e9af133ca68c7997c4a22266e37820cdd78c1832",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-106",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+missing_document",
+   "pdf_sha256": "b0a76bdf1a126f1e5e292c69dc8280967d8b5f30e8fdece734df1509c5265110",
+   "truth_sha256": "52829ff00dd8122f0c36b14e16966342117f9a143cac8945d39bb651af460f20",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-107",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "0c93073e83cda196655cdfa42815fce1b0ac373ef2173955c5b91188dfa27cc2",
+   "truth_sha256": "bf03af5cbdc59d8d9933d96d5c07ac3d5251c7029ee6f1e4249ad3e30e799472",
+   "n_pages": 11,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-108",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch+owner_mismatch",
+   "pdf_sha256": "fcc81d878f520ce5cda30c8260612e9c2e42f86d9e55f1d0df6304b2a0bc0886",
+   "truth_sha256": "c3ce5d79627083432744f864d481601879dee5eda05cdb0cf6465b097f5d925b",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "claims_history_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-109",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+claims_history_mismatch",
+   "pdf_sha256": "e153caae2b1f2d2234f9a350832f26851cb1cfdadc2e4d96cccce50345cb9cec",
+   "truth_sha256": "6aec9276af3f9438a51b58ba20f3f29f333fafa73d1b39adc33229a4b7db40ff",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-110",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "26695e3b0097de6b3355b4eca976e85b53229a414dc56fcf64aa63fe63b1e1d2",
+   "truth_sha256": "46c667c75b625f64fd4e26099aa31999014182c574192cffb570f3bf98fbf087",
+   "n_pages": 11,
+   "n_scanned_pages": 4,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-111",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "prompt_injection",
+   "pdf_sha256": "cc26ba694085ed398f4579485caa9679f884734a7abb273e2540dc27b74cf03c",
+   "truth_sha256": "f34feb8f433d0c5ebbbb102a866ad2f196594c40dbe9eea0328afb060e92fc3b",
+   "n_pages": 8,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-112",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "missing_document",
+   "pdf_sha256": "567106fd6b5a225cf42cb4645214e6441e2763f5712712bc05b3e7e40d5ae1f5",
+   "truth_sha256": "d237d59b88a0d3f0ef70e042677213882ca6ef5ead0bb2e73a3495f5ebaa5c3a",
+   "n_pages": 9,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-113",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+claims_history_mismatch+missing_document",
+   "pdf_sha256": "50a80d9e45aae6b6f87a30616950bf3aeac7dc82beb21931ce6d69d9043ff653",
+   "truth_sha256": "e6013361037010a93efc227040367d9b353f96dbd0aa3fbdc13614706e313744",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "claims_history_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-114",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "adfe7eba31e9fd681e9f040a02969282ca3d8caedabbb3be9a72453b9f616dc3",
+   "truth_sha256": "84c5a91c3a05a499e33a736773572f93dbaa61c3a6026b4cafb333fda06c698a",
+   "n_pages": 12,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-115",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "4e58dbc0f057e508fde094e63188985481697c5cc5bc6d1070ff90a257773d91",
+   "truth_sha256": "8be26867e83ab07d40e0111dd52cf469956eeb078d954df50c9a2e1480672559",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-116",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch",
+   "pdf_sha256": "bc677426308633c8a5ca38a803d243ddb2ecef8fa5dc2f7e968170c5e2872556",
+   "truth_sha256": "396ec30f3c28dac6f7e9247d5cff0468b3a54341dfa0493552085740fbaafbbc",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-117",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "b706c6a98854a62f2d13c8766a253c9b282a44b9e65a512fcccbb7d1e42080ac",
+   "truth_sha256": "9fa6821b2b353c82f82a11b7de86c16fd7987e2eccf3bc7e09dae2e198ddc30c",
+   "n_pages": 8,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-118",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch+owner_mismatch",
+   "pdf_sha256": "84ac809494c2b8142968fdfb5b701b4e682374e99719ec09bd83083864057e68",
+   "truth_sha256": "8727846565632fb49606ad68fa6c88190d2d4ca3eaf08d8ea40764b98a138c2e",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "claims_history_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-119",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "clean",
+   "pdf_sha256": "2efa19e2fde20fb631791497fad5a64126e0f9a61d72c24161d71dfff8c18ddd",
+   "truth_sha256": "e2c8743ee92bd9f2d68e888d565f3db137ea367ebb65529bcd52e152e6a17142",
+   "n_pages": 11,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-120",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "42d0785b043826e4e51b1cfa1de924e44730f80ca95f1ee2bc2305cedb9de7ed",
+   "truth_sha256": "95239d9bcabac52379a4d5e52084aafaed19c72df5c35cf6ab6512ccd0592cbb",
+   "n_pages": 12,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-121",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "a2477fbb61848f4f579ad20098a53c2c78808381ac37f734e344af399f6b9e75",
+   "truth_sha256": "a21e8c25fe50a278f02a870b35042a5fb04f732801442cdc8fba124e6cf0465b",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-122",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "51913caa6a01f40b6d4ab2ceb7a8fa7f899de33f7fbd39cc5ddda689c16e8ecc",
+   "truth_sha256": "94747b006846664c99e9e948c9f3b2926ab574244bb4ccd5a8dd92f0c2702e69",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-123",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "fb99101043e2e6bbde35040beb3a690876e4517b0ef5be64971ca7505e5cfdb2",
+   "truth_sha256": "45c6fdb6fbd7194245444d524ee310e4f6b5de9881dd5af8844a70b1107e3d50",
+   "n_pages": 10,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-124",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "c1e65c2301a61279d591b4683ff10aa53aee7a480ed539a821a62209b6bb9315",
+   "truth_sha256": "c3773daa8d76bdb02b2c90487b55533564d4c85b4e933903198aa002039e39bc",
+   "n_pages": 11,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-125",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+owner_mismatch",
+   "pdf_sha256": "9ec05e332de81a759b931d871635c4468b52ed7357a656c6d3d0365c3a9fddf9",
+   "truth_sha256": "bdaf6f339a495b650e83614acd56cbba9f0ddcef28835e2552204752d856cddb",
+   "n_pages": 8,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-126",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+name_mismatch",
+   "pdf_sha256": "7962ae18e7048c69bfa4865abfeacb9585a1fb2f7d6a737aba6836787007ac19",
+   "truth_sha256": "205aef3dc13894d7e1161513ff2ba7d4d529d4ed4b14eaa695781b5fbee413b4",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "tiv_mismatch",
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-127",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "paid_reserve_mismatch",
+   "pdf_sha256": "bf828fb121c00d42f9053dd6a38bc15b28616dbbb21bd40db3ec2a3e7c8dd3fa",
+   "truth_sha256": "2c869c11be575ad418484b5acf2d79bd72309996451a79eea530f8055291a4f0",
+   "n_pages": 12,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "paid_reserve_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-128",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "missing_document+name_mismatch",
+   "pdf_sha256": "5d431e80b571a85a2c7e074c35d1d3ea7e5a8e3d9323272a149c9d1d7e0fdd4b",
+   "truth_sha256": "478ebb30421a6b7843b99c75fde91f67de910aeca0081e69c6756fe2b539f159",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "missing_document",
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-129",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "a0de54219205b0a016c248a13e02d0a7d4fcff647044323ecbdf629bb9b9cfe6",
+   "truth_sha256": "33e2a7d80b179d5977d4849c69513072c283d0035bdc9a37773ef7eda5eb6462",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-130",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+prompt_injection",
+   "pdf_sha256": "f3d34dbae4108826e7f12cccb20094b6962eccc625643e8d20f30728896a49f6",
+   "truth_sha256": "745406c8850f1e8649dc7e2480866fe12a071f91b913d0db9788b2413afcc2e8",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-131",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "prompt_injection",
+   "pdf_sha256": "03ef2c43a992b05bf4e14fd428cb900cd962dabdceaba04aa806a73862095b0a",
+   "truth_sha256": "229816e2dc5da93a1f3db35d440d75f63adfaa80b70dd4242c9d259fd112e3c7",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-132",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "missing_document",
+   "pdf_sha256": "8a9210d39a510edf677c8f9e3bf845c4eac7f9bb0cc2910ee1070b849891fafd",
+   "truth_sha256": "78d08f11e723a2bbb0bbe9365c76e383f308d9ac245292ec9ae9408853b833f5",
+   "n_pages": 9,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-133",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "13cfa4440a4d3f816180db906662eae56b4232f1c4e23424e19bdb1ad9a4b1e9",
+   "truth_sha256": "f6996a1e7104286516cf65df0824c756362f761f91855ba6ae4cf0f5e709e520",
+   "n_pages": 11,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-134",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "4232c18c212858f067394fd03358ec63baebc374b98e7b71a11490d3e49f7b82",
+   "truth_sha256": "532013c77584f005f95971f0d015149afb1da00e7eae774008faff7af4269463",
+   "n_pages": 12,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-135",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch",
+   "pdf_sha256": "7f2299247e2347017b53c1f4d59b0c2af47c9c8a1e40896b9fa7da695cd83536",
+   "truth_sha256": "285caea6c314ea9493126f5f18abd52b7fa7292c1abfc4b4f7c6006bedf29e6d",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-136",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch",
+   "pdf_sha256": "5a1cc429327dbef123bcee957f935539e8c3e8d745e5864e8c39022ddaa611d0",
+   "truth_sha256": "0115bef7b598aefaeef1d0cd23a377b63d06d2bd304f0bd2a38de62aab3c4a1b",
+   "n_pages": 11,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "loss_run_total_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-137",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch",
+   "pdf_sha256": "c00037e9de01ce16a9a5e360aee710926814bc717bb9067227a710aef62a6795",
+   "truth_sha256": "d2db6e24f43121f2fa6989e92e8475f8e059b4dad092704d6cf2fb2e2776375f",
+   "n_pages": 9,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-138",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch+missing_document",
+   "pdf_sha256": "fd625b1cbd9b91830bd909a9fec9f1c4f86bab75ae19aca7537e7ba18c628e31",
+   "truth_sha256": "ac0ab7cf81b56abbcdf040cba71e8e4790d06a6ac442be64124785082484b5ef",
+   "n_pages": 10,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "claims_history_mismatch",
+    "missing_document"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-139",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "51e48a59addd6d09829e5747cd8541db848202079fae880b1b1db3b237ce9471",
+   "truth_sha256": "7f60b9dcd0596bc9dd8cb09693ff086d2eb9d3380c84af072b359cb020fdc06f",
+   "n_pages": 10,
+   "n_scanned_pages": 3,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-140",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+prompt_injection",
+   "pdf_sha256": "fcdb9dd27191ae85ff5f0095d3be4e92f571afa6c23207483f604ab7ba203752",
+   "truth_sha256": "6437e292bf9440f48f9886a457986554013dd72c2d1cc5fd3134569085bfad71",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-141",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+claims_history_mismatch",
+   "pdf_sha256": "b27877acfc94a4fef16330416cac6fc37d81ace4edf58eda7d5ca20b18f6fd9a",
+   "truth_sha256": "b8b83f9580ef132f6cdc92e18999d0d82a42d7179720c5c300c942e692200cca",
+   "n_pages": 11,
+   "n_scanned_pages": 3,
+   "problem_types": [
+    "tiv_mismatch",
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-142",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+owner_mismatch",
+   "pdf_sha256": "f90d6d5fe4ae6c2e5b8517d27d7350f2cafff585e7e26f4b5dfe6ec0e737d9d5",
+   "truth_sha256": "11d1bc91cf7b0fb3a324c9f9419916a62d5d997efaff96f4879663bd2c0f89b9",
+   "n_pages": 9,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "owner_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-143",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "72097663cb8efd5833893952f122adbdacee66f39c9e5ab4235d1de90f2b7feb",
+   "truth_sha256": "4626f1a84b847295e37cc24af13a101f6cdb358b772103c2d950a7a8baba6ad5",
+   "n_pages": 11,
+   "n_scanned_pages": 2,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-144",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "claims_history_mismatch",
+   "pdf_sha256": "0df477fa8b58ad13f357077021704fcd23df493a2dc75e6bbdaa4ee3dc1df0bd",
+   "truth_sha256": "463830bb16104f9247cfa94720f48e3b23835a4945b13c632c9c003ff62613c5",
+   "n_pages": 10,
+   "n_scanned_pages": 4,
+   "problem_types": [
+    "claims_history_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-145",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "clean",
+   "pdf_sha256": "9236e77e3e9371d0acabed37e60635f126fa6c42039793f2bbb083502ab2a3d8",
+   "truth_sha256": "6566a6c37e8719abd13cbdae1f1c6b2e9cbb2acd71f054d142042cdcdbe74d41",
+   "n_pages": 8,
+   "n_scanned_pages": 2,
+   "problem_types": []
+  },
+  {
+   "packet_id": "PKT-I-146",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "name_mismatch",
+   "pdf_sha256": "9f90f20e08a47b35bfeb725d29bd1213f61087aaf9f5b723bef1dddb03c24f71",
+   "truth_sha256": "110a425692d86ee16e5a5b8d7eb5e3db54b96a340079db086c9b48d3b625a6fe",
+   "n_pages": 10,
+   "n_scanned_pages": 0,
+   "problem_types": [
+    "name_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-147",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch",
+   "pdf_sha256": "0f5cae110a88ee60cbdf928161730ff8602f6276e0e30740ff01955411d2f82f",
+   "truth_sha256": "bc5ddd6c25d68de475669e98c5ce5b7d5affe825f37039ec4be2bf0b3dd0ee39",
+   "n_pages": 11,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-148",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "loss_run_total_mismatch+paid_reserve_mismatch+missing_document+prompt_injection",
+   "pdf_sha256": "18d2c9e494446724413022e996574d4f65cdc2424eefb8a92c53885ce179a923",
+   "truth_sha256": "8a531d5a64595dd092f44fdad08551d004dab2efb7bd18d520713c61eccd421c",
+   "n_pages": 7,
+   "n_scanned_pages": 5,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "paid_reserve_mismatch",
+    "missing_document",
+    "prompt_injection"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-149",
+   "line": "insurance",
+   "split": "test",
+   "scenario": "loss_run_total_mismatch+tiv_mismatch",
+   "pdf_sha256": "9cd78332a816a0e4b952bebc8c89cc9b51f21afda8ba8f09dfebcaf41ff78b7c",
+   "truth_sha256": "e1056ffe3f1103d45e0f87ea46099bbf175a560e73a4e6d3c6074d8228e91c35",
+   "n_pages": 10,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "loss_run_total_mismatch",
+    "tiv_mismatch"
+   ]
+  },
+  {
+   "packet_id": "PKT-I-150",
+   "line": "insurance",
+   "split": "dev",
+   "scenario": "tiv_mismatch+claims_history_mismatch+missing_document+owner_mismatch",
+   "pdf_sha256": "55565bd0e10a6db1ab46e5c94db55d84b2bcf7647a761e8f06d60125e9b5aa10",
+   "truth_sha256": "c13f1e7b2def4b0bd86c2b3a34fa903b3dff5a0c71856e9cdb3aaee2b0aaa34c",
+   "n_pages": 7,
+   "n_scanned_pages": 1,
+   "problem_types": [
+    "tiv_mismatch",
+    "claims_history_mismatch",
+    "missing_document",
+    "owner_mismatch"
+   ]
+  }
+ ],
+ "test_truth_sha256": "99b00c6ca1d4e852a05132cfb89a0d5766ab33fb64c83035313396354f021378"
+}

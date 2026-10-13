@@ -72,7 +72,9 @@ class ResponseCache:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         body = body_path.read_bytes()
         if sha256_bytes(body) != meta["sha256"]:
-            raise CacheCorrupted(f"cached body {body_path.name} does not match its recorded SHA-256; delete it to refetch")
+            raise CacheCorrupted(
+                f"cached body {body_path.name} does not match its recorded SHA-256; delete it to refetch"
+            )
         return CachedResponse(
             body=body,
             sha256=meta["sha256"],
