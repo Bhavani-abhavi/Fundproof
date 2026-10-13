@@ -14,14 +14,19 @@ The derivation of every field follows the rules written down for the as-document
   start, holding that run's claim rows dated in [start, start + 1 year), ordered by (date of loss, claim number);
   current_term_claims = every claim row dated on or after the current term start (the proposed effective date
   one year earlier), same order; uncovered_years 0 and uncovered_years_explained True (loss-run coverage is the
-  loss_run_coverage check's job). Claim amounts are the printed ones;
+  loss_run_coverage check's job). Claim amounts are the printed ones. When a loss run's printed summary does not
+  equal its claim rows (checks_loss_runs.summary_differences: claim count, or totals more than $1.00 apart: a row
+  OCR could not read, or a summary that is itself wrong), the rows are still used, but every policy year of that
+  run (and current_term_claims when the run reaches the current term) is listed in unknowns: the reviewer and the
+  agent see that the loss history may be incomplete;
 - owners: the application's owners table (O1, O2, ...); no insurance document prints a credit score or a
-  bankruptcy flag, so those take the Owner model's defaults (None, False);
-- documents_provided (HM-3.1, in the agent's INSURANCE_DOCUMENTS order): signed_application, prior_carrier_history
-  and revenue_and_payroll from the form; property_schedule; loss_runs only when EVERY carrier on the application's
-  prior carriers table has a loss run in the packet (a submission missing one carrier's run has not provided the
-  loss runs); beneficial_ownership_statement; inspection_report when every location above $5,000,000 has one. All
-  but loss_runs come from checks_insurance.documents_provided, so the HM-5.1 / inspection age rules apply;
+  bankruptcy flag, so those take the Owner model's defaults (None, False). A control-person cell that was not
+  read is False and its path is listed in unknowns;
+- documents_provided (HM-3.1, in the agent's INSURANCE_DOCUMENTS order): checks_insurance.documents_provided, the
+  same rules as the required_documents check: signed_application, prior_carrier_history and revenue_and_payroll
+  from the form; property_schedule (HM-5.1 signature age); loss_runs only when EVERY carrier on the application's
+  prior carriers table has a loss run in the packet (checks_loss_runs.every_prior_carrier_has_a_run);
+  beneficial_ownership_statement; inspection_report when every location above $5,000,000 has a current one;
 - notes: the Remarks text ("" when there is none); ground_truth None.
 """
 
@@ -29,8 +34,7 @@ from datetime import date
 
 from uwcopilot.agent.applications import INSURANCE_DOCUMENTS, Location, Owner
 from uwcopilot.docintel.checks_insurance import documents_provided as insurance_documents_provided
-from uwcopilot.docintel.checks_loss_runs import years_before
-from uwcopilot.docintel.normalize import canonical_name
+from uwcopilot.docintel.checks_loss_runs import summary_differences, years_before
 from uwcopilot.docintel.schemas import InsuranceApplicationForm, InsuranceSubmission, LossRun, LossRunClaim
 from uwcopilot.docintel.to_application_common import (
     ApplicationBuilder,
@@ -98,6 +102,24 @@ def run_years(run: LossRun, builder: ApplicationBuilder) -> list[tuple[str, dict
     return years
 
 
+def flag_incomplete_runs(runs: list[LossRun], effective: date | None, builder: ApplicationBuilder) -> None:
+    """List the years of every loss run whose summary disagrees with its claim rows in unknowns (module docstring)."""
+    term_start = None if effective is None else years_before(effective, 1)
+    for run in runs:
+        if not summary_differences(run):
+            continue
+        for year in run.years:
+            start = year.policy_year_start.value
+            if start is None:
+                continue
+            path = f"loss_runs.years[{start.isoformat()}]"
+            if path not in builder.unknowns:
+                builder.unknowns.append(path)
+            reaches_term = term_start is not None and next_year(start) > term_start
+            if reaches_term and "loss_runs.current_term_claims" not in builder.unknowns:
+                builder.unknowns.append("loss_runs.current_term_claims")
+
+
 def loss_runs(submission: InsuranceSubmission, effective: date | None, builder: ApplicationBuilder) -> dict:
     """The LossRuns dict (see the module docstring)."""
     runs = submission.loss_runs
@@ -105,6 +127,7 @@ def loss_runs(submission: InsuranceSubmission, effective: date | None, builder: 
     for run in runs:
         years.extend(run_years(run, builder))
     years.sort(key=lambda item: item[0])
+    flag_incomplete_runs(runs, effective, builder)
     valued = [run.valued_as_of for run in runs if run.valued_as_of.found]
     earliest = min(valued, key=lambda cited: cited.value) if valued else None
     current = []
@@ -150,6 +173,8 @@ def insurance_owners(form: InsuranceApplicationForm, builder: ApplicationBuilder
     owners = []
     for index, owner in enumerate(form.owners, start=1):
         path = f"owners[{index - 1}]"
+        if not owner.is_control_person.found:
+            builder.unknowns.append(f"{path}.is_control_person")
         owners.append(
             {
                 "owner_id": f"O{index}",
@@ -168,24 +193,9 @@ def insurance_owners(form: InsuranceApplicationForm, builder: ApplicationBuilder
     return owners
 
 
-def every_carrier_has_a_run(submission: InsuranceSubmission) -> bool:
-    """True when the packet has a loss run for every carrier on the application's prior carriers table."""
-    runs = {canonical_name(run.carrier.value) for run in submission.loss_runs if run.carrier.found}
-    if not runs:
-        return False
-    application = submission.application
-    carriers = set()
-    if application is not None:
-        carriers = {canonical_name(row.carrier.value) for row in application.prior_carriers if row.carrier.found}
-    return carriers <= runs
-
-
 def insurance_documents(submission: InsuranceSubmission, builder: ApplicationBuilder) -> list[str]:
     """documents_provided for an insurance submission (see the module docstring)."""
     provided = set(insurance_documents_provided(submission))
-    provided.discard("loss_runs")
-    if every_carrier_has_a_run(submission):
-        provided.add("loss_runs")
     builder.documents(
         "documents_provided",
         [(item.doc_id, item.pages[0] if item.pages else None) for item in submission.documents],

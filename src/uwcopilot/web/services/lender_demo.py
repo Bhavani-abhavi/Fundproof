@@ -13,6 +13,8 @@ no other way to record a decision.
   "unavailable" (never a crash). Screening uses the lists named by UWC_SCREENING_LISTS (the Space: OFAC only).
   The risk model needs UWC_RISK_API_URL; without it the tool reports "unavailable". Tool outputs are deterministic,
   so they are remembered per arguments (CachedTool): the second run of a file does not search or screen again.
+  An unexpected tool failure is logged in full on the server and reaches the agent (and so the page and the DEMO
+  decision record) only as a plain sentence (SafeTool): exception text can hold server paths or other internals.
 - One run per file per process (cached by the compute runner): GET /api/lender/files/{id} shows it.
 - A DEMO decision: each user acts in a private sandbox. The file is run again (fast: cached tool outputs) on the
   user's own thread in a fresh in-memory checkpointer, resumed with the decision, and the decision record the
@@ -24,6 +26,7 @@ no other way to record a decision.
 """
 
 import atexit
+import logging
 import tempfile
 import threading
 from collections.abc import Callable, Mapping
@@ -81,6 +84,8 @@ from uwcopilot.web.services.errors import Conflict, NotFound, ServiceError
 from uwcopilot.web.services.text_checks import refuse_identifiers
 from uwcopilot.web.store import owner_digest
 
+logger = logging.getLogger(__name__)
+
 DECISIONS_NAMESPACE = "lender_demo_decisions"
 LINE_LABELS: dict[str, str] = {
     "credit": "Business credit",
@@ -119,6 +124,36 @@ PROBE_REVIEWER = "availability_probe"
 # ---------------------------------------------------------------------------------------------------------------
 # Tool handlers
 # ---------------------------------------------------------------------------------------------------------------
+
+
+class ToolFailed(RuntimeError):
+    """A tool failed on the server; the message is safe to show (the details are only in the server log)."""
+
+
+class SafeTool:
+    """Wraps a tool handler: ToolUnavailable passes through (its message is written to be shown); any other failure
+    is logged with its traceback and replaced by ToolFailed with a plain message (no exception text, no paths)."""
+
+    def __init__(self, name: str, handler: ToolHandler) -> None:
+        """name: the tool's name, used in the plain message."""
+        self.name = name
+        self.handler = handler
+
+    def __call__(self, arguments: Any) -> Any:
+        """The handler's output, or ToolFailed."""
+        try:
+            return self.handler(arguments)
+        except ToolUnavailable:
+            raise
+        except Exception as error:
+            logger.exception("tool %s failed", self.name)
+            raise ToolFailed(f"{self.name} failed on the server; the details are in the server log") from error
+
+    def close(self) -> None:
+        """Close the wrapped handler when it holds resources."""
+        close = getattr(self.handler, "close", None)
+        if callable(close):
+            close()
 
 
 class CachedTool:
@@ -173,9 +208,9 @@ class GuidelineSearchAdapter:
 def demo_tool_handlers() -> dict[str, ToolHandler]:
     """The agent's real handlers for the demo: cached search and screening, the risk client as configured."""
     return {
-        "search_guidelines": CachedTool(GuidelineSearchAdapter()),
-        "screen_entity": CachedTool(screening_handler()),
-        "score_risk": RiskApiClient.from_settings(load_agent_settings().risk_api).score,
+        "search_guidelines": CachedTool(SafeTool("guideline search", GuidelineSearchAdapter())),
+        "screen_entity": CachedTool(SafeTool("sanctions screening", screening_handler())),
+        "score_risk": SafeTool("risk model", RiskApiClient.from_settings(load_agent_settings().risk_api).score),
     }
 
 
@@ -341,6 +376,17 @@ def plain(text: Any) -> str:
     return " ".join(str(text).replace("`", "'").split())
 
 
+def fenced_lines(text: Any) -> list[str]:
+    """Untrusted text for a fenced block: its own line breaks kept, backticks replaced (so it cannot close the fence),
+    each line's spacing tidied, empty lines at the ends dropped."""
+    lines = [" ".join(line.replace("`", "'").split()) for line in str(text).splitlines()]
+    while lines and not lines[-1]:
+        lines.pop()
+    while lines and not lines[0]:
+        lines.pop(0)
+    return lines or [""]
+
+
 def record_markdown(record: dict[str, Any]) -> str:
     """The decision record as Markdown (the JSON record is the system of record)."""
     reviewer = record.get("reviewer") or {}
@@ -364,7 +410,7 @@ def record_markdown(record: dict[str, Any]) -> str:
         "## Rationale (as typed by the reviewer)",
         "",
         "```text",
-        plain(reviewer.get("rationale", "")),
+        *fenced_lines(reviewer.get("rationale", "")),
         "```",
         "",
         "## Policy findings",

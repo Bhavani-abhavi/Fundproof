@@ -23,7 +23,7 @@ from uwcopilot.docintel.schemas import BankStatement
 @pytest.mark.parametrize(
     ("description", "category"),
     [
-        ("CARD SETTLEMENT TALLYPAY", "revenue"),
+        ("CARD SETTLEMENT TERNWICK", "revenue"),
         ("ACH CREDIT ACORN FOODS INV 1001", "revenue"),
         ("MOBILE CHECK DEPOSIT", "revenue"),
         ("CASH DEPOSIT", "cash_revenue"),

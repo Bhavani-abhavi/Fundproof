@@ -5,8 +5,18 @@ A project is stored as one encrypted JSON object in the web Store (uwcopilot.web
 Store encrypts it at rest (Fernet) and applies the retention period; a user can only ever read their own objects,
 and another user's project id simply is "not found".
 
-Every change (PUT) increases `version`. The simulation seed is derived from (project id, version), so the same
-version always gives the same numbers, and the result caches (compute.py) are keyed by the version.
+Every change (PUT) increases `version`, and the result caches (compute.py) are keyed by the version. The simulation
+seed is derived from the project id only, so it is the SAME for every version of a plan (common random numbers):
+comparing two versions shows the effect of the change, not a different random draw, and applying a path-to-approval
+change-set reproduces exactly the outcome the search showed for it. (A seed per version made an applied change-set
+that "reaches all three targets" miss them on the next screen: same plan, different draw.)
+
+Who wrote each money figure is kept (Studio rule D: never present an assumption or a suggestion as the founder's
+own number): a figure the founder typed is USER_STATED; an empty budget uses the profile's point estimate
+(ASSUMPTION); a figure written by "Apply this change" is a PLAN_CHANGE carrying the evidence a lender would need
+(ChangeSet.evidence_needed) until the founder types it again; the cash reserve at opening is computed (DERIVED).
+
+A user keeps at most MAX_PLANS_PER_USER plans (a design choice that bounds storage and the plan list's cost).
 
 Sites:
 - SYNTHETIC metro: map pins only; a pin must lie within 3 miles of a tract centroid of the generated city.
@@ -26,10 +36,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from uwcopilot.studio import DISCLAIMER, SYNTHETIC_LABEL
 from uwcopilot.studio.data.errors import NotAvailable, StudioDataError
 from uwcopilot.studio.data.provenance import SourceRecord
+from uwcopilot.studio.profiles import Profile
 from uwcopilot.studio.siteiq.context import OWN_TRACT_MAX_MILES
 from uwcopilot.web.schemas_studio import (
+    PLAN_CHANGE_FIELDS,
     IdeaOut,
     MoneyOut,
+    PlanChangeIn,
+    PlanChangeNote,
     ProjectIn,
     ProjectOut,
     ProjectSummary,
@@ -40,8 +54,8 @@ from uwcopilot.web.schemas_studio import (
 )
 from uwcopilot.web.services.errors import Conflict, InputError, NotFound, Unavailable
 from uwcopilot.web.services.geocoding import Geocoder
-from uwcopilot.web.services.studio_options import MetroEntry, metro_entry, profile_for
-from uwcopilot.web.services.text_checks import injection_flags, refuse_identifiers
+from uwcopilot.web.services.studio_options import MetroEntry, assumed_build_out, metro_entry, profile_for
+from uwcopilot.web.services.text_checks import injection_flags, refuse_identifiers, without_known_tract_ids
 from uwcopilot.web.store import ObjectMeta, ObjectNotFound, Store
 
 PROJECTS_NAMESPACE = "studio_projects"
@@ -53,7 +67,12 @@ FLAGGED_NOTE = (
     "but never given to any language model."
 )
 CLEAN_NOTE = "Your idea, stored as you typed it. v0.1 gives no idea text to any language model."
-MONEY_NOTE = "USD as entered. owner_equity + loan_amount - budget_total is the cash reserve at opening."
+MONEY_NOTE = (
+    "USD. The cash reserve at opening is owner_equity + loan_amount - the build-out budget (the profile's point "
+    "estimate when the budget is empty); each simulated future then also takes a build-out overrun out of it."
+)
+# A design choice: enough for real planning, small enough to bound storage and the cost of the plan list.
+MAX_PLANS_PER_USER = 20
 
 
 class StoredSite(BaseModel):
@@ -96,11 +115,16 @@ class ProjectRecord(BaseModel):
     opening_date: date
     opening_date_given: bool
     sites: list[StoredSite]
+    selected_site_index: int = Field(default=0, ge=0, description="The site the founder plans with (results page)")
+    plan_changes: dict[str, PlanChangeNote] = Field(
+        default_factory=dict, description="{field: note} for figures written by 'Apply this change', not typed"
+    )
 
     @property
     def seed(self) -> int:
-        """The simulation seed of this version: the first 8 hex digits of SHA-256(id:version)."""
-        return int(hashlib.sha256(f"{self.id}:{self.version}".encode()).hexdigest()[:8], 16)
+        """The simulation seed of the plan: the first 8 hex digits of SHA-256(id). The same for every version, so
+        versions are compared on the same simulated futures (common random numbers)."""
+        return int(hashlib.sha256(self.id.encode()).hexdigest()[:8], 16)
 
 
 def utc_now() -> datetime:
@@ -152,6 +176,13 @@ def check_pin(entry: MetroEntry, site: SiteIn) -> StoredSite:
     )
 
 
+def geocoder_down_message(entry: MetroEntry) -> str:
+    """What to do when the Census Geocoder cannot be reached (a map pin is offered only where there is a map)."""
+    if len(entry.context.tracts) > 0:
+        return "the Census Geocoder could not be reached; try again later or drop a pin on the map instead"
+    return "the Census Geocoder could not be reached; please try again later"
+
+
 def check_address(entry: MetroEntry, site: SiteIn, geocoder: Geocoder) -> StoredSite:
     """An address, geocoded (real metros only) and checked against the metro's counties."""
     if entry.config.data_label == SYNTHETIC_LABEL:
@@ -162,9 +193,7 @@ def check_address(entry: MetroEntry, site: SiteIn, geocoder: Geocoder) -> Stored
     except NotAvailable as error:
         raise InputError(f"site '{site.label}': {error}") from error
     except StudioDataError as error:  # unreachable host, an error answer, an unreadable body
-        raise Unavailable(
-            "the Census Geocoder could not be reached; try again later or drop a pin on the map instead"
-        ) from error
+        raise Unavailable(geocoder_down_message(entry)) from error
     county = match.state_fips + match.county_fips
     if entry.config.verified:
         if county not in entry.config.county_geoids():
@@ -188,6 +217,28 @@ def check_address(entry: MetroEntry, site: SiteIn, geocoder: Geocoder) -> Stored
     )
 
 
+def check_site_text(entry: MetroEntry, site: SiteIn, position: int) -> None:
+    """No SSN or account number in a site's label or address (position: 1, 2 or 3; the text itself is not repeated
+    in the message). The metro's own tract ids are allowed in a label (the wizard writes them). Runs BEFORE any
+    address goes to the geocoder, so a refused address never leaves the server."""
+    refuse_identifiers(without_known_tract_ids(site.label, entry.context.tracts.ids), f"the name of site {position}")
+    if site.address is not None:
+        refuse_identifiers(site.address, f"the address of site {position}")
+
+
+def addresses_to_geocode(sites: list[SiteIn], known: list[StoredSite] | None = None) -> list[str]:
+    """The addresses of a request that need a geocoder lookup (an address already in the stored plan is reused)."""
+    reusable = {item.address for item in known or [] if item.address}
+    return [site.address for site in sites if site.address is not None and site.address not in reusable]
+
+
+def check_sites_text(metro_id: str, sites: list[SiteIn]) -> None:
+    """check_site_text for every site (the router calls it before any lookup)."""
+    entry = metro_entry(metro_id)
+    for position, site in enumerate(sites, start=1):
+        check_site_text(entry, site, position)
+
+
 def place_sites(
     entry: MetroEntry, sites: list[SiteIn], geocoder: Geocoder, known: list[StoredSite] | None = None
 ) -> list[StoredSite]:
@@ -195,10 +246,11 @@ def place_sites(
     labels = [site.label.casefold() for site in sites]
     if len(set(labels)) != len(labels):
         raise InputError("every site needs its own label")
+    for position, site in enumerate(sites, start=1):
+        check_site_text(entry, site, position)
     reusable = {item.address: item for item in known or [] if item.address}
     placed = []
     for site in sites:
-        refuse_identifiers(site.label, "a site label")
         if site.address is not None and site.address in reusable:
             reused = reusable[site.address].model_copy(update={"label": site.label})
             placed.extend(recheck_stored_sites(entry, [reused]))
@@ -230,12 +282,64 @@ def recheck_stored_sites(entry: MetroEntry, sites: list[StoredSite]) -> list[Sto
 # ---------------------------------------------------------------------------------------------------------------
 
 
+def effective_build_out(record: ProjectRecord, profile: Profile) -> float:
+    """The build-out budget the simulator uses: the founder's budget_total, else the profile's point estimate."""
+    return record.budget_total if record.budget_total is not None else assumed_build_out(profile)
+
+
 def check_money(record: ProjectRecord) -> None:
-    """The plan's sources must cover its build-out budget (the simulator refuses a negative starting cash)."""
-    if record.budget_total is not None and record.owner_equity + record.loan_amount < record.budget_total:
-        raise InputError(
-            "owner_equity plus loan_amount must cover budget_total (the cash reserve at opening cannot be negative)"
+    """The plan's sources must cover its build-out budget (the simulator refuses a negative starting cash). An empty
+    budget is checked against the profile's point estimate, the number the simulator will use, and says so."""
+    profile = profile_for(record.business_type_id, record.metro_id)
+    build_out = effective_build_out(record, profile)
+    sources = record.owner_equity + record.loan_amount
+    if sources < build_out:
+        whose = (
+            "your build-out budget"
+            if record.budget_total is not None
+            else f"the {profile.display_name.lower()} build-out the simulation assumes when the budget is empty "
+            "(ASSUMPTION; type your own budget to replace it)"
         )
+        raise InputError(
+            f"your cash plus the loan (${sources:,.0f}) must cover {whose} of ${build_out:,.0f}: otherwise the plan "
+            "opens with negative cash"
+        )
+
+
+def check_opening_date(value: date, today: date) -> None:
+    """An opening date from one year ago to five years ahead (a design choice: Studio plans a near opening)."""
+    earliest = date(today.year - 1, today.month, min(today.day, 28))
+    latest = date(today.year + 5, today.month, min(today.day, 28))
+    if not earliest <= value <= latest:
+        raise InputError(f"opening_date must be between {earliest.isoformat()} and {latest.isoformat()}")
+
+
+def check_selected_site(record: ProjectRecord) -> None:
+    """The selected site must be one of the plan's sites."""
+    if record.selected_site_index >= len(record.sites):
+        raise InputError(
+            f"selected_site_index {record.selected_site_index} does not exist; the plan has {len(record.sites)} site(s)"
+        )
+
+
+def plan_change_notes(
+    current: dict[str, PlanChangeNote], given: set[str], change: PlanChangeIn | None, now: datetime
+) -> dict[str, PlanChangeNote]:
+    """The plan-change notes after a PUT: a field the founder sets again is theirs (its note is dropped); fields the
+    PUT writes as an applied change-set get a note with the evidence a lender would need."""
+    notes = {field: note for field, note in current.items() if field not in given}
+    if change is not None:
+        missing = sorted(set(change.fields) - given)
+        if missing:
+            raise InputError(f"plan_change names field(s) the request does not set: {', '.join(missing)}")
+        for field in change.fields:
+            notes[field] = PlanChangeNote(
+                source=change.source,
+                engine_version=change.engine_version,
+                applied_at=now,
+                evidence_needed=change.evidence_needed,
+            )
+    return notes
 
 
 def check_text(name: str | None, idea_text: str | None) -> list[str]:
@@ -246,10 +350,13 @@ def check_text(name: str | None, idea_text: str | None) -> list[str]:
 
 
 def build_record(body: ProjectIn, geocoder: Geocoder, now: datetime | None = None) -> ProjectRecord:
-    """A new, checked ProjectRecord (version 1) from a POST body. Geocodes addresses (network) for real metros."""
+    """A new, checked ProjectRecord (version 1) from a POST body. Addresses are looked up through geocoder (the
+    router passes a PrefetchedGeocoder, so no network call happens here)."""
     created = now or utc_now()
     entry = metro_entry(body.metro_id)
     profile_for(body.business_type_id, body.metro_id)
+    if body.opening_date is not None:
+        check_opening_date(body.opening_date, created.date())
     flags = check_text(body.name, body.idea_text)
     record = ProjectRecord(
         id=new_project_id(),
@@ -283,8 +390,18 @@ def updated_record(
         raise Conflict(
             f"the plan changed meanwhile (stored version {current.version}, yours {body.version}); reload it"
         )
-    given = body.model_fields_set - {"version"}
-    for required in ("metro_id", "business_type_id", "owner_equity", "loan_amount", "loan_term_months", "rate_type"):
+    changed_at = now or utc_now()
+    given = body.model_fields_set - {"version", "plan_change"}
+    required_fields = (
+        "metro_id",
+        "business_type_id",
+        "owner_equity",
+        "loan_amount",
+        "loan_term_months",
+        "rate_type",
+        "selected_site_index",
+    )
+    for required in required_fields:
         if required in given and getattr(body, required) is None:
             raise InputError(f"{required} cannot be empty")
     values: dict[str, Any] = current.model_dump()
@@ -294,15 +411,26 @@ def updated_record(
         values["opening_date_given"] = body.opening_date is not None
         if body.opening_date is None:
             values["opening_date"] = default_opening_date(current.created_at)
+        else:
+            check_opening_date(body.opening_date, changed_at.date())
     entry = metro_entry(values["metro_id"])
     profile_for(values["business_type_id"], values["metro_id"])
     values["idea_flags"] = check_text(values["name"], values["idea_text"])
     if "sites" in given and body.sites is not None:
         sites = place_sites(entry, body.sites, geocoder, known=current.sites)
+        if "selected_site_index" not in given and values["selected_site_index"] >= len(sites):
+            values["selected_site_index"] = 0
     else:
         sites = recheck_stored_sites(entry, current.sites)
-    values.update(sites=sites, version=current.version + 1, updated_at=now or utc_now())
+    notes = plan_change_notes(current.plan_changes, given & set(PLAN_CHANGE_FIELDS), body.plan_change, changed_at)
+    values.update(
+        sites=sites,
+        version=current.version + 1,
+        updated_at=changed_at,
+        plan_changes={field: note.model_dump() for field, note in notes.items()},
+    )
     record = ProjectRecord.model_validate(values)
+    check_selected_site(record)
     check_money(record)
     return record
 
@@ -315,6 +443,31 @@ def updated_record(
 def save(store: Store, owner: str, record: ProjectRecord) -> ObjectMeta:
     """Write (or overwrite) the record; a write starts a new retention period."""
     return store.put_json(owner, PROJECTS_NAMESPACE, record.id, record.model_dump(mode="json"))
+
+
+def check_plan_count(store: Store, owner: str) -> None:
+    """Conflict when the user already keeps MAX_PLANS_PER_USER plans (reads only the metadata, decrypts nothing)."""
+    count = len(store.list(owner, PROJECTS_NAMESPACE))
+    if count >= MAX_PLANS_PER_USER:
+        raise Conflict(
+            f"you have {count} plans, the most one account can keep in this prototype; delete one to start another"
+        )
+
+
+def create(store: Store, owner: str, body: ProjectIn, geocoder: Geocoder) -> tuple[ProjectRecord, ObjectMeta]:
+    """Check the plan count, build the record and save it (blocking: the router runs it in a worker thread)."""
+    check_plan_count(store, owner)
+    record = build_record(body, geocoder)
+    return record, save(store, owner, record)
+
+
+def update(
+    store: Store, owner: str, project_id: str, body: ProjectUpdate, geocoder: Geocoder
+) -> tuple[ProjectRecord, ObjectMeta]:
+    """Load, change and save a plan (blocking: the router runs it in a worker thread)."""
+    current = load(store, owner, project_id)
+    record = updated_record(current, body, geocoder)
+    return record, save(store, owner, record)
 
 
 def load(store: Store, owner: str, project_id: str) -> ProjectRecord:
@@ -355,21 +508,34 @@ def site_out(index: int, site: StoredSite) -> SiteOut:
     return SiteOut(index=index, **site.model_dump())
 
 
+def field_status(record: ProjectRecord, field: str, typed: bool = True) -> str:
+    """USER_STATED (typed), ASSUMPTION (left empty) or PLAN_CHANGE (written by an applied change-set)."""
+    if field in record.plan_changes:
+        return "PLAN_CHANGE"
+    return "USER_STATED" if typed else "ASSUMPTION"
+
+
 def money_out(record: ProjectRecord) -> MoneyOut:
-    """The plan's money with entry statuses."""
-    reserve = None
-    if record.budget_total is not None:
-        reserve = round(record.owner_equity + record.loan_amount - record.budget_total, 2)
+    """The plan's money with the status of every figure (see the module docstring)."""
+    profile = profile_for(record.business_type_id, record.metro_id)
+    build_out = effective_build_out(record, profile)
+    budget_status = field_status(record, "budget_total", typed=record.budget_total is not None)
     return MoneyOut(
         budget_total=record.budget_total,
-        budget_status="USER_STATED" if record.budget_total is not None else "ASSUMPTION",
+        budget_status=budget_status,
+        build_out_assumed=None if record.budget_total is not None else build_out,
         owner_equity=record.owner_equity,
+        owner_equity_status=field_status(record, "owner_equity"),
         loan_amount=record.loan_amount,
+        loan_amount_status=field_status(record, "loan_amount"),
         loan_term_months=record.loan_term_months,
+        loan_term_status=field_status(record, "loan_term_months"),
         annual_rate_pct=record.annual_rate_pct,
         annual_rate_status="USER_STATED" if record.annual_rate_pct is not None else "ASSUMPTION",
         rate_type=record.rate_type,
-        cash_reserve_at_opening=reserve,
+        cash_reserve_at_opening=round(record.owner_equity + record.loan_amount - build_out, 2),
+        cash_reserve_status="DERIVED" if record.budget_total is not None else "ASSUMPTION",
+        plan_changes=record.plan_changes,
         note=MONEY_NOTE,
     )
 
@@ -404,6 +570,9 @@ def project_out(record: ProjectRecord, meta: ObjectMeta | None) -> ProjectOut:
         opening_date=record.opening_date,
         opening_date_status="USER_STATED" if record.opening_date_given else "ASSUMPTION",
         sites=[site_out(index, site) for index, site in enumerate(record.sites)],
+        selected_site_index=record.selected_site_index,
+        selected_site_status=field_status(record, "selected_site_index"),
+        seed=record.seed,
         disclaimer=DISCLAIMER,
     )
 

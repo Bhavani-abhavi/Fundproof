@@ -2,7 +2,7 @@
 
 Usage (the `make packets` target):
     uv run python scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 \
-        --seed 42 --test-credit 30 --test-insurance 30
+        --seed 20261013 --test-credit 30 --test-insurance 30
 
 Writes <out>/<packet_id>/packet.pdf and truth.json, and <out>/manifest.json. A copy of the manifest (no absolute
 paths) goes to eval/packets/manifest.json so anyone can check that a regeneration gives the same packets
@@ -33,7 +33,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", type=Path, default=Path("data/processed/packets"), help="output folder")
     parser.add_argument("--n-credit", type=int, default=150, help="number of loan packets")
     parser.add_argument("--n-insurance", type=int, default=150, help="number of insurance packets")
-    parser.add_argument("--seed", type=int, default=42, help="master seed")
+    parser.add_argument("--seed", type=int, default=20261013, help="master seed")
     parser.add_argument("--test-credit", type=int, default=30, help="loan packets in the test split")
     parser.add_argument("--test-insurance", type=int, default=30, help="insurance packets in the test split")
     parser.add_argument("--json-only", action="store_true", help="write truth.json only (no PDF drawing)")

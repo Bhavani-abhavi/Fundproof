@@ -26,12 +26,20 @@ const TornadoChart = dynamic(() => import("@/components/studio/charts/tornado-ch
 const TORNADO_ROWS = 8;
 const INPUT_ROWS_COLLAPSED = 6;
 
+/** The build-out overrun the simulator takes out of the opening cash (a sampled ASSUMPTION), when it was sampled. */
+function overrunInput(response: FeasibilityResponse) {
+  return response.result.distributions.find((item) => item.name === "capex_overrun_share") ?? null;
+}
+
 /**
  * The feasibility results for one site: three probability gauges, the revenue fan, the cash runway, the tornado,
  * break-even, the loan as simulated and every sampled input with its status and source. Every block carries the
  * "simulated, based on stated assumptions" label; every number comes from the FeasibilityResult the API returned.
+ *
+ * rateTyped: false when the founder left the rate empty, so the rate is the city's prime rate PLUS an assumed spread
+ * (the simulator's rate status describes the prime rate only; the spread is shown as an assumption next to it).
  */
-export function FeasibilityPanel({ response, target }: { response: FeasibilityResponse; target: PathTarget | null }) {
+export function FeasibilityPanel({ response, target, rateTyped = true }: { response: FeasibilityResponse; target: PathTarget | null; rateTyped?: boolean }) {
   const wide = useMediaQuery("(min-width: 640px)");
   const [showAllInputs, setShowAllInputs] = useState(false);
   const result = response.result;
@@ -56,6 +64,19 @@ export function FeasibilityPanel({ response, target }: { response: FeasibilityRe
   }));
   const tornadoBars = result.tornado?.bars.slice(0, TORNADO_ROWS) ?? [];
   const inputs = showAllInputs ? result.distributions : result.distributions.slice(0, INPUT_ROWS_COLLAPSED);
+  const overrun = overrunInput(response);
+  const overrunWords = overrun
+    ? `a simulated build-out overrun of ${formatShare(overrun.low, 0)} to ${formatShare(overrun.high, 0)} of the build-out (most likely ${formatShare(overrun.mode, 0)}, an assumption)`
+    : null;
+  const rateChips = rateTyped ? (
+    <DataStatusChip status={result.loan.rate_status} />
+  ) : (
+    <span className="flex flex-wrap items-center gap-1">
+      <DataStatusChip status={result.loan.rate_status} />
+      <span className="text-xs font-normal text-muted-foreground">+ spread</span>
+      <EvidenceChip status="ASSUMPTION" />
+    </span>
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,7 +119,7 @@ export function FeasibilityPanel({ response, target }: { response: FeasibilityRe
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
         {formatNumber(result.n_paths)} simulated futures over {result.months} months from {monthLabel(result.opening_date.slice(0, 7))}, seed{" "}
-        {response.seed} (fixed for this plan version). DSCR target {result.dscr_target.value.toFixed(2)}: {result.dscr_target.label}. Reaching a target is not an
+        {response.seed} (the same for every version of this plan, so versions are compared on the same futures). DSCR target {result.dscr_target.value.toFixed(2)}: {result.dscr_target.label}. Reaching a target is not an
         approval; lenders make their own decisions.
       </p>
 
@@ -123,7 +144,7 @@ export function FeasibilityPanel({ response, target }: { response: FeasibilityRe
         </ChartFrame>
         <ChartFrame
           title="Cash on hand: the runway"
-          description={`Cash at the end of each month, starting from ${formatUsd(result.planned_starting_cash)} at opening. Below the $0 line means the business ran out of cash.`}
+          description={`Cash at the end of each month. Each future opens with the planned reserve of ${formatUsd(result.planned_starting_cash)} (your cash plus the loan minus the build-out)${overrunWords ? ` minus ${overrunWords}` : ""}, so it starts at or below that reserve. Below the $0 line means the business ran out of cash.`}
           label={result.label}
           legend={[
             { label: "P10 to P90 range", color: "var(--viz-1)", kind: "area" },
@@ -214,17 +235,17 @@ export function FeasibilityPanel({ response, target }: { response: FeasibilityRe
             {/* One group per dt: a <dl> allows one wrapping <div> around dt/dd, not nested ones (axe: dlitem). */}
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 py-2">
               <dt className="text-muted-foreground">Rate ({result.loan.rate_type})</dt>
-              <dd className="figure-nums flex items-center gap-2 font-semibold">
+              <dd className="figure-nums flex flex-wrap items-center gap-2 font-semibold">
                 {formatPercent(result.loan.annual_rate_pct)}
-                <DataStatusChip status={result.loan.rate_status} />
+                {rateChips}
               </dd>
               <dd className="basis-full text-xs leading-relaxed text-muted-foreground">{result.loan.rate_source}</dd>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 py-2">
               <dt className="text-muted-foreground">Monthly payment</dt>
-              <dd className="figure-nums flex items-center gap-2 font-semibold">
+              <dd className="figure-nums flex flex-wrap items-center gap-2 font-semibold">
                 {formatUsd(result.loan.monthly_payment)}
-                <DataStatusChip status={result.loan.rate_status} />
+                {rateChips}
               </dd>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -234,9 +255,17 @@ export function FeasibilityPanel({ response, target }: { response: FeasibilityRe
                 <DataStatusChip status={result.capex_status} />
               </dd>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-              <dt className="text-muted-foreground">Cash at opening (your cash + loan - build-out)</dt>
-              <dd className="figure-nums font-semibold">{formatUsd(result.planned_starting_cash)}</dd>
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 py-2">
+              <dt className="text-muted-foreground">Planned reserve at opening (your cash + loan - build-out)</dt>
+              <dd className="figure-nums flex items-center gap-2 font-semibold">
+                {formatUsd(result.planned_starting_cash)}
+                <DataStatusChip status="DERIVED" />
+              </dd>
+              {overrunWords ? (
+                <dd className="basis-full text-xs leading-relaxed text-muted-foreground">
+                  Before the simulation: each simulated future then takes {overrunWords} out of it.
+                </dd>
+              ) : null}
             </div>
           </dl>
         </section>

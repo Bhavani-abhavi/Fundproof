@@ -70,6 +70,7 @@ from functools import partial
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Path, Query
+from starlette.concurrency import run_in_threadpool
 
 from uwcopilot.web.auth import Principal, require_role
 from uwcopilot.web.schemas_lender import (
@@ -124,8 +125,10 @@ def queue(
 async def file_view(file_id: FileId, principal: SignedIn, services: Services, store: StoreDep) -> LenderFileResponse:
     """The agent's run up to the human checkpoint (cached per file), with your role's action checks."""
     services.lender.application(file_id)
-    run = await services.compute.run(partial(services.lender.run_file, file_id), key=("lender", "file", file_id))
-    return services.lender.file_view(run, principal, stored_record(store, principal, file_id))
+    work = partial(services.lender.run_file, file_id)
+    run = await services.compute.run(work, key=("lender", "file", file_id), owner=principal.owner_id)
+    decision = await run_in_threadpool(stored_record, store, principal, file_id)
+    return await run_in_threadpool(services.lender.file_view, run, principal, decision)
 
 
 @router.get("/sections/{section_id}", response_model=SectionResponse)
@@ -140,10 +143,12 @@ async def decide(
 ) -> DecisionResponse:
     """Record a DEMO decision through the agent's own checkpoint (never bypassed)."""
     services.lender.application(file_id)
-    if stored_record(store, principal, file_id) is not None:
+    if await run_in_threadpool(stored_record, store, principal, file_id) is not None:
         raise existing_decision_conflict(file_id)
-    record = await services.compute.run(partial(services.lender.decide, file_id, principal, body))
-    store.put_json(
+    work = partial(services.lender.decide, file_id, principal, body)
+    record = await services.compute.run(work, owner=principal.owner_id)
+    await run_in_threadpool(
+        store.put_json,
         principal.owner_id,
         DECISIONS_NAMESPACE,
         file_id,

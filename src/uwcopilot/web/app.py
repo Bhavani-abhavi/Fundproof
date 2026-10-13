@@ -34,6 +34,7 @@ from uwcopilot.web.routers import lender as lender_router
 from uwcopilot.web.routers import studio as studio_router
 from uwcopilot.web.routers import system as system_router
 from uwcopilot.web.security import (
+    API_MAX_BODY_BYTES,
     BodySizeLimitMiddleware,
     CsrfMiddleware,
     RateLimiter,
@@ -158,7 +159,11 @@ def swagger_page(title: str) -> HTMLResponse:
 def add_middlewares(app: FastAPI, settings: WebSettings) -> None:
     """Add the middlewares. Starlette runs the LAST added first, so this list is innermost first."""
     app.add_middleware(CsrfMiddleware)
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_body_bytes)
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=settings.max_body_bytes,
+        prefix_limits=[("/api/", API_MAX_BODY_BYTES)],
+    )
     app.add_middleware(
         RateLimitMiddleware,
         ip_limiter=RateLimiter(settings.rate_limit_ip_per_minute, settings.rate_limit_ip_burst),

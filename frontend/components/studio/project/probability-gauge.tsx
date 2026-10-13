@@ -1,10 +1,12 @@
 import { EvidenceChip } from "@/components/evidence/evidence-chip";
+import { SimulationLabel } from "@/components/studio/simulation-label";
 import { formatShare, isNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
  * One simulated probability as a meter: the share in big type, the same share as "N of M simulated futures", a
- * plain-language sentence, the MODEL_ESTIMATE chip and, when known, the target it is compared with (labeled as a
+ * plain-language sentence, the "simulated, based on stated assumptions" label (Studio rule E: on every simulated
+ * number), the MODEL_ESTIMATE chip and, when known, the target it is compared with (labeled as a
  * planning target: the targets are editable design choices, not lender rules; their sources are in the path panel).
  *
  * The fill is the neutral series color, not a good/bad color: Studio explains, it does not grade the plan.
@@ -58,6 +60,7 @@ export function ProbabilityGauge({
         ) : null}
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">{text}</p>
+      <SimulationLabel />
       {target ? (
         <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
           <span className="mt-1 inline-block h-2.5 w-0.5 shrink-0 rounded-full bg-ink" aria-hidden="true" />

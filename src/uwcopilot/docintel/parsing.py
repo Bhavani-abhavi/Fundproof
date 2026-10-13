@@ -9,13 +9,24 @@ OCR digit fix (fix_ocr_digits): Tesseract sometimes reads a digit as a similar l
 letters are replaced: O/o -> 0, l/I/| -> 1, S/\u00a7 -> 5, B -> 8. A token such as "SPC119411619" (an ID number) or
 "LIG-5203550" (a policy number) has other letters, so it is left alone.
 
+Spaces inside a number: OCR sometimes reads a thousands comma as a space ("$2,806 792.54"): pieces after a space
+that start with three digits are joined back with a comma (join_thousands_groups). Any other space between two
+digits is KEPT, so the text is not one number: "4 1" (a speck read as "4" before the printed "1") is not 41, and
+"4 15,364.94" is not 415,364.94. The rules extractor then tries each word alone (rules_common.parse_value_words).
+Spaces next to punctuation ("$ 1,234.56", "50.0 %") are removed.
+
+Leading "S" or "\u00a7" in a money value: OCR reads both a "$" and a "5" as "S" (or "\u00a7"). "S1,234.56" can be
+"$1,234.56" or "51,234.56", so it is NOT read (None). Only when exactly one reading is a well-formed amount is it
+used: "\u00a70,685.02" is 50,685.02 (no amount is printed "$0,685.02") and "S123,456.78" is $123,456.78 (no amount
+is printed "5123,456.78"). A well-formed amount has no leading zero before a thousands group.
+
 Formats the parsers accept:
 - money: "$1,234.56", "1,234.56", "-$1,234.56", "$-1,234.56", "(1,234.56)", "1234.56", "$1,234" (stray quote or
-  bracket characters that OCR puts around a number are stripped first). OCR sometimes reads a thousands comma as a
-  space ("$2,806 792.54"): pieces after a space that start with three digits are joined back with a comma;
+  bracket characters that OCR puts around a number are stripped first; see unclear_sign for a mark before "$");
 - printed amounts (parse_amount): money printed with exactly two decimals, as every amount on these documents is,
   so a fragment such as "$2,806" is never taken for a whole amount;
-- dates: "03/14/2026" (month first), "2026-03-14", "14-Mar-2026" (also "14 Mar 2026");
+- dates: "03/14/2026" (month first), "2026-03-14", "14-Mar-2026" (also "14 Mar 2026"). OCR junk glued to the front
+  of a date ("=\u2014ss\u00ab03/17/2024.") is cut off when the rest is a numeric date (strip_date_junk);
 - percent: "8.75%", "50.0 %", "8.75";
 - integers: "48", "10,311";
 - yes/no: Yes / No / Y / N / X (a ticked box) / True / False;
@@ -46,8 +57,13 @@ OCR_DIGIT_FIXES: dict[str, str] = {"O": "0", "o": "0", "l": "1", "I": "1", "|": 
 NUMBER_PUNCTUATION = set("$,.-()%/+")
 # Characters OCR often leaves around a number (quotes, guillemets, brackets, stray marks).
 STRAY_EDGE_CHARACTERS = "\"'`‘’“”«»[]{}|:;*~_^!?"
+STRAY_BEFORE_DOLLAR = re.compile("[" + re.escape(STRAY_EDGE_CHARACTERS) + r"]\$")
 
 MONEY_PATTERN = re.compile(r"^(?P<number>\d{1,3}(?:,\d{3})+|\d+)(?:\.(?P<cents>\d{1,2}))?$")
+# A money value that starts with "S" or the section sign right before a digit (optionally after a sign).
+LEADING_S_PATTERN = re.compile(r"^(?P<sign>[-(]?)[S\u00a7](?=\d)")
+# Junk OCR glues to the front of a numeric date: the non-digits before a text that is otherwise exactly a date.
+DATE_JUNK_PATTERN = re.compile(r"^\D+(?=\d{1,4}[/-]\d{1,2}[/-]\d{1,4}$)")
 TABLE_AMOUNT_PATTERN = re.compile(r"^-?\$?-?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}$")
 MDY_PATTERN = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 ISO_PATTERN = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
@@ -88,14 +104,39 @@ def strip_edges(text: str) -> str:
     return text.strip().strip(STRAY_EDGE_CHARACTERS).strip()
 
 
+def is_digit_like(character: str) -> bool:
+    """True for a digit or an OCR look-alike letter of a digit."""
+    return character.isdigit() or character in OCR_DIGIT_FIXES
+
+
+def remove_inner_spaces(text: str) -> str:
+    """Drop the spaces inside a number, except a space between two digits (see the module docstring)."""
+    kept = []
+    for index, character in enumerate(text):
+        if character != " ":
+            kept.append(character)
+            continue
+        before = text[index - 1] if index > 0 else ""
+        after = text[index + 1] if index + 1 < len(text) else ""
+        if is_digit_like(before) and is_digit_like(after):
+            kept.append(character)
+    return "".join(kept)
+
+
+def unclear_sign(text: str) -> bool:
+    """True when a stray OCR mark sits right before a "$" in the text ('"$1,295.52'): on these documents only a
+    minus sign is ever printed there, so the sign of that amount is not known from the text alone."""
+    return STRAY_BEFORE_DOLLAR.search(text) is not None
+
+
 def clean_number_text(text: str) -> str:
     """Text of a number ready for a pattern.
 
-    Edges are stripped, inner spaces and underscores removed (OCR reads a printed rule as "_"), dashes turned into a
-    minus sign, a trailing comma or period dropped
+    Edges are stripped, inner spaces removed except between two digits (module docstring), underscores removed
+    (OCR reads a printed rule as "_"), dashes turned into a minus sign, a trailing comma or period dropped
     ("110,664.71," -> "110,664.71") and OCR look-alike letters fixed.
     """
-    cleaned = strip_edges(text).replace(" ", "").replace("_", "")
+    cleaned = remove_inner_spaces(" ".join(strip_edges(text).split())).replace("_", "")
     cleaned = cleaned.replace("\u2014", "-").replace("\u2013", "-")
     cleaned = cleaned.rstrip(",.")
     return fix_ocr_digits(cleaned)
@@ -112,10 +153,41 @@ def join_thousands_groups(text: str) -> str:
     return text
 
 
+def well_formed_money(cleaned: str) -> re.Match[str] | None:
+    """The MONEY_PATTERN match of a cleaned number, or None (also None for a leading zero: "0,685.02", "0685.02")."""
+    match = MONEY_PATTERN.match(cleaned)
+    if match is None:
+        return None
+    number = match.group("number")
+    if len(number) > 1 and number.startswith("0"):
+        return None
+    return match
+
+
+def leading_s_readings(text: str) -> list[float]:
+    """The well-formed readings of a money value that starts with "S" or "\u00a7", as "$" and as "5" (module
+    docstring)."""
+    readings = []
+    for replacement in ("$", "5"):
+        value = parse_plain_money(LEADING_S_PATTERN.sub(rf"\g<sign>{replacement}", text, count=1))
+        if value is not None and value not in readings:
+            readings.append(value)
+    return readings
+
+
 def parse_money(text: str | None) -> float | None:
     """A dollar amount (see the module docstring for the accepted forms), or None."""
     if text is None:
         return None
+    stripped = strip_edges(text)
+    if LEADING_S_PATTERN.match(stripped):
+        readings = leading_s_readings(stripped)
+        return readings[0] if len(readings) == 1 else None
+    return parse_plain_money(stripped)
+
+
+def parse_plain_money(text: str) -> float | None:
+    """A dollar amount whose text has no ambiguous leading "S" (parse_money does that check), or None."""
     cleaned = clean_number_text(join_thousands_groups(strip_edges(text)))
     negative = False
     if cleaned.startswith("(") and cleaned.endswith(")"):
@@ -128,7 +200,7 @@ def parse_money(text: str | None) -> float | None:
     if cleaned.startswith("-"):
         negative = True
         cleaned = cleaned[1:]
-    match = MONEY_PATTERN.match(cleaned)
+    match = well_formed_money(cleaned)
     if match is None:
         return None
     whole = int(match.group("number").replace(",", ""))
@@ -154,7 +226,8 @@ def parse_amount(text: str | None) -> float | None:
     if text is None:
         return None
     joined = join_thousands_groups(strip_edges(text))
-    if not is_table_amount(joined):
+    # The two-decimals check reads a leading "S" as "$"; parse_money then decides between "$" and "5".
+    if not is_table_amount(LEADING_S_PATTERN.sub(r"\g<sign>$", joined, count=1)):
         return None
     return parse_money(joined)
 
@@ -185,7 +258,16 @@ def parse_date(text: str | None) -> date | None:
     abbreviated = DMY_ABBREV_PATTERN.match(cleaned)
     if abbreviated is not None:
         return abbreviated_month_date(abbreviated)
-    numeric = fix_ocr_digits(cleaned.replace(" ", ""))
+    parsed = numeric_date(cleaned)
+    if parsed is not None:
+        return parsed
+    trimmed = strip_date_junk(cleaned)
+    return None if trimmed == cleaned else numeric_date(trimmed)
+
+
+def numeric_date(text: str) -> date | None:
+    """A "03/14/2026" or "2026-03-14" date (OCR digit fix and inner spaces removed), or None."""
+    numeric = fix_ocr_digits(text.replace(" ", ""))
     match = MDY_PATTERN.match(numeric)
     if match is not None:
         return valid_date(int(match.group(3)), int(match.group(1)), int(match.group(2)))
@@ -195,11 +277,17 @@ def parse_date(text: str | None) -> date | None:
     return None
 
 
+def strip_date_junk(text: str) -> str:
+    """The text without the OCR junk before a numeric date ("=\u2014ss\u00ab03/17/2024" -> "03/17/2024")."""
+    match = DATE_JUNK_PATTERN.match(text)
+    return text if match is None else text[match.end() :]
+
+
 def parse_percent(text: str | None) -> float | None:
     """A percentage as a number ("8.75%" -> 8.75), or None."""
     if text is None:
         return None
-    match = PERCENT_PATTERN.match(clean_number_text(text).replace(" ", ""))
+    match = PERCENT_PATTERN.match(clean_number_text(text))
     return None if match is None else float(match.group(1))
 
 
@@ -207,7 +295,7 @@ def parse_int(text: str | None) -> int | None:
     """An integer, with or without thousands separators, or None."""
     if text is None:
         return None
-    cleaned = clean_number_text(text)
+    cleaned = clean_number_text(join_thousands_groups(strip_edges(text)))
     if INT_PATTERN.match(cleaned) is None:
         return None
     return int(cleaned.replace(",", ""))

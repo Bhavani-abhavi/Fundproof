@@ -4,8 +4,14 @@ HFDatasetStore keeps a LocalFileStore (store.py) as a working copy of a PRIVATE 
 - at startup restore() creates the repo if missing (private), refuses a public repo, and downloads a snapshot;
 - writes go to the local copy and are uploaded in one batched commit every flush_every_s seconds (default 300) by
   a background thread, plus once more at shutdown. Data written less than one interval before a crash is lost;
-- the Hub limits how often one repo can be committed to, which is why writes are batched. One lock serializes
-  uploads and deletes, so the Hub never receives an upload of a file after its deletion.
+- the Hub limits how often one repo can be committed to, which is why writes are batched.
+
+Two locks, always taken in this order (never the Hub lock while holding the state lock):
+- the Hub lock serializes every Hub call (uploads, deletes, history squash), so the Hub never receives an upload of a
+  file after its deletion;
+- the state lock guards the working copy and the bookkeeping (changed files, pending deletes, remote paths). It is
+  held only for local work, never during a network call, so a write (put_json from a web request) never waits for a
+  slow Hub commit. (Before this split one lock covered both, and a 6-second commit stalled every request.)
 
 Deleting (delete, delete_owner, purge_expired) has three steps, because a dataset repo is a git repo and a plain
 delete only adds a commit: every earlier revision would still hold the deleted files.
@@ -113,7 +119,8 @@ class HFDatasetStore:
         self.api = api
         self.repo_id = repo_id
         self.flush_every_s = flush_every_s
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # the state lock (local work only)
+        self._hub_lock = threading.Lock()  # serializes Hub calls; taken before the state lock, never after
         self._dirty: set[str] = set()
         self._pending_deletes: set[str] = set()
         self._remote_paths: set[str] = set()
@@ -126,21 +133,24 @@ class HFDatasetStore:
 
     def restore(self) -> None:
         """Create the private repo if needed, refuse a public one, download its files, re-apply pending deletes."""
-        self.api.create_repo(self.repo_id, repo_type="dataset", private=True, exist_ok=True)
-        info = self.api.repo_info(self.repo_id, repo_type="dataset")
-        if not getattr(info, "private", False):
-            raise StoreError(f"dataset {self.repo_id} is public; user data may only go to a private dataset")
-        self.local.root.mkdir(parents=True, exist_ok=True)
-        self.api.snapshot_download(self.repo_id, repo_type="dataset", local_dir=str(self.local.root))
-        with self._lock:
-            self._remote_paths = set(self.api.list_repo_files(self.repo_id, repo_type="dataset"))
-            self._pending_deletes = self._read_pending_deletes()
-            for path in self._pending_deletes:
-                self._remove_local(path)  # the snapshot brought back files whose deletion never reached the Hub
-            if self._pending_deletes:
-                self._delete_remote(sorted(self._pending_deletes))
-            # A squash that a restart interrupted must still happen; squashing an already squashed history is harmless.
-            self._history_needs_erasing = True
+        with self._hub_lock:
+            self.api.create_repo(self.repo_id, repo_type="dataset", private=True, exist_ok=True)
+            info = self.api.repo_info(self.repo_id, repo_type="dataset")
+            if not getattr(info, "private", False):
+                raise StoreError(f"dataset {self.repo_id} is public; user data may only go to a private dataset")
+            self.local.root.mkdir(parents=True, exist_ok=True)
+            self.api.snapshot_download(self.repo_id, repo_type="dataset", local_dir=str(self.local.root))
+            remote = set(self.api.list_repo_files(self.repo_id, repo_type="dataset"))
+            with self._lock:
+                self._remote_paths = remote
+                self._pending_deletes = self._read_pending_deletes()
+                for path in self._pending_deletes:
+                    self._remove_local(path)  # the snapshot brought back files whose deletion never reached the Hub
+                pending = sorted(self._pending_deletes)
+                # A squash that a restart interrupted must still happen; squashing a squashed history is harmless.
+                self._history_needs_erasing = True
+            if pending:
+                self._delete_remote(pending)
 
     def start(self) -> None:
         """Start the background thread that flushes every flush_every_s seconds."""
@@ -172,33 +182,46 @@ class HFDatasetStore:
     def flush(self) -> int:
         """Send pending deletes, upload every changed file in one commit, then erase deleted data from the history.
 
-        Returns the number of files uploaded.
+        Returns the number of files uploaded. The changed files are read under the state lock (a consistent copy)
+        and sent with only the Hub lock held, so writes go on while the commit is in flight; a failed commit puts
+        its files back on the "changed" list for the next flush.
         """
-        with self._lock:
-            if self._pending_deletes:
-                self._delete_remote(sorted(self._pending_deletes))
-            operations = [
-                CommitOperationAdd(path_in_repo=relative, path_or_fileobj=(self.local.root / relative).read_bytes())
-                for relative in sorted(self._dirty)
-                if (self.local.root / relative).is_file()
-            ]
+        with self._hub_lock:
+            with self._lock:
+                pending = sorted(self._pending_deletes)
+            if pending:
+                self._delete_remote(pending)
+            with self._lock:
+                operations = [
+                    CommitOperationAdd(path_in_repo=relative, path_or_fileobj=(self.local.root / relative).read_bytes())
+                    for relative in sorted(self._dirty)
+                    if (self.local.root / relative).is_file()
+                ]
+                self._dirty.clear()
             if operations:
-                self.api.create_commit(
-                    self.repo_id,
-                    operations,
-                    commit_message=f"store: upload {len(operations)} encrypted file(s)",
-                    repo_type="dataset",
-                )
-                self._remote_paths.update(operation.path_in_repo for operation in operations)
-            self._dirty.clear()
-            if self._history_needs_erasing:
+                try:
+                    self.api.create_commit(
+                        self.repo_id,
+                        operations,
+                        commit_message=f"store: upload {len(operations)} encrypted file(s)",
+                        repo_type="dataset",
+                    )
+                except Exception:
+                    with self._lock:
+                        self._dirty.update(operation.path_in_repo for operation in operations)
+                    raise
+                with self._lock:
+                    self._remote_paths.update(operation.path_in_repo for operation in operations)
+            with self._lock:
+                needs_erasing = self._history_needs_erasing
+            if needs_erasing:
                 self._erase_history()
             return len(operations)
 
     def _erase_history(self) -> None:
         """Squash the commit history, then permanently delete LFS objects no current file uses.
 
-        Call with the lock held. On failure the work is retried at the next flush.
+        Call with the Hub lock held (not the state lock). On failure the work is retried at the next flush.
         """
         try:
             self.api.super_squash_history(
@@ -217,12 +240,14 @@ class HFDatasetStore:
         except Exception:
             logger.exception("erasing deleted data from the dataset history failed; retrying at the next flush")
             return
-        self._history_needs_erasing = False
+        with self._lock:
+            self._history_needs_erasing = False
 
     def _delete_remote(self, paths: list[str]) -> bool:
         """Delete paths (files or 'folder/') on the Hub now. True on success; on failure keep them pending.
 
-        Call with the lock held.
+        Call with the Hub lock held (not the state lock): the network call runs without the state lock, and the
+        bookkeeping afterwards takes it.
         """
         if not paths:
             return True
@@ -235,17 +260,19 @@ class HFDatasetStore:
             )
         except Exception:
             logger.exception("deleting %d path(s) from the dataset failed; retrying at the next flush", len(paths))
-            self._pending_deletes.update(paths)
-            self._write_pending_deletes()
+            with self._lock:
+                self._pending_deletes.update(paths)
+                self._write_pending_deletes()
             return False
-        self._pending_deletes.difference_update(paths)
-        self._write_pending_deletes()
-        self._history_needs_erasing = True
-        for path in paths:
-            if path.endswith("/"):
-                self._remote_paths = {remote for remote in self._remote_paths if not remote.startswith(path)}
-            else:
-                self._remote_paths.discard(path)
+        with self._lock:
+            self._pending_deletes.difference_update(paths)
+            self._write_pending_deletes()
+            self._history_needs_erasing = True
+            for path in paths:
+                if path.endswith("/"):
+                    self._remote_paths = {remote for remote in self._remote_paths if not remote.startswith(path)}
+                else:
+                    self._remote_paths.discard(path)
         return True
 
     def _read_pending_deletes(self) -> set[str]:
@@ -321,31 +348,39 @@ class HFDatasetStore:
         return self.local.list(owner, namespace)
 
     def delete(self, owner: str, namespace: str, key: str) -> bool:
-        """Delete locally and on the Hub right away; DeletionPending if the Hub could not be updated."""
-        with self._lock:
-            found = self.local.delete(owner, namespace, key)
-            paths = self.local.relative_paths(owner, namespace, key)
-            self._dirty.difference_update(paths)
-            remote = [path for path in paths if path in self._remote_paths]
+        """Delete locally and on the Hub right away; DeletionPending if the Hub could not be updated.
+
+        Waits for a commit in flight (Hub lock), so a file that commit uploads is known as remote and deleted too.
+        """
+        with self._hub_lock:
+            with self._lock:
+                found = self.local.delete(owner, namespace, key)
+                paths = self.local.relative_paths(owner, namespace, key)
+                self._dirty.difference_update(paths)
+                remote = [path for path in paths if path in self._remote_paths]
             if not self._delete_remote(remote):
                 raise DeletionPending(f"{namespace}/{key}: deleted here, the dataset copy is deleted at a retry")
             return found
 
     def delete_owner(self, owner: str) -> int:
         """Delete the owner's folder locally and on the Hub right away; DeletionPending as in delete()."""
-        with self._lock:
-            count = self.local.delete_owner(owner)
-            prefix = owner_digest(owner) + "/"
-            self._dirty = {path for path in self._dirty if not path.startswith(prefix)}
-            if any(path.startswith(prefix) for path in self._remote_paths) and not self._delete_remote([prefix]):
+        with self._hub_lock:
+            with self._lock:
+                count = self.local.delete_owner(owner)
+                prefix = owner_digest(owner) + "/"
+                self._dirty = {path for path in self._dirty if not path.startswith(prefix)}
+                remote = any(path.startswith(prefix) for path in self._remote_paths)
+            if remote and not self._delete_remote([prefix]):
                 raise DeletionPending("the owner's data is deleted here; the dataset copy is deleted at a retry")
             return count
 
     def purge_expired(self) -> list[ObjectMeta]:
         """Purge locally, then delete the purged files on the Hub in one commit (a failure is retried at a flush)."""
-        with self._lock:
-            purged = self.local.purge_expired()
-            paths = [path for meta in purged for path in meta.paths]
-            self._dirty.difference_update(paths)
-            self._delete_remote([path for path in paths if path in self._remote_paths])
+        with self._hub_lock:
+            with self._lock:
+                purged = self.local.purge_expired()
+                paths = [path for meta in purged for path in meta.paths]
+                self._dirty.difference_update(paths)
+                remote = [path for path in paths if path in self._remote_paths]
+            self._delete_remote(remote)
             return purged

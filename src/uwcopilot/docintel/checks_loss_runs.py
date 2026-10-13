@@ -41,6 +41,7 @@ from uwcopilot.docintel.check_models import (
     found_only,
     make_result,
 )
+from uwcopilot.docintel.normalize import canonical_name
 from uwcopilot.docintel.schemas import InsuranceSubmission, LossRun, LossRunClaim, casefold_key
 
 PLACEHOLDER_LOSS_DATE = date(2000, 1, 1)  # claim_out_of_balance reads only paid, reserve and incurred
@@ -52,6 +53,44 @@ def years_before(day: date, years: int) -> date:
         return day.replace(year=day.year - years)
     except ValueError:
         return day.replace(year=day.year - years, day=28)
+
+
+def loss_run_carriers(submission: InsuranceSubmission) -> set[str]:
+    """Canonical carrier names of the loss runs in the packet."""
+    return {canonical_name(item.carrier.value) for item in submission.loss_runs if item.carrier.found}
+
+
+def has_loss_run(carrier: str, carriers: set[str]) -> bool:
+    """True when a loss run in the packet is from this carrier (canonical names).
+
+    The names match when they are equal, or when one name's words contain the other's, so "Example Mutual" and
+    "Example Mutual Insurance Co" match.
+    """
+    words = set(carrier.split())
+    for other in carriers:
+        other_words = set(other.split())
+        if carrier == other or (words and other_words and (words <= other_words or other_words <= words)):
+            return True
+    return False
+
+
+def every_prior_carrier_has_a_run(submission: InsuranceSubmission) -> bool:
+    """True when the packet has at least one loss run and one for every carrier on the application's prior-carriers
+    table (HM-3.1 item 3 with HM-3.2: a carrier without its loss run means the loss runs are not complete).
+
+    This is the one rule for "loss runs provided": checks_insurance.documents_provided (the required_documents
+    check) and to_application_insurance both use it. An application that is not in the packet names no carrier.
+    """
+    carriers = loss_run_carriers(submission)
+    if not submission.loss_runs:
+        return False
+    application = submission.application
+    if application is None:
+        return True
+    for row in application.prior_carriers:
+        if row.carrier.found and not has_loss_run(canonical_name(row.carrier.value), carriers):
+            return False
+    return True
 
 
 def carrier_label(loss_run: LossRun) -> str:

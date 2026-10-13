@@ -61,7 +61,11 @@ export function describeProblem(error: unknown, action = "This request"): Proble
       return {
         kind: "busy",
         title: "Too many requests right now",
-        messages: ["The server limits how many requests one connection or account can send per minute."],
+        // The global rate limit sends a generic sentence; a feature limit (address lookups) says what to wait for.
+        messages:
+          messages.length > 0 && !messages[0]?.startsWith("rate limit exceeded")
+            ? messages
+            : ["The server limits how many requests one connection or account can send per minute."],
         retryAfterS: error.retryAfterS,
       };
     case 503:

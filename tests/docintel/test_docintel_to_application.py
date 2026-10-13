@@ -54,6 +54,30 @@ def differences(first: Any, second: Any, path: str = "") -> list[str]:
     return [] if first == second else [f"{path} ({first!r} != {second!r})"]
 
 
+DEBT_SCHEDULE_PATHS = {
+    "debt.existing_monthly_payment_schedule",
+    "debt.refinanced_monthly_payment",
+    "debt.existing_total_debt_balance",
+}
+
+
+def allowed_unknown(truth: PacketTruth, path: str) -> bool:
+    """True when an injected problem explains why the oracle mapping lists this path in unknowns.
+
+    A missing debt schedule leaves the schedule figures undocumented; a statement whose printed total deposits
+    were changed (balance_discontinuity) disagrees with its rows; a loss run whose summary disagrees with its claim
+    rows (loss_run_total_mismatch) makes its years uncertain.
+    """
+    types = {problem.problem_type for problem in truth.problems}
+    if path in DEBT_SCHEDULE_PATHS:
+        return "debt_schedule" in truth.missing_required_documents
+    if path.startswith("bank_statements.months["):
+        return "balance_discontinuity" in types
+    if path.startswith("loss_runs.years[") or path == "loss_runs.current_term_claims":
+        return "loss_run_total_mismatch" in types
+    return False
+
+
 @pytest.mark.parametrize("line", ["credit", "insurance"])
 def test_oracle_extraction_maps_to_the_as_documented_application(line: str) -> None:
     letter = "C" if line == "credit" else "I"
@@ -61,7 +85,11 @@ def test_oracle_extraction_maps_to_the_as_documented_application(line: str) -> N
         truth = json_only_truth(f"PKT-{letter}-{number:03d}", line)
         application, provenance, unknowns = to_application(parse_extraction(truth.oracle_extraction))
         assert differences(application, truth.application_as_documented) == [], truth.packet_id
-        assert unknowns == [], truth.packet_id
+        assert [path for path in unknowns if not allowed_unknown(truth, path)] == [], truth.packet_id
+        if any(problem.problem_type == "loss_run_total_mismatch" for problem in truth.problems):
+            assert any(path.startswith("loss_runs.years[") for path in unknowns), truth.packet_id
+        if "debt_schedule" in truth.missing_required_documents:
+            assert DEBT_SCHEDULE_PATHS <= set(unknowns), truth.packet_id
         parse_application(application)
         assert provenance["application_date"][0]["doc_id"] == "D01"
 

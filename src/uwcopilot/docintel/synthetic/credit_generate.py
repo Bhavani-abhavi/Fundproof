@@ -40,7 +40,7 @@ from uwcopilot.docintel.synthetic.credit_build import (
     draw_owners,
     largest_customer_pct,
 )
-from uwcopilot.docintel.synthetic.credit_case import CreditCase
+from uwcopilot.docintel.synthetic.credit_case import CreditCase, Statement
 from uwcopilot.docintel.synthetic.credit_finance import (
     build_balance_sheet,
     build_collateral,
@@ -96,6 +96,16 @@ def add_cpa_financials_problem(case: CreditCase, plans: list[ProblemPlan]) -> No
         plans.append(
             ProblemPlan("missing_document", "missing", {"doc_type": "cpa_reviewed_financials", "structural": True})
         )
+
+
+def unidentified_total(statements: list[Statement]) -> float:
+    """Sum of the deposit rows documented as unidentified ("DEPOSIT REF") over the statements."""
+    total = 0.0
+    for item in statements:
+        for row in item.rows:
+            if row.kind == "D" and row.category == "unidentified":
+                total += row.amount
+    return round(total, 2)
 
 
 def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: list[ProblemPlan]) -> CreditCase:
@@ -166,9 +176,8 @@ def generate_credit_case(rng: random.Random, fake: Faker, number: int, plans: li
     balance_sheet = build_balance_sheet(rng, period_end, statements[-1].closing, verified, loans, fixed_assets)
     tax_years = build_tax_years(rng, latest_receipts, application_date)
     gross = round(sum(item.total_deposits for item in statements), 2)
-    stated = stated_revenue(
-        rng, plans, verified, revenue.true_revenue, gross, [pnl.revenue, tax_years[-1].gross_receipts]
-    )
+    others = [pnl.revenue, tax_years[-1].gross_receipts]
+    stated = stated_revenue(rng, plans, verified, revenue.true_revenue, gross, others, unidentified_total(statements))
     if gap is not None and gap.cause == "benign_timing":
         tax_years[-1].gross_receipts = stated
 

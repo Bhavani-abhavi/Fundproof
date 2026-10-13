@@ -14,7 +14,7 @@ import random
 from dataclasses import dataclass, field
 
 from uwcopilot.agent.credit_calculations import revenue_gap_pct
-from uwcopilot.docintel.normalize import canonical_name
+from uwcopilot.docintel.normalize import canonical_name, edit_distance
 from uwcopilot.docintel.synthetic.common import DESCRIPTIVE_WORDS, cents, counterparty, round_to, synthetic_fein
 from uwcopilot.docintel.synthetic.credit_case import CreditCase, Debt, InjectionPlan, Party, Statement
 from uwcopilot.docintel.synthetic.credit_transactions import ExtraDeposit
@@ -173,6 +173,29 @@ def apply_statement_problems(rng: random.Random, plans: list[ProblemPlan], state
         rng.choice(deposits).memo = injection.details["text"]
 
 
+# benign_timing must not also look like another benign cause (contradiction_rules rules 1 and 2): its stated figure
+# stays more than 3% away from gross deposits, and unidentified deposits stay below 45% of the gap (margins around
+# the rules' 2% and 50%).
+MAX_TYPO_KEY_EDITS = 2  # contradiction_rules.NAME_MAX_EDITS: a benign typo stays within 2 edits on the key
+TIMING_GROSS_SEPARATION = 0.03
+TIMING_UNIDENTIFIED_SHARE = 0.45
+TIMING_STEP = 1.01
+
+
+def separate_timing(stated: float, verified: float, gross: float, unidentified: float) -> float:
+    """Raise a benign_timing stated figure (1% at a time) until it shows only the timing cause.
+
+    Without this, a small gap can put stated within 2% of gross deposits (so the deposits alone would explain it as
+    non-revenue counted) or make unidentified deposits half of the gap: the documents would then single out a
+    different benign story than the truth's latent "midpoint" resolution.
+    """
+    while abs(stated - gross) <= TIMING_GROSS_SEPARATION * stated or unidentified >= TIMING_UNIDENTIFIED_SHARE * (
+        stated - verified
+    ):
+        stated = float(round(stated * TIMING_STEP))
+    return stated
+
+
 def stated_revenue(
     rng: random.Random,
     plans: list[ProblemPlan],
@@ -180,11 +203,14 @@ def stated_revenue(
     true_revenue: float,
     gross: float,
     others: list[float],
+    unidentified: float = 0.0,
 ) -> float:
     """The application's stated revenue: benign band in clean packets; per cause for a revenue gap.
 
     others are the P&L revenue and the latest tax-year receipts (an unsupported overstatement exceeds them and the
-    gross deposits by more than 10%). The gap is kept above 10.0% after rounding (NBC-3.4).
+    gross deposits by more than 10%). unidentified is the sum of the unidentified deposits ("DEPOSIT REF") of the
+    statements; a benign_timing figure is kept apart from the other benign causes (separate_timing). The gap is
+    kept above 10.0% after rounding (NBC-3.4).
     """
     plan = find_plan(plans, "revenue_gap")
     if plan is None:
@@ -195,7 +221,7 @@ def stated_revenue(
     elif plan.cause == "benign_unidentified_revenue":
         stated = round_to(true_revenue * (1.0 + rng.uniform(-0.02, 0.02)), 1_000)
     elif plan.cause == "benign_timing":
-        stated = float(round(verified / (1.0 - gap)))
+        stated = separate_timing(float(round(verified / (1.0 - gap))), verified, gross, unidentified)
     else:
         stated = round_to(verified / (1.0 - gap), 1_000)
         highest = max([gross, *others])
@@ -236,7 +262,12 @@ def apply_missing_document(rng: random.Random, case: CreditCase, plan: ProblemPl
 
 
 def typo(rng: random.Random, text: str) -> str:
-    """A 1-2 character edit of a name (substitution, deletion or adjacent swap) that changes its comparison key."""
+    """A 1-2 character edit of a name (substitution, deletion or adjacent swap) that changes its comparison key.
+
+    The edit must also stay small ON the comparison key (canonical_name: edit distance 2 or less): canonical_name
+    folds words such as "Company" to "co", so a typo inside such a word ("Fompany") would otherwise look like a
+    different name to the name check, not like the transcription error the truth says it is.
+    """
     letters = "abcdefghijklmnopqrstuvwxyz"
     for _ in range(50):
         positions = [index for index, character in enumerate(text) if character.isalpha()]
@@ -252,7 +283,8 @@ def typo(rng: random.Random, text: str) -> str:
             if position + 1 >= len(text) or not text[position + 1].isalpha():
                 continue
             changed = text[:position] + text[position + 1] + text[position] + text[position + 2 :]
-        if canonical_name(changed) != canonical_name(text):
+        changed_key, key = canonical_name(changed), canonical_name(text)
+        if changed_key != key and edit_distance(changed_key, key) <= MAX_TYPO_KEY_EDITS:
             return changed
     raise RuntimeError(f"could not make a typo of {text!r}")
 

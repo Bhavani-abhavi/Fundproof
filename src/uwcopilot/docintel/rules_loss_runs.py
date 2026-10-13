@@ -12,9 +12,15 @@ here depends on fixed positions:
   recognised by type: the date is the date of loss; "Property" / "General liability" is the line (as a code); "Open"
   / "Closed" is the status; the remaining word with a digit is the claim number. The three amounts are matched
   to paid / reserve / incurred in the order the claim-table header prints those titles (the header is found again
-  on a continuation page); claim amounts are never negative, so a minus sign read by OCR is dropped. When no
-  header can be read, the amount equal to the sum of the other two is the incurred amount and the other two are
-  taken as paid then reserve, left to right.
+  on a continuation page; a header word that OCR glued to the next one, "PaidLoss", still counts when the title
+  is inside it); claim amounts are never negative, so a minus sign read by OCR is dropped. When no header has been
+  read in the document yet, the amounts are named by arithmetic (order_by_arithmetic):
+  1. a closed claim prints two equal amounts and 0.00 (paid = incurred, no reserve): the 0.00 is the reserve, and
+     the equal pair is paid then incurred, left to right (the two values are the same, so their order does not
+     change any value). Only when the row says "Open" is the 0.00 the paid amount (nothing paid yet; reserve =
+     incurred);
+  2. otherwise the amount equal to the sum of the other two is the incurred amount and the other two are taken as
+     paid then reserve, left to right.
 """
 
 from rapidfuzz import fuzz
@@ -57,6 +63,7 @@ MONEY_TITLE_WORDS: dict[str, tuple[str, ...]] = {
 LINE_WORDS = ("property", "general", "liability")
 STATUSES = ("Open", "Closed")
 WORD_MIN_SCORE = 80.0
+PARTIAL_MIN_SCORE = 100.0  # the whole title is inside a longer OCR word ("paidloss" holds "paid")
 CLAIM_AMOUNTS = 3
 
 
@@ -99,6 +106,13 @@ def premium_years(refs: list[LineRef], doc_id: str) -> list[LossRunYear]:
     return years
 
 
+def is_title_word(text: str, title: str) -> bool:
+    """True when a normalized header word is the title, approximately, or holds the whole title ("paidloss")."""
+    if text == title or fuzz.ratio(text, title) >= WORD_MIN_SCORE:
+        return True
+    return len(text) > len(title) and fuzz.partial_ratio(title, text) >= PARTIAL_MIN_SCORE
+
+
 def money_order(header: LineRef | None) -> list[str]:
     """paid / reserve / incurred in the left-to-right order of their titles on the claim-table header ([] if unread)."""
     if header is None:
@@ -106,17 +120,31 @@ def money_order(header: LineRef | None) -> list[str]:
     positions = {}
     for name, title_words in MONEY_TITLE_WORDS.items():
         for word in header.words:
-            text = normalize_for_match(word.text)
-            if any(text == title or fuzz.ratio(text, title) >= WORD_MIN_SCORE for title in title_words):
+            text = normalize_for_match(word.text).replace(" ", "")
+            if any(is_title_word(text, title) for title in title_words):
                 positions.setdefault(name, word.x0)
     if len(positions) != CLAIM_AMOUNTS:
         return []
     return sorted(positions, key=lambda name: positions[name])
 
 
-def order_by_arithmetic(amounts: list[Word]) -> list[str]:
-    """Amount names when the header is unreadable: incurred = paid + reserve, the other two paid then reserve."""
+def order_closed_claim(values: list[float], status: str | None) -> list[str] | None:
+    """Rule 1 of order_by_arithmetic (module docstring): two equal amounts and 0.00, or None when that is not so."""
+    zeros = [index for index, value in enumerate(values) if value == 0]
+    others = [value for value in values if value != 0]
+    if len(zeros) != 1 or len(others) != 2 or abs(others[0] - others[1]) > 0.005:
+        return None
+    pair = ["reserve", "incurred"] if status == "Open" else ["paid", "incurred"]
+    zero_name = "paid" if status == "Open" else "reserve"
+    return [zero_name if index in zeros else pair.pop(0) for index in range(CLAIM_AMOUNTS)]
+
+
+def order_by_arithmetic(amounts: list[Word], status: str | None = None) -> list[str]:
+    """Amount names when no header has been read: rules 1 and 2 of the module docstring."""
     values = [parse_amount(word.text) or 0.0 for word in amounts]
+    closed = order_closed_claim(values, status)
+    if closed is not None:
+        return closed
     for index in range(CLAIM_AMOUNTS):
         others = [values[other] for other in range(CLAIM_AMOUNTS) if other != index]
         if abs(sum(others) - values[index]) <= 1.0:
@@ -164,15 +192,15 @@ def parse_claim(ref: LineRef, order: list[str], doc_id: str) -> LossRunClaim | N
     if len(amounts) < CLAIM_AMOUNTS or not dates:
         return None
     amounts = amounts[:CLAIM_AMOUNTS]
-    names = order or order_by_arithmetic(amounts)
+    others = [word for word in ref.words if word not in amounts and word is not dates[0]]
+    status = claim_status(others)
+    names = order or order_by_arithmetic(amounts, None if status is None else status[0])
     claim = LossRunClaim(date_of_loss=cite_words(ref, [dates[0]], parse_date(dates[0].text), doc_id))
     for name, word in zip(names, amounts, strict=True):
         setattr(claim, name, cite_words(ref, [word], abs(parse_amount(word.text) or 0.0), doc_id))
-    others = [word for word in ref.words if word not in amounts and word is not dates[0]]
     code, line_words = claim_line(others)
     if code is not None:
         claim.line = cite_words(ref, line_words, code, doc_id)
-    status = claim_status(others)
     status_word = None
     if status is not None:
         status_word = status[1]

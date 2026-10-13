@@ -1,7 +1,8 @@
 """Thin adapters between the web routers and the domain packages (uwcopilot.studio, uwcopilot.agent).
 
     services = install_services(app)        # create_app() does this; tests may replace parts afterwards
-    services.compute.run(work, key=...)     # heavy work in a worker thread with a timeout (compute.py)
+    services.compute.run(work, key=..., owner=...)  # heavy work in a worker thread with a timeout (compute.py)
+    services.geocoding.prefetch(owner, addresses)    # address lookups, apart from the heavy work (geocoding.py)
 
 Modules:
 - settings.py       timeouts, worker threads, cache sizes, the demo folders (UWC_COMPUTE_* variables);
@@ -9,7 +10,7 @@ Modules:
 - errors.py         ServiceError and its HTTP-status subclasses;
 - http.py           FastAPI glue: error handlers (ServiceError -> its status, timeouts -> 503), store dependency;
 - text_checks.py    no SSNs / account numbers in free text; the injection screen of the idea text;
-- geocoding.py      the Census Geocoder for real-metro addresses (memory cache only, for privacy);
+- geocoding.py      the Census Geocoder for real-metro addresses: its own small pool, per-user limits, no cache;
 - studio_options.py metros with their honest mode, business types, levers, defaults (GET /api/studio/options);
 - projects.py       a founder's plans: validation, storage per user (encrypted Store), versions, deletion;
 - studio_runs.py    SiteIQ, feasibility, path to approval, area suggestions, the tract map layer;
@@ -24,7 +25,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, Request
 
 from uwcopilot.web.services.compute import ComputeRunner
-from uwcopilot.web.services.geocoding import CensusGeocoder, Geocoder
+from uwcopilot.web.services.geocoding import GeocodeService
 from uwcopilot.web.services.http import add_error_handlers
 from uwcopilot.web.services.lender_demo import LenderDemoService
 from uwcopilot.web.services.settings import ServiceSettings, load_service_settings
@@ -36,7 +37,7 @@ class WebServices:
 
     settings: ServiceSettings
     compute: ComputeRunner
-    geocoder: Geocoder
+    geocoding: GeocodeService
     lender: LenderDemoService
 
 
@@ -46,7 +47,7 @@ def build_services(settings: ServiceSettings | None = None) -> WebServices:
     return WebServices(
         settings=chosen,
         compute=ComputeRunner(chosen),
-        geocoder=CensusGeocoder(),
+        geocoding=GeocodeService(),
         lender=LenderDemoService(chosen.demo_dirs),
     )
 

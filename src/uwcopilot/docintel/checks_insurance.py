@@ -8,8 +8,10 @@ checks are in checks_loss_runs.py and checks_loss_run_coverage.py.
   loss_runs, prior_carrier_history, beneficial_ownership_statement, plus revenue_and_payroll when general
   liability is requested and inspection_report when a location's TIV is above $5,000,000. The schema has no flood
   zone, so whether an elevation certificate is needed cannot be decided here (values: not_determinable).
-  Mapping: signed_application <- the application; property_schedule <- the schedule; loss_runs <- at least one
-  carrier loss run (whether they cover every year is loss_run_coverage); prior_carrier_history <- rows in the
+  Mapping: signed_application <- the application; property_schedule <- the schedule; loss_runs <- a loss run for
+  EVERY carrier on the application's prior-carriers table (checks_loss_runs.every_prior_carrier_has_a_run: HM-3.1
+  item 3 asks for loss runs meeting HM-3.2, so a carrier without its run means more information is needed; whether
+  the runs cover every year is loss_run_coverage); prior_carrier_history <- rows in the
   application's prior-carriers table; revenue_and_payroll <- annual revenue and payroll on the application;
   beneficial_ownership_statement <- the ownership statement; inspection_report <- a report for every location
   above $5,000,000, dated no more than 12 months before the proposed effective date when its date is known.
@@ -39,7 +41,7 @@ from uwcopilot.docintel.check_models import (
     make_result,
 )
 from uwcopilot.docintel.checks_identity import owner_consistency, value_consistency
-from uwcopilot.docintel.checks_loss_runs import years_before
+from uwcopilot.docintel.checks_loss_runs import every_prior_carrier_has_a_run, years_before
 from uwcopilot.docintel.checks_property import location_evidence, location_id_of, location_value
 from uwcopilot.docintel.normalize import canonical_fein, canonical_name
 from uwcopilot.docintel.schemas import InsuranceSubmission, casefold_key
@@ -125,7 +127,7 @@ def documents_provided(submission: InsuranceSubmission) -> dict[str, list[Eviden
         provided["property_schedule"] = [
             document_evidence(submission.property_schedule, "document", "property_schedule")
         ]
-    if submission.loss_runs:
+    if every_prior_carrier_has_a_run(submission):
         provided["loss_runs"] = [
             document_evidence(item, "document", "loss_run", casefold_key(item.carrier)) for item in submission.loss_runs
         ]

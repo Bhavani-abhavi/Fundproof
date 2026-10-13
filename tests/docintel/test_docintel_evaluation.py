@@ -158,7 +158,7 @@ def test_perfect_extraction_scores_every_value() -> None:
     assert (counts["fields.all.all.tp"], counts["fields.all.all.fp"], counts["fields.all.all.fn"]) == (8, 0, 0)
     assert counts["fields.clean.all.tp"] == 2 and counts["fields.scanned.all.tp"] == 6
     assert (counts["rows.transactions.tp"], counts["rows.transactions.exact"]) == (3, 3)
-    assert counts["citations.all.correct"] == counts["citations.all.total"] == 8
+    assert counts["citations.page.all.correct"] == counts["citations.page.all.total"] == 8
 
 
 def test_missed_and_extra_rows() -> None:
@@ -196,9 +196,9 @@ def test_a_wrong_page_citation_counts_against_citation_accuracy_only() -> None:
     extraction.application.fein = cited("00-1234567", 2)  # right value, cited on the statement page
     counts = counts_for(extraction)
     assert counts["fields.all.all.tp"] == 8
-    assert counts["citations.all.total"] == 8
-    assert counts["citations.all.correct"] == 7
-    assert counts["citations.identifier.same_page"] == 0
+    assert counts["citations.page.all.total"] == 8
+    assert counts["citations.page.all.correct"] == 7
+    assert counts["citations.page.identifier.same_page"] == 0
     # A false positive takes the condition of the page it cites: none here, every value is right.
     assert counts["fields.scanned.identifier.fp"] == 0
 
@@ -325,16 +325,42 @@ def test_contradictions_match_by_type_and_document_or_field() -> None:
     assert (counts["explanations.all.correct"], counts["explanations.all.total"]) == (0, 1)
 
 
+def problem_outcome(classification: str, explanation: str | None, **extra: object) -> dict:
+    """A problem outcome as match_contradictions writes it (tiv_mismatch, one match when detected)."""
+    detected = explanation is not None
+    outcome = {
+        "type": "tiv_mismatch",
+        "classification": classification,
+        "detected": detected,
+        "detected_with_correct_evidence": detected,
+        "matches": int(detected),
+        "explanation": explanation,
+        "explanation_code": "insufficient_evidence" if explanation == "unknown" else "x",
+        "evidence_correct": True if detected else None,
+        "designed_abstention": False,
+    }
+    outcome.update(extra)
+    return outcome
+
+
 def test_unknown_explanation_is_wrong_and_counted() -> None:
     outcomes = [
-        {"type": "tiv_mismatch", "classification": "unsupported", "detected": True, "explanation": "unknown"},
-        {"type": "tiv_mismatch", "classification": "benign", "detected": True, "explanation": "benign"},
-        {"type": "tiv_mismatch", "classification": "benign", "detected": False, "explanation": None},
+        problem_outcome("unsupported", "unknown", designed_abstention=True),
+        problem_outcome("benign", "benign"),
+        problem_outcome("benign", None),
+        problem_outcome("unsupported", "benign", matches=3),
     ]
     counts = problems_eval.contradiction_counts(outcomes, [])
-    assert (counts["explanations.all.correct"], counts["explanations.all.total"]) == (1, 2)
+    assert (counts["explanations.all.correct"], counts["explanations.all.total"]) == (1, 3)
     assert counts["explanations.all.unknown"] == 1
     assert counts["explanations.unsupported.unknown"] == 1
+    # The 2 x 3 confusion, the designed abstention and the duplicate matches are counted too.
+    assert counts["explanations.confusion.unsupported.unknown"] == 1
+    assert counts["explanations.confusion.unsupported.benign"] == 1
+    assert counts["explanations.confusion.benign.benign"] == 1
+    assert (counts["explanations.designed_abstention.total"], counts["explanations.decidable.total"]) == (1, 2)
+    assert counts["explanations.unknown_code.insufficient_evidence"] == 1
+    assert counts["problems.all.duplicate_matches"] == 2
 
 
 def injection_result(hits: list[tuple[str | None, int | None]], checks: list[object] | None = None) -> SimpleNamespace:

@@ -196,8 +196,8 @@ studio-test:  ## Studio tests only (offline, recorded fixtures)
 
 .PHONY: packets eval-docintel
 
-packets:  ## Make the SYNTHETIC document packets (150 credit + 150 insurance, seed 42) -> data/processed/packets/, eval/packets/manifest.json
-	uv run python scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 --seed 42 --test-credit 30 --test-insurance 30
+packets:  ## Make the SYNTHETIC document packets (150 credit + 150 insurance, seed 20261013) -> data/processed/packets/, eval/packets/manifest.json
+	uv run python scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 --seed 20261013 --test-credit 30 --test-insurance 30
 
 eval-docintel:  ## Evaluate the document pipeline on the 60 test packets, incl. forced OCR (needs `make packets`; ~40 min) -> results/docintel_metrics.json
 	uv run python scripts/eval_docintel.py

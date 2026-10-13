@@ -15,6 +15,7 @@ from uwcopilot.docintel.deposits import (
     average_monthly_mca_remittance,
     classify_deposit,
     classify_withdrawal,
+    last_period_end,
     monthly_deposits,
     negative_balance_months,
     new_loans_last_90_days,
@@ -151,7 +152,7 @@ def test_as_documented_account_figures_match_deposits_rules(credit_truths: list)
         debt = application["debt"]
         assert average_monthly_loan_payments(statements) == debt["existing_monthly_payment_observed"], truth.packet_id
         assert average_monthly_mca_remittance(statements) == debt["mca_monthly_remittance"], truth.packet_id
-        as_of = packet.application.application_date.value
+        as_of = last_period_end(statements)  # NBC-4.4: the most recent 90 days of statements
         assert new_loans_last_90_days(statements, as_of) == application["new_loans_last_90_days"], truth.packet_id
 
 

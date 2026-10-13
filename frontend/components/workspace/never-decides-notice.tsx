@@ -18,7 +18,8 @@ export function NeverDecidesNotice({ className }: { className?: string }) {
           The copilot never decides. A person does.
         </h2>
         <p className="text-sm leading-relaxed text-foreground/85">
-          {PRODUCT_NAME} prepares the file: figures with their sources, checks, contradictions and a draft memo. Approving,
+          {PRODUCT_NAME} prepares the file: figures with their sources, rule checks, sanctions screening and a draft memo
+          (contradiction checks across documents come in a later version). Approving,
           referring, requesting more information or declining is always a person&apos;s choice. A decline needs a
           written reason from a senior lender.
         </p>

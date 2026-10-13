@@ -11,7 +11,9 @@ words after the label are the value words.
 
 find_value() tries every label synonym (longest first, so "Paid to date" is tried before "Paid") on every line in
 scope and returns the first value its parser accepts. The parser sees the value words joined; when that fails
-(OCR may leave a stray mark after a number), each value word is tried alone.
+(OCR may leave a stray mark or a speck read as a digit next to a number: "Number of claims 4 1"), each value word
+is tried alone. When several words parse alone, the word with the highest OCR confidence wins (the earliest one
+on a tie, so a text-layer line, where every word has confidence 1.0, keeps its first value).
 
 Trailing OCR noise (trim_noise): a scan's specks are sometimes read as a short word at the end of a line ("Larkspur
 Valley Bank elec"). On an OCR line, trailing words with confidence below TRAILING_NOISE_CONF that are a single
@@ -156,18 +158,22 @@ def trim_noise(words: list[Word]) -> list[Word]:
 
 
 def parse_value_words(words: list[Word], parser: Parser) -> tuple[Any, list[Word]]:
-    """(value, words used): the joined words first, then each word alone; (None, []) when nothing parses."""
+    """(value, words used): the joined words first, then each word alone, preferring the most confident word
+    (see the module docstring); (None, []) when nothing parses."""
     words = trim_noise(words)
     if not words:
         return None, []
     value = parser(words_text(words))
     if value is not None:
         return value, words
+    best: tuple[Any, Word] | None = None
     for word in words:
         value = parser(word.text)
-        if value is not None:
-            return value, [word]
-    return None, []
+        if value is not None and (best is None or word.conf > best[1].conf):
+            best = (value, word)
+    if best is None:
+        return None, []
+    return best[0], [best[1]]
 
 
 def find_value(refs: list[LineRef], labels: tuple[str, ...], parser: Parser, doc_id: str) -> Cited:

@@ -11,9 +11,13 @@ import { signInPageHref } from "@/lib/sign-in";
 import { cn } from "@/lib/utils";
 
 /**
- * A failed API call, in plain words, with the next step: "Try again" for busy / timeout / offline, a sign-in link
- * (that comes back to this page) for a signed-out session. Used by every feature section so failures look alike.
+ * A failed API call, in plain words, with the next step: "Try again" for busy / timeout / offline / server errors,
+ * a sign-in link (that comes back to this page) for a signed-out session. No "Try again" for a refused input (422)
+ * or a conflict (409, for example limited mode): the same request would get the same answer, so the page must say
+ * what to change instead. Used by every feature section so failures look alike.
  */
+const RETRYABLE: ReadonlySet<Problem["kind"]> = new Set(["offline", "busy", "timeout", "server"]);
+
 export function ProblemNotice({
   problem,
   onRetry,
@@ -28,7 +32,7 @@ export function ProblemNotice({
   const currentPath = useCurrentPath();
   const Icon = problem.kind === "offline" ? WifiOff : problem.kind === "timeout" || problem.kind === "busy" ? Clock : AlertTriangle;
   const wait = waitText(problem.retryAfterS);
-  const canRetry = onRetry && problem.kind !== "signed_out" && problem.kind !== "forbidden" && problem.kind !== "not_found";
+  const canRetry = onRetry !== undefined && RETRYABLE.has(problem.kind);
 
   return (
     <Alert variant={problem.kind === "invalid" || problem.kind === "server" ? "destructive" : "warning"} role="alert" className={cn("gap-y-2", className)}>

@@ -1,8 +1,8 @@
 """Shared helpers for the docintel pipeline tests: SYNTHETIC packets built once per test run, and field scoring.
 
 Packets are built with the generator (tests may import uwcopilot.docintel.synthetic and truth; pipeline modules
-may not). The rendered packets used here are DEV-split packets of the seed-42 set; none of them is in the
-evaluation test split, so nothing is tuned on the evaluation set.
+may not). The rendered packets used here come from master seed 42, which is not the evaluation set (`make
+packets` uses seed 20261013 since generator v2), so nothing is tuned on the evaluation set.
 """
 
 import atexit

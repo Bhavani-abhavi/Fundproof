@@ -34,8 +34,13 @@ reviewer, never a decision. Rules, by contradiction type (the first rule that ma
 - claims_history_mismatch: benign / current_term_claims_omitted when the loss runs show more claims than the
   application and the difference equals the number of current-term claims; otherwise unsupported /
   no_supporting_document.
-- loss_run_total_mismatch, paid_reserve_mismatch, balance_discontinuity: unknown / arithmetic. These are document
-  integrity indicators (NBC-9.1, HM-11.1) that a human must review; "integrity" is not an explanation value.
+- loss_run_total_mismatch: unsupported / claim_missing_from_lines when the summary counts MORE claims than the
+  claim lines show and every printed total is at least the lines' sum (incurred strictly more): the carrier's own
+  summary reports a claim (and its loss) that the itemized lines leave out, so the itemized loss history
+  understates it. Any other summary difference (same count, or totals below the lines) is unknown / arithmetic.
+  (An OCR page can lose a claim row too; contradiction_ocr.py reviews this verdict for loss runs read by OCR.)
+- paid_reserve_mismatch, balance_discontinuity: unknown / arithmetic. These are document integrity indicators
+  (NBC-9.1, HM-11.1) that a human must review; "integrity" is not an explanation value.
 - prompt_injection: unknown / embedded_instruction (an integrity indicator for Fraud Operations / the SIU).
 """
 
@@ -286,6 +291,25 @@ def explain_claims_history(data: dict) -> Verdict:
     return Verdict("unsupported", "no_supporting_document", detail)
 
 
+def explain_loss_run_totals(issue: CheckIssue) -> Verdict:
+    """loss_run_total_mismatch rule (module docstring). data["differences"]: name -> [printed, lines' sum]."""
+    differences = issue.data.get("differences", {})
+    count = differences.get("claim_count")
+    incurred = differences.get("total_incurred")
+    totals_not_below = all(pair[0] >= pair[1] for name, pair in differences.items() if name != "claim_count")
+    if count is not None and count[0] > count[1] and incurred is not None and incurred[0] > incurred[1]:
+        if totals_not_below:
+            missing = int(count[0] - count[1])
+            detail = (
+                f"{issue.message} The summary counts {missing} more claim(s) than the claim lines and "
+                f"{money(incurred[0] - incurred[1])} more incurred: the itemized lines appear to leave out a claim "
+                "the carrier reports, so the listed loss history understates it (HM-3.3)."
+            )
+            return Verdict("unsupported", "claim_missing_from_lines", detail)
+    detail = f"{issue.message} This is a document integrity indicator that a human must review."
+    return Verdict("unknown", "arithmetic", detail)
+
+
 def explain(check_id: str, issue: CheckIssue, extraction: PacketExtraction) -> Verdict:
     """The explanation for one failing check issue (dispatch on the check id; module docstring)."""
     if check_id == "revenue_vs_deposits":
@@ -302,6 +326,8 @@ def explain(check_id: str, issue: CheckIssue, extraction: PacketExtraction) -> V
         return explain_tiv(issue, extraction)
     if check_id == "claims_history_consistency":
         return explain_claims_history(issue.data)
+    if check_id == "loss_run_totals":
+        return explain_loss_run_totals(issue)
     if check_id == "embedded_instructions":
         detail = f"{issue.message} Embedded instructions are never followed; a human must review the document."
         return Verdict("unknown", "embedded_instruction", detail)

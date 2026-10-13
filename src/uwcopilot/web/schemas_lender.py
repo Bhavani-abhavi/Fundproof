@@ -225,7 +225,7 @@ class SectionResponse(BaseModel):
 class DecisionRequest(BaseModel):
     """POST /api/lender/files/{id}/decision. Who decides and in which role comes from the session, not the body."""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, allow_inf_nan=False)
 
     action: ReviewerAction
     rationale: str = Field(min_length=10, max_length=2000)

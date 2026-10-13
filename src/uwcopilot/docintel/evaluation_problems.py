@@ -6,12 +6,24 @@ Contradictions (match_contradictions):
 - A detected contradiction MATCHES an injected problem when the type is the same and they overlap: they share a
   truth document (the documents of the pages the contradiction's evidence cites) or a field (equal paths, or one
   path inside the other, such as "profit_and_loss" and "profit_and_loss.revenue").
+- Evidence check (evidence_correct): a match whose cited values agree with the truth. Every side value cited on
+  a document that the problem's values_by_doc lists must equal that document's true value (money and numbers
+  within $0.01, text casefolded with single spaces; for a list of true values, one of them or their sum). A match
+  with no comparable value is not counted either way. Recall and precision are also reported counting only
+  evidence-correct matches, so a contradiction that matches by type and document but rests on misread values
+  (OCR) is visible.
 - Recall: an injected problem counts as detected when at least one contradiction matches it. Precision: a
   contradiction counts as correct when it matches at least one injected problem. Several contradictions about one
-  problem therefore all count as correct; that is reported, not hidden (contradictions.all.total vs problems).
-- Benign vs unsupported: for each detected problem whose true classification is benign or unsupported, the
-  explanation of its FIRST matching contradiction (report order) is compared with the classification. "unknown"
-  counts as wrong and is counted separately.
+  problem therefore all count as correct; the extra ones are counted in problems.all.duplicate_matches.
+- Benign vs unsupported: for each detected problem whose true classification is benign or unsupported, ONE
+  matching contradiction represents it, chosen by a fixed rule (representative): evidence-correct matches first,
+  then an explanation other than "unknown", then report order. Its explanation is compared with the
+  classification; "unknown" counts as wrong (the spec's headline) and is counted separately. Also counted: the
+  2 x 3 confusion (true benign / unsupported x predicted benign / unsupported / unknown), the outcome per problem
+  type, the unknown answers per explanation_code, and the "designed abstentions": problems the explanation rules
+  answer "unknown" BY DESIGN whatever the extraction (an unexplained tiv_mismatch whose true difference is within
+  the 15.0% HM-5.2 band: contradiction_rules leaves it unknown / insufficient_evidence). The accuracy without them
+  is reported next to the headline.
 
 Embedded instructions (injection_counts): a planted instruction is detected when the pipeline reports a hit on the
 same page. The reported hits are the embedded_instructions check's issues: the page-text scan's hits plus the
@@ -24,10 +36,14 @@ The truth is read by attribute (a truth.PacketTruth works); this module does not
 from collections import Counter
 from typing import Any
 
+from uwcopilot.agent.insurance_calculations import tiv_difference_pct
+from uwcopilot.agent.policy_insurance import TIV_REFER_PCT
 from uwcopilot.docintel.contradictions import CONTRADICTION_TYPES, Contradiction
 from uwcopilot.docintel.pipeline import PacketResult
 
 EXPLAINED_CLASSES: tuple[str, ...] = ("benign", "unsupported")
+PREDICTED_CLASSES: tuple[str, ...] = ("benign", "unsupported", "unknown")
+MONEY_TOLERANCE = 0.01
 
 
 def contradiction_docs(contradiction: Contradiction, page_docs: dict[int, str]) -> set[str]:
@@ -59,38 +75,144 @@ def matches(problem: Any, contradiction: Contradiction, page_docs: dict[int, str
     return fields_overlap(contradiction_fields(contradiction), set(problem.fields))
 
 
+def as_number(value: Any) -> float | None:
+    """A number (not a bool), or None."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def as_text(value: Any) -> str:
+    """Text casefolded with single spaces."""
+    return " ".join(str(value).split()).casefold()
+
+
+def value_agrees(cited: Any, true_value: Any) -> bool | None:
+    """True / False when a cited value equals the true value (module docstring); None when they cannot be compared."""
+    if isinstance(true_value, list):
+        numbers = [as_number(item) for item in true_value]
+        if as_number(cited) is not None and None not in numbers:
+            total = sum(number for number in numbers if number is not None)
+            if abs(as_number(cited) - total) <= MONEY_TOLERANCE:
+                return True
+        return any(value_agrees(cited, item) for item in true_value)
+    if isinstance(true_value, dict):
+        return None
+    if as_number(true_value) is not None:
+        number = as_number(cited)
+        return None if number is None else abs(number - as_number(true_value)) <= MONEY_TOLERANCE
+    if isinstance(true_value, str) and isinstance(cited, str):
+        return as_text(cited) == as_text(true_value)
+    return None
+
+
+def evidence_correct(problem: Any, contradiction: Contradiction, page_docs: dict[int, str]) -> bool | None:
+    """True when every comparable side value on a problem document equals its true value; None when none compares."""
+    true_values = dict(getattr(problem, "values_by_doc", None) or {})  # a hand-built stand-in may have none
+    compared = 0
+    for item in contradiction.sides:
+        doc_id = page_docs.get(item.page) if item.page is not None else item.doc_id
+        if doc_id not in true_values:
+            continue
+        agrees = value_agrees(item.value, true_values[doc_id])
+        if agrees is None:
+            continue
+        if not agrees:
+            return False
+        compared += 1
+    return True if compared else None
+
+
+def designed_abstention(problem: Any, doc_types: dict[str, str]) -> bool:
+    """True for a problem the explanation rules answer "unknown" by design (module docstring)."""
+    if problem.problem_type != "tiv_mismatch" or problem.classification != "unsupported":
+        return False
+    true_values = dict(getattr(problem, "values_by_doc", None) or {})
+    by_type = {doc_types.get(doc_id): value for doc_id, value in true_values.items()}
+    stated = as_number(by_type.get("insurance_application"))
+    schedule = as_number(by_type.get("property_schedule"))
+    if stated is None or schedule is None or schedule <= 0:
+        return False
+    return tiv_difference_pct(stated, schedule) <= TIV_REFER_PCT
+
+
+def representative(found: list[tuple[Contradiction, bool | None]]) -> tuple[Contradiction, bool | None] | None:
+    """The match that represents a problem: evidence-correct first, then not "unknown", then report order."""
+    best = None
+    best_rank = None
+    for position, (contradiction, correct) in enumerate(found):
+        rank = (correct is not True, contradiction.explanation == "unknown", position)
+        if best_rank is None or rank < best_rank:
+            best, best_rank = (contradiction, correct), rank
+    return best
+
+
 def match_contradictions(
-    problems: list[Any], contradictions: list[Contradiction], page_docs: dict[int, str]
+    problems: list[Any],
+    contradictions: list[Contradiction],
+    page_docs: dict[int, str],
+    doc_types: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """One outcome per scorable injected problem and one per detected contradiction (JSON-simple dicts)."""
+    """One outcome per scorable injected problem and one per detected contradiction (JSON-simple dicts).
+
+    doc_types (truth doc id -> document type) is needed only to find designed abstentions.
+    """
     scorable = [problem for problem in problems if problem.problem_type in CONTRADICTION_TYPES]
     problem_outcomes = []
     for problem in scorable:
-        found = [item for item in contradictions if matches(problem, item, page_docs)]
-        first = found[0] if found else None
+        found = [
+            (item, evidence_correct(problem, item, page_docs))
+            for item in contradictions
+            if matches(problem, item, page_docs)
+        ]
+        chosen = representative(found)
+        first = None if chosen is None else chosen[0]
         problem_outcomes.append(
             {
                 "problem_id": problem.problem_id,
                 "type": problem.problem_type,
                 "classification": problem.classification,
                 "detected": first is not None,
+                "detected_with_correct_evidence": any(flag is True for _, flag in found),
+                "matches": len(found),
                 "contradiction_id": None if first is None else first.contradiction_id,
                 "explanation": None if first is None else first.explanation,
                 "explanation_code": None if first is None else first.explanation_code,
+                "evidence_correct": None if chosen is None else chosen[1],
+                "designed_abstention": designed_abstention(problem, doc_types or {}),
             }
         )
     contradiction_outcomes = []
     for contradiction in contradictions:
-        matched = [problem.problem_id for problem in scorable if matches(problem, contradiction, page_docs)]
+        matched = [problem for problem in scorable if matches(problem, contradiction, page_docs)]
+        flags = [evidence_correct(problem, contradiction, page_docs) for problem in matched]
         contradiction_outcomes.append(
             {
                 "contradiction_id": contradiction.contradiction_id,
                 "type": contradiction.type,
                 "explanation": contradiction.explanation,
-                "matched_problem_ids": matched,
+                "explanation_code": contradiction.explanation_code,
+                "matched_problem_ids": [problem.problem_id for problem in matched],
+                "evidence_correct": any(flag is True for flag in flags) if matched else None,
             }
         )
     return problem_outcomes, contradiction_outcomes
+
+
+def explanation_counts(outcome: dict) -> Counter:
+    """explanations.* counters of one detected problem whose truth is benign or unsupported (module docstring)."""
+    counts: Counter = Counter()
+    truth, predicted = outcome["classification"], outcome["explanation"]
+    groups = ["all", truth, f"type.{outcome['type']}"]
+    groups.append("designed_abstention" if outcome["designed_abstention"] else "decidable")
+    for group in groups:
+        counts[f"explanations.{group}.total"] += 1
+        counts[f"explanations.{group}.correct"] += int(predicted == truth)
+        counts[f"explanations.{group}.unknown"] += int(predicted == "unknown")
+    counts[f"explanations.confusion.{truth}.{predicted}"] += 1
+    if predicted == "unknown":
+        counts[f"explanations.unknown_code.{outcome['explanation_code']}"] += 1
+    return counts
 
 
 def contradiction_counts(problem_outcomes: list[dict], contradiction_outcomes: list[dict]) -> Counter:
@@ -100,16 +222,15 @@ def contradiction_counts(problem_outcomes: list[dict], contradiction_outcomes: l
         for kind in ("all", outcome["type"]):
             counts[f"problems.{kind}.total"] += 1
             counts[f"problems.{kind}.detected"] += int(outcome["detected"])
-        classification = outcome["classification"]
-        if outcome["detected"] and classification in EXPLAINED_CLASSES:
-            for group in ("all", classification):
-                counts[f"explanations.{group}.total"] += 1
-                counts[f"explanations.{group}.correct"] += int(outcome["explanation"] == classification)
-                counts[f"explanations.{group}.unknown"] += int(outcome["explanation"] == "unknown")
+            counts[f"problems.{kind}.detected_evidence_correct"] += int(outcome["detected_with_correct_evidence"])
+            counts[f"problems.{kind}.duplicate_matches"] += max(0, outcome["matches"] - 1)
+        if outcome["detected"] and outcome["classification"] in EXPLAINED_CLASSES:
+            counts.update(explanation_counts(outcome))
     for outcome in contradiction_outcomes:
         for kind in ("all", outcome["type"]):
             counts[f"contradictions.{kind}.total"] += 1
             counts[f"contradictions.{kind}.tp"] += int(bool(outcome["matched_problem_ids"]))
+            counts[f"contradictions.{kind}.tp_evidence_correct"] += int(outcome["evidence_correct"] is True)
     return counts
 
 

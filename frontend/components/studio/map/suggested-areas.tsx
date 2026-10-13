@@ -63,11 +63,15 @@ export function SuggestedAreas({
                 className="self-start"
                 disabled={disabled || used}
                 onClick={() => onUse(area)}
-                aria-label={`Use suggested area ${area.rank}, tract ${area.geoid}, as a site`}
+                aria-describedby={`suggested-area-${area.geoid}`}
               >
                 <MapPinPlus aria-hidden="true" />
                 {used ? "Added" : "Use this area"}
               </Button>
+              {/* The visible text is the accessible name (WCAG 2.5.3); which area it is comes from the description. */}
+              <span id={`suggested-area-${area.geoid}`} className="sr-only">
+                Suggested area {area.rank}, tract {area.geoid}
+              </span>
             </li>
           );
         })}

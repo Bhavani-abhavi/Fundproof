@@ -62,6 +62,8 @@ export interface MetroOption {
   /** "map": pick sites on the metro's map (SYNTHETIC metro); "address_or_map": type an address or drop a pin. */
   site_input: "map" | "address_or_map";
   supports_area_suggestions: boolean;
+  /** False when the metro has no tract data here: demand is UNKNOWN, so the simulation and the path cannot run. */
+  simulation_available: boolean;
   /** The prime rate the simulator adds a spread to when no rate is typed (null or UNKNOWN: type the quoted rate). */
   prime_rate: FactorValue | null;
 }
@@ -75,6 +77,8 @@ export interface BusinessTypeOption {
   build_out_low: number;
   build_out_high: number;
   build_out_status: "SOURCED" | "ASSUMPTION";
+  /** The single build-out figure the simulation uses when the budget is left empty (sum of the most likely values). */
+  build_out_assumed: number;
   build_out_note: string;
 }
 
@@ -136,7 +140,7 @@ export interface ProjectInput {
   metro_id: string;
   business_type_id: string;
   idea_text?: string | null;
-  /** Build-out and equipment budget (capex), USD. Null = the profile's range (ASSUMPTION). */
+  /** Build-out and equipment budget (capex), USD. Null = the profile's point estimate, build_out_assumed (ASSUMPTION). */
   budget_total?: number | null;
   owner_equity: number;
   loan_amount: number;
@@ -150,6 +154,8 @@ export interface ProjectInput {
 }
 
 export type EntryStatus = "USER_STATED" | "ASSUMPTION";
+/** Who wrote a plan figure: the founder, nobody (a stated default), an applied change-set, or the server's arithmetic. */
+export type FigureStatus = "USER_STATED" | "ASSUMPTION" | "PLAN_CHANGE" | "DERIVED";
 
 /** A stored candidate site. */
 export interface ProjectSite {
@@ -174,19 +180,54 @@ export interface ProjectIdea {
   note: string;
 }
 
-/** The plan's money, each figure with whether the founder typed it. */
+/** A plan figure written by "Apply this change" (until the founder types the field again). */
+export interface PlanChangeNote {
+  source: "path_to_approval";
+  engine_version: string;
+  applied_at: string;
+  evidence_needed: string[];
+}
+
+/** The plan's money, each figure with who wrote it. */
 export interface ProjectMoney {
   budget_total: number | null;
-  budget_status: EntryStatus;
+  budget_status: FigureStatus;
+  /** When the budget is empty: the profile's point estimate the simulation uses (ASSUMPTION). */
+  build_out_assumed: number | null;
   owner_equity: number;
+  owner_equity_status: FigureStatus;
   loan_amount: number;
+  loan_amount_status: FigureStatus;
   loan_term_months: number;
+  loan_term_status: FigureStatus;
   annual_rate_pct: number | null;
   annual_rate_status: EntryStatus;
   rate_type: "fixed" | "variable";
-  /** owner_equity + loan_amount - budget_total (computed by the server). */
-  cash_reserve_at_opening: number | null;
+  /** owner_equity + loan_amount - the build-out (computed by the server), before the simulated overrun. */
+  cash_reserve_at_opening: number;
+  cash_reserve_status: FigureStatus;
+  plan_changes: Record<string, PlanChangeNote>;
   note: string;
+}
+
+/** Marks the fields of a PUT as an applied change-set (sent by "Apply this change"). */
+export interface PlanChangeInput {
+  source: "path_to_approval";
+  engine_version: string;
+  fields: string[];
+  evidence_needed: string[];
+}
+
+/** PUT /api/studio/projects/{id}: any subset of the plan fields. */
+export interface ProjectUpdateInput {
+  version?: number;
+  budget_total?: number | null;
+  owner_equity?: number;
+  loan_amount?: number;
+  loan_term_months?: number;
+  annual_rate_pct?: number | null;
+  selected_site_index?: number;
+  plan_change?: PlanChangeInput | null;
 }
 
 /** A stored plan (GET/POST/PUT /api/studio/projects...). `version` grows with every change. */
@@ -211,6 +252,11 @@ export interface Project {
   opening_date: string;
   opening_date_status: EntryStatus;
   sites: ProjectSite[];
+  /** The site the founder plans with (the results page opens on it). */
+  selected_site_index: number;
+  selected_site_status: FigureStatus;
+  /** The simulation seed: the same for every version of the plan (common random numbers). */
+  seed: number;
   disclaimer: string;
 }
 
@@ -676,8 +722,22 @@ export interface AppliedChange {
   unit: string;
   from_value: number | string;
   to_value: number | string;
+  own_change?: number | null;
   effort: number;
   fields_changed: string[];
+  /** What would back the changed figure for a lender (a quote, bank statements, a loan request). */
+  evidence_needed?: string | null;
+}
+
+/** One plan figure before and after a change-set (also the balancing ones and the computed reserve). */
+export interface FieldChange {
+  field: string;
+  label: string;
+  unit: string;
+  from_value: number | string;
+  to_value: number | string;
+  /** True when "Apply this change" writes the field; false = computed from the others. */
+  writes_plan: boolean;
 }
 
 export interface ProgramChecks {
@@ -701,17 +761,14 @@ export interface PlanAmounts {
   checks: ProgramChecks;
 }
 
-/** What "Apply this change" sends: PUT project_fields, then re-run at site_index (computed by the server). */
+/** What "Apply this change" sends: PUT {version, ...project_fields, plan_change}, then re-run at site_index. */
 export interface ApplyPatch {
   supported: boolean;
   reason: string | null;
   site_index: number;
-  project_fields: {
-    owner_equity: number;
-    loan_amount: number;
-    loan_term_months: number;
-    budget_total: number | null;
-  };
+  /** Only the fields that change (owner_equity, loan_amount, loan_term_months, budget_total, selected_site_index). */
+  project_fields: Record<string, number>;
+  plan_change: PlanChangeInput | null;
 }
 
 export interface ChangeSet {
@@ -724,6 +781,11 @@ export interface ChangeSet {
   plan_before: PlanAmounts;
   plan_after: PlanAmounts;
   meets_target: boolean;
+  /** Rules of the SYNTHETIC startup program the changed plan still fails, in words. */
+  program_rules_not_met: string[];
+  evidence_needed: string[];
+  /** Every figure that changes, including the ones that balance a lever's move. */
+  field_changes: FieldChange[];
   explanation: string;
   unchanged: string;
   apply: ApplyPatch;
@@ -742,6 +804,14 @@ export interface LeverSummary {
 }
 
 export type PathStatus = "already_meets_target" | "paths_found" | "no_path_within_bounds";
+
+export interface OwnerCashBound {
+  current: number;
+  high: number;
+  extra: number;
+  source: "default" | "founder";
+  note: string;
+}
 
 /** POST /api/studio/projects/{id}/path-to-approval (QUICK mode). */
 export interface PathResponse {
@@ -762,6 +832,8 @@ export interface PathResponse {
   closest: ChangeSet | null;
   levers_considered: LeverSummary[];
   levers_not_available: Record<string, string>;
+  /** The bound on extra owner cash the search used, and where it came from. */
+  owner_cash_bound: OwnerCashBound | null;
   skipped_candidates: string[];
   notes: string[];
   settings?: Record<string, unknown>;

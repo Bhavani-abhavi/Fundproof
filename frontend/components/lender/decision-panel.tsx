@@ -1,7 +1,7 @@
 "use client";
 
 import { Ban, CheckCircle2, Download, FileClock, Forward, Gavel, HelpCircle, Lock, type LucideIcon } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { actionStates, overrideReasonLabel, readableReason } from "@/components/lender/decision-rules";
 import { actionLabel, recommendationLabel, reviewerRoleLabel } from "@/components/lender/labels";
@@ -21,8 +21,18 @@ import { cn } from "@/lib/utils";
  * The decision panel: a PERSON chooses approve, refer, request more information or decline-with-reason. The copilot
  * never decides. Buttons are disabled, with the server's reasons written under them, when validate_decision would
  * refuse the action for your role (`action_checks`); the server checks again on submit, and its refusal (422, with
- * reasons) is shown as it is. After a decision, the DEMO decision record is shown and its JSON can be downloaded.
+ * reasons) is shown as it is. A 422 for the input itself (for example an account number in the rationale) is shown
+ * as refused input, not as the checkpoint's refusal. After a decision, the DEMO decision record is shown (focus moves
+ * to it) and its JSON can be downloaded.
  */
+
+/** The server's detail line for a refusal by the graph's checkpoint (lender_demo.DecisionRefused). */
+const CHECKPOINT_REFUSAL = "The checkpoint refused this decision.";
+
+/** "a senior underwriter", "an underwriter". */
+function withArticle(words: string): string {
+  return `${/^[aeiou]/i.test(words) ? "an" : "a"} ${words}`;
+}
 
 const ACTION_ICONS: Record<ReviewerAction, LucideIcon> = {
   approve: CheckCircle2,
@@ -42,10 +52,19 @@ export interface RecordedDecision {
   record?: Record<string, unknown> | null;
 }
 
-function RecordView({ fileId, recorded }: { fileId: string; recorded: RecordedDecision }) {
+function RecordView({ fileId, recorded, focusOnShow = false }: { fileId: string; recorded: RecordedDecision; focusOnShow?: boolean }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const decision = recorded.decision;
+
+  // Right after a decision is recorded, the form it replaced is gone: move focus to the record's heading so keyboard
+  // and screen-reader users land on what happened.
+  useEffect(() => {
+    if (focusOnShow) {
+      headingRef.current?.focus();
+    }
+  }, [focusOnShow]);
 
   async function download() {
     setBusy(true);
@@ -70,7 +89,7 @@ function RecordView({ fileId, recorded }: { fileId: string; recorded: RecordedDe
 
   return (
     <section aria-labelledby="record-title" className="flex flex-col gap-3 rounded-xl border border-verified-line bg-verified-soft/50 p-4">
-      <h3 id="record-title" className="flex items-center gap-2 font-semibold">
+      <h3 ref={headingRef} tabIndex={-1} id="record-title" className="flex items-center gap-2 font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
         <FileClock className="size-4 text-verified" aria-hidden="true" />
         Your decision record ({decision.label})
       </h3>
@@ -90,7 +109,12 @@ function RecordView({ fileId, recorded }: { fileId: string; recorded: RecordedDe
       </dl>
       <details className="min-w-0 text-sm">
         <summary className="cursor-pointer font-medium text-accent">Read the record</summary>
-        <div className="mt-2 max-h-96 overflow-auto rounded-md border border-border bg-card p-3">
+        <div
+          role="region"
+          aria-label="The decision record"
+          tabIndex={0}
+          className="mt-2 max-h-96 overflow-auto rounded-md border border-border bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-ring"
+        >
           <PlainMarkdown text={recorded.markdown} className="text-xs" />
         </div>
       </details>
@@ -153,6 +177,7 @@ export function DecisionPanel({
   const [submitting, setSubmitting] = useState(false);
   const [refusal, setRefusal] = useState<string[] | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [justRecorded, setJustRecorded] = useState(false);
   const chosen = states.find((state) => state.action === action) ?? null;
   const rationaleOk = rationale.trim().length >= MIN_RATIONALE;
   const overrideOk = !chosen?.needs_override_reason || overrideReason !== "";
@@ -171,11 +196,13 @@ export function DecisionPanel({
         rationale: rationale.trim(),
         override_reason: chosen.needs_override_reason ? overrideReason : null,
       });
+      setJustRecorded(true);
       onRecorded({ decision: saved.decision, markdown: saved.markdown });
     } catch (error) {
-      if (error instanceof ApiError && error.status === 422) {
-        const reasons = errorMessages(error.detail);
-        setRefusal(reasons.length > 0 ? reasons : [error.message]);
+      const messages = error instanceof ApiError ? errorMessages(error.detail) : [];
+      if (error instanceof ApiError && error.status === 422 && messages[0] === CHECKPOINT_REFUSAL) {
+        const reasons = messages.slice(1);
+        setRefusal(reasons.length > 0 ? reasons : [CHECKPOINT_REFUSAL]);
       } else {
         setProblem(describeProblem(error, "Recording the decision"));
       }
@@ -195,13 +222,13 @@ export function DecisionPanel({
           The policy suggests{" "}
           <strong className="font-semibold text-foreground">{recommendationLabel(file.reference_recommendation)}</strong>. You
           decide. You act as <strong className="font-semibold text-foreground">{reviewerRoleLabel(file.your_reviewer_role)}</strong>{" "}
-          on this DEMO file; this file needs a{" "}
-          <strong className="font-semibold text-foreground">{reviewerRoleLabel(file.required_reviewer_role).toLowerCase()}</strong>.
+          on this DEMO file; this file needs{" "}
+          <strong className="font-semibold text-foreground">{withArticle(reviewerRoleLabel(file.required_reviewer_role).toLowerCase())}</strong>.
         </p>
       </div>
 
       {recorded ? (
-        <RecordView fileId={file.id} recorded={recorded} />
+        <RecordView fileId={file.id} recorded={recorded} focusOnShow={justRecorded} />
       ) : (
         <>
           <div className="flex flex-col gap-3">

@@ -26,7 +26,12 @@ EvidenceValue = str | float | int | bool | None
 
 
 class Evidence(BaseModel):
-    """One cited value a check or contradiction relies on."""
+    """One cited value a check or contradiction relies on.
+
+    confidence is the extractor's confidence of the cited line (1.0 for the text layer, the mean Tesseract word
+    confidence for an OCR line; None when the evidence names a whole document or a hit). contradiction_ocr.py uses
+    it to flag disagreements that an OCR misread may explain.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -37,6 +42,7 @@ class Evidence(BaseModel):
     key: str | None = None
     value: EvidenceValue
     source_text: str | None = None
+    confidence: float | None = None
 
 
 class CheckIssue(BaseModel):
@@ -90,6 +96,7 @@ def cite(cited: Cited, field: str, key: str | None = None, doc_id: str | None = 
         key=key,
         value=plain(cited.value),
         source_text=cited.source_text,
+        confidence=round(cited.confidence, 4),
     )
 
 

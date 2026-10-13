@@ -27,15 +27,20 @@ in USD, rounded to cents):
   statements in the last 3 months of the end-of-day balance (the printed running balance after the last row
   posted on or before that day; the printed opening balance before the first row). cash_intensive_approved: False.
 - debt.ttm_ebitda, debt.ttm_pnl_revenue: EBITDA and revenue printed on the profit and loss statement.
-- debt.existing_monthly_payment_schedule: sum of the "Monthly payment" column of the debt schedule over rows not
-  marked to be refinanced (0 when the schedule is missing or says "No existing business debt").
-  debt.refinanced_monthly_payment: the same sum over rows marked to be refinanced (always 0 in this generator).
-  debt.existing_total_debt_balance: the printed total balance of the debt schedule (0 when missing or empty).
+- debt.existing_monthly_payment_schedule: sum of the "Monthly payment" column of the debt schedule over EVERY row,
+  including rows marked to be refinanced (0 when the schedule is missing or says "No existing business debt"):
+  the agent's existing_annual_debt_service subtracts the refinanced payment itself, only when a payoff letter is
+  in the file (NBC-4.4). debt.refinanced_monthly_payment: the same sum over rows marked to be refinanced (always 0
+  in this generator). debt.existing_total_debt_balance: the printed total balance of the debt schedule (0 when
+  missing or empty). A missing debt schedule is listed in to_application's unknowns (the 0s are not documented).
 - debt.existing_monthly_payment_observed: sum of the loan payment withdrawal rows ("ACH PMT <lender> LOAN") over
-  the statements present, divided by the number of statement months present. debt.mca_monthly_remittance: the
-  same for "MCA REMIT" rows. Merchant cash advances are not listed on the debt schedule.
-- new_loans_last_90_days: loan-proceeds deposit rows ("LOAN PROCEEDS", "MCA FUNDING") posted in the 90 days up to
-  and including the application date.
+  the statements present, divided by the number of statement months in which at least one such row appears
+  (NBC-4.1 "observed monthly total": a loan or advance that started inside the window is not diluted by the
+  months before it existed; 0 when no month has one). debt.mca_monthly_remittance: the same for "MCA REMIT" rows.
+  Merchant cash advances are not listed on the debt schedule.
+- new_loans_last_90_days: loan-proceeds deposit rows ("LOAN PROCEEDS", "MCA FUNDING") posted in the 90 calendar
+  days that end on the last statement period end (NBC-4.4 "the most recent 90 days of statements"; both ends
+  included).
 - collateral: one item per collateral valuation document (type code and value).
 - owners: the application's owners table, in order, with owner_id "O1", "O2", ...; credit_score and
   bankruptcy_within_7_years from the credit report row with the same name (persons only; None / False when the

@@ -16,6 +16,7 @@ import type {
   Project,
   ProjectInput,
   ProjectList,
+  ProjectUpdateInput,
   SiteScoresResponse,
   StudioOptions,
   Suggestions,
@@ -38,10 +39,7 @@ function projectPath(id: string): string {
 }
 
 /** The project fields "Apply this change" or an edit may send (PUT is a partial update of these). */
-export type ProjectUpdate = Partial<ProjectInput> & {
-  /** The version the edit was based on; the server refuses a stale one (409) so two tabs cannot overwrite. */
-  version?: number;
-};
+export type ProjectUpdate = Partial<ProjectInput> & ProjectUpdateInput;
 
 export const studioApi = {
   options: (signal?: AbortSignal) => request<StudioOptions>("/api/studio/options", { signal }),
@@ -67,11 +65,20 @@ export const studioApi = {
       signal,
     }),
 
-  /** `targets`: edits to the default targets (omitted fields keep their defaults). */
-  pathToApproval: (id: string, siteIndex: number, signal?: AbortSignal, targets?: Partial<PathTarget> | null) =>
+  /**
+   * `targets`: edits to the default targets (omitted fields keep their defaults). `maxExtraOwnerCash`: the most extra
+   * cash of their own the founder could add (USD); null = the server's default bound, shown in the answer.
+   */
+  pathToApproval: (
+    id: string,
+    siteIndex: number,
+    signal?: AbortSignal,
+    targets?: Partial<PathTarget> | null,
+    maxExtraOwnerCash?: number | null,
+  ) =>
     request<PathResponse>(`${projectPath(id)}/path-to-approval`, {
       method: "POST",
-      json: { site_index: siteIndex, targets: targets ?? null },
+      json: { site_index: siteIndex, targets: targets ?? null, max_extra_owner_cash: maxExtraOwnerCash ?? null },
       signal,
     }),
 

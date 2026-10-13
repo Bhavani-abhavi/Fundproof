@@ -6,7 +6,9 @@ Geocoder answer recorded in tests/studio/fixtures/geocoder (a public building's 
 httpx.MockTransport, or a fake geocoder. Nothing touches the network.
 """
 
+import asyncio
 import json
+import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,13 +20,21 @@ from fastapi.testclient import TestClient
 from web_helpers import csrf_headers, dev_login
 
 from uwcopilot.studio.data.errors import HostUnreachable, NotAvailable
-from uwcopilot.studio.data.geocode import GeocodeMatch
+from uwcopilot.studio.data.geocode import HOST, GeocodeMatch
 from uwcopilot.studio.data.http import PoliteClient
 from uwcopilot.studio.data.provenance import SourceRecord
 from uwcopilot.studio.metros import load_metro
 from uwcopilot.studio.siteiq.context import metro_context
 from uwcopilot.web.app import create_app
-from uwcopilot.web.services.geocoding import CensusGeocoder, address_key
+from uwcopilot.web.security import RateLimiter
+from uwcopilot.web.services.geocoding import (
+    CensusGeocoder,
+    GeocodeService,
+    HostSpacer,
+    PrefetchedGeocoder,
+    TooManyRequests,
+    census_client,
+)
 from uwcopilot.web.services.projects import PROJECTS_NAMESPACE, default_opening_date
 
 SYNTHETIC_METRO = "synthetic_metro"
@@ -105,7 +115,7 @@ def first_verified_metro() -> str | None:
 def studio(make_settings) -> Iterator[TestClient]:
     """A dev-login app with a fake geocoder, signed in as founder A."""
     with TestClient(create_app(make_settings(UWC_DEV_AUTH="1"))) as client:
-        client.app.state.services.geocoder = FakeGeocoder("99999")
+        client.app.state.services.geocoding.geocoder = FakeGeocoder("99999")
         dev_login(client, "founder_a", "founder")
         yield client
 
@@ -170,12 +180,38 @@ def test_default_opening_date_is_six_months_ahead() -> None:
     assert default_opening_date(datetime(2026, 7, 31, tzinfo=UTC)).isoformat() == "2027-01-01"
 
 
+def assumed_build_out(client: TestClient, business_type_id: str = "laundromat") -> float:
+    """The build-out point the server assumes for an empty budget (from /api/studio/options)."""
+    types = {item["id"]: item for item in client.get("/api/studio/options").json()["business_types"]}
+    return float(types[business_type_id]["build_out_assumed"])
+
+
 def test_empty_rate_and_budget_are_labelled_assumptions(studio: TestClient) -> None:
-    project = create(studio, plan_body(annual_rate_pct=None, budget_total=None, opening_date="2027-05-01"))
+    assumed = assumed_build_out(studio)
+    body = plan_body(annual_rate_pct=None, budget_total=None, opening_date="2027-05-01", loan_amount=assumed)
+    project = create(studio, body)
     money = project["money"]
     assert money["annual_rate_status"] == "ASSUMPTION" and money["budget_status"] == "ASSUMPTION"
-    assert money["cash_reserve_at_opening"] is None
+    assert money["build_out_assumed"] == assumed
+    # The reserve rests on the assumed build-out, so it is an ASSUMPTION too (not the founder's own number).
+    assert money["cash_reserve_at_opening"] == 150_000.0 and money["cash_reserve_status"] == "ASSUMPTION"
+    assert money["owner_equity_status"] == "USER_STATED" and money["plan_changes"] == {}
     assert project["opening_date"] == "2027-05-01" and project["opening_date_status"] == "USER_STATED"
+
+
+def test_typed_budget_gives_a_derived_reserve(studio: TestClient) -> None:
+    money = create(studio)["money"]
+    assert money["budget_status"] == "USER_STATED" and money["build_out_assumed"] is None
+    assert money["cash_reserve_at_opening"] == 100_000.0 and money["cash_reserve_status"] == "DERIVED"
+
+
+def test_empty_budget_is_checked_against_the_assumed_build_out(studio: TestClient) -> None:
+    assumed = assumed_build_out(studio)
+    body = plan_body(budget_total=None, owner_equity=10_000.0, loan_amount=50_000.0)
+    response = studio.post("/api/studio/projects", json=body, headers=csrf_headers(studio))
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert f"${assumed:,.0f}" in detail and "$60,000" in detail and "ASSUMPTION" in detail
 
 
 def test_list_is_newest_first_and_stored_encrypted(studio: TestClient, tmp_path: Path) -> None:
@@ -368,7 +404,7 @@ def test_address_in_a_verified_metro_is_geocoded_and_stored(studio: TestClient) 
         pytest.skip("no real metro has a verified county list in this checkout")
     county = load_metro(metro_id).county_geoids()[0]
     geocoder = FakeGeocoder(county)
-    studio.app.state.services.geocoder = geocoder
+    studio.app.state.services.geocoding.geocoder = geocoder
     body = plan_body(metro_id=metro_id, sites=[{"label": "Main St", "address": "100 Test Street (SYNTHETIC)"}])
     project = create(studio, body)
     site = project["sites"][0]
@@ -390,7 +426,7 @@ def test_address_outside_the_metro_or_unmatched_is_422_and_offline_geocoder_is_5
     headers = csrf_headers(studio)
     outside = plan_body(metro_id=metro_id, sites=[{"label": "Far", "address": "1 Elsewhere Road"}])
     assert studio.post("/api/studio/projects", json=outside, headers=headers).status_code == 422
-    studio.app.state.services.geocoder = FakeGeocoder(load_metro(metro_id).county_geoids()[0])
+    studio.app.state.services.geocoding.geocoder = FakeGeocoder(load_metro(metro_id).county_geoids()[0])
     unmatched = plan_body(metro_id=metro_id, sites=[{"label": "Nope", "address": "1 nowhere lane"}])
     response = studio.post("/api/studio/projects", json=unmatched, headers=headers)
     assert response.status_code == 422 and "no match" in response.json()["detail"]
@@ -412,19 +448,96 @@ def recorded_geocoder_transport(calls: list[str]) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
-def test_census_geocoder_adapter_caches_in_memory_not_on_disk(tmp_path: Path) -> None:
+def test_census_geocoder_keeps_no_cache_and_does_not_retry(tmp_path: Path) -> None:
     calls: list[str] = []
     fixture = json.loads(GEOCODER_FIXTURE.read_text(encoding="utf-8"))
     client = PoliteClient(cache=None, transport=recorded_geocoder_transport(calls), sleep=lambda seconds: None)
-    geocoder = CensusGeocoder(client)
+    geocoder = CensusGeocoder(client, spacer=HostSpacer(0.0))
     address = fixture["params"]["address"]
     first = geocoder.geocode(address)
-    second = geocoder.geocode("  " + address.upper() + " ")
-    assert first is second and len(calls) == 1
+    second = geocoder.geocode(address)
+    # No shared cache: every lookup asks the geocoder (an address is never kept after its plan is gone).
+    assert len(calls) == 2 and first == second and first is not second
     assert first.tract_geoid.startswith(first.state_fips + first.county_fips)
     assert first.source.sha256 == fixture["body_sha256"] and first.source.origin == "live"
-    assert address_key(address) == address_key(address.lower())
     assert client.cache is None
+    policy = census_client().policy_for(HOST)
+    assert census_client().cache is None and policy.max_retries == 0 and policy.timeout_s <= 10.0
+
+
+def test_host_spacer_spaces_turns_without_holding_its_lock() -> None:
+    now = [100.0]
+    slept: list[float] = []
+    spacer = HostSpacer(1.0, clock=lambda: now[0], sleep=slept.append)
+    spacer.wait_for_turn()
+    spacer.wait_for_turn()
+    spacer.wait_for_turn()
+    assert slept == [1.0, 2.0]  # turns at 100, 101, 102, reserved at once; the sleeping happens outside the lock
+    assert not spacer._lock.locked()
+
+
+class SlowGeocoder:
+    """Answers after a pause (to hold a lookup in flight)."""
+
+    def __init__(self, county_geoid: str, pause_s: float) -> None:
+        self.inner = FakeGeocoder(county_geoid)
+        self.pause_s = pause_s
+
+    def geocode(self, address: str) -> GeocodeMatch:
+        time.sleep(self.pause_s)
+        return self.inner.geocode(address)
+
+
+def test_geocode_service_limits_each_user_and_never_uses_the_heavy_work_pool() -> None:
+    service = GeocodeService(SlowGeocoder("99999", 0.3), max_waiting=2)
+
+    async def scenario() -> list[Any]:
+        first = asyncio.create_task(service.prefetch("user-a", ["1 Test Street"]))
+        await asyncio.sleep(0.05)
+        outcomes: list[Any] = []
+        for owner in ("user-a", "user-b", "user-c"):
+            try:
+                outcomes.append(await service.prefetch(owner, ["2 Test Street"]))
+            except Exception as error:  # noqa: BLE001 - the test inspects the error type
+                outcomes.append(error)
+        outcomes.insert(0, await first)
+        return outcomes
+
+    first, second_a, user_b, user_c = asyncio.run(scenario())
+    assert first.geocode("1 Test Street").matched_address == "TEST ADDRESS (SYNTHETIC)"
+    assert isinstance(second_a, TooManyRequests)  # one lookup in flight per user
+    assert isinstance(user_b, PrefetchedGeocoder) and isinstance(user_c, PrefetchedGeocoder)
+    budget = GeocodeService(FakeGeocoder("99999"), budget=RateLimiter(per_minute=1, burst=2))
+    asyncio.run(budget.prefetch("user-a", ["1 A St", "2 B St"]))
+    with pytest.raises(TooManyRequests, match="many addresses"):
+        asyncio.run(budget.prefetch("user-a", ["3 C St"]))
+    service.shutdown()
+    budget.shutdown()
+
+
+def test_a_down_geocoder_does_not_make_simulations_busy(studio: TestClient) -> None:
+    project = create(studio)
+    studio.app.state.services.geocoding.geocoder = SlowGeocoder("99999", 0.2)
+    pending_before = studio.app.state.services.compute.pending_jobs()
+    metro_id = first_verified_metro()
+    if metro_id is not None:
+        body = plan_body(metro_id=metro_id, sites=[{"label": "Slow", "address": "1 Slow Street (SYNTHETIC)"}])
+        studio.post("/api/studio/projects", json=body, headers=csrf_headers(studio))
+    assert studio.app.state.services.compute.pending_jobs() == pending_before
+    response = studio.post(f"/api/studio/projects/{project['id']}/feasibility", json={}, headers=csrf_headers(studio))
+    assert response.status_code == 200
+
+
+def test_an_address_with_an_ssn_is_refused_before_any_lookup(studio: TestClient) -> None:
+    geocoder = FakeGeocoder("99999")
+    studio.app.state.services.geocoding.geocoder = geocoder
+    metro_id = first_verified_metro() or "chicago_il_in"
+    for address in ("SSN 123-45-6789 Main St Chicago IL", "ssn 123 45 6789 Main St", "acct 12345678 Main St"):
+        body = plan_body(metro_id=metro_id, sites=[{"label": "Home", "address": address}])
+        response = studio.post("/api/studio/projects", json=body, headers=csrf_headers(studio))
+        assert response.status_code == 422, address
+        assert "address of site 1" in response.json()["detail"] and address not in response.json()["detail"]
+    assert geocoder.calls == []
 
 
 # --- the contract is published ---

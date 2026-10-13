@@ -12,7 +12,7 @@ measures the plumbing (prompts, validation, merging), never the quality of a lan
 
 tiny_packet_set() generates three SYNTHETIC packets (two credit, one insurance) with the generator's own
 generate_packets, once per test session, in a temporary folder. Its seed (TINY_SEED) differs from the evaluation
-set's seed 42, so the tests never read the evaluation packets.
+set's seed 20261013, so the tests never read the evaluation packets.
 """
 
 import atexit

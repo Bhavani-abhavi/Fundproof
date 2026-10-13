@@ -54,7 +54,7 @@ def test_instruction_on_one_line_is_found_with_its_location() -> None:
 def test_ordinary_document_text_is_not_flagged() -> None:
     lines = [
         ScanLine("D02", 3, 1, "Fictional Example Bank (SYNTHETIC)"),
-        ScanLine("D02", 3, 2, "2026-07-03 CARD SETTLEMENT TALLYPAY 30,000.00"),
+        ScanLine("D02", 3, 2, "2026-07-03 CARD SETTLEMENT TERNWICK 30,000.00"),
         ScanLine("D05", 7, 4, "Attached are the application and supporting documents."),
     ]
     assert scan_lines(lines) == []

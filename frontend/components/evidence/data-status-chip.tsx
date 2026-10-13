@@ -1,4 +1,4 @@
-import { BookOpen, Database, FlaskConical, type LucideIcon } from "lucide-react";
+import { BookOpen, Calculator, Database, FlaskConical, Wand2, type LucideIcon } from "lucide-react";
 
 import { EvidenceChip } from "@/components/evidence/evidence-chip";
 import { isEvidenceStatus, type EvidenceStatus } from "@/lib/evidence";
@@ -10,8 +10,10 @@ import { cn } from "@/lib/utils";
  * Studio values carry a few statuses that are not ledger evidence statuses: DATA (a public dataset), SOURCED (a
  * cited publication), SYNTHETIC (the generated demo city) and DATA_X_ASSUMPTION (public data converted with a stated
  * assumption). They are shown with their own label and icon, never re-labeled as VERIFIED: a public statistic is not
- * a checked document. FOUNDER_INPUT is the founder's own number, so it uses the USER_STATED chip. Everything that is
- * a ledger status (ASSUMPTION, MODEL_ESTIMATE, UNKNOWN, ...) uses the existing EvidenceChip unchanged.
+ * a checked document. Two more describe plan figures: DERIVED (calculated by the server from the figures next to it)
+ * and PLAN_CHANGE (written by "Apply this change": a simulated suggestion, not the founder's own number, until the
+ * evidence it needs exists). FOUNDER_INPUT is the founder's own number, so it uses the USER_STATED chip. Everything
+ * that is a ledger status (ASSUMPTION, MODEL_ESTIMATE, UNKNOWN, ...) uses the existing EvidenceChip unchanged.
  */
 
 interface ExtraStyle {
@@ -45,6 +47,19 @@ const EXTRA_STATUSES: Record<string, ExtraStyle> = {
     description: "Public data converted with a stated assumption (for example a weekly wage over assumed hours).",
     icon: Database,
     className: "border-dashed border-assumption-line bg-assumption-soft text-assumption",
+  },
+  DERIVED: {
+    label: "Calculated",
+    description: "Calculated by the server from the figures shown next to it.",
+    icon: Calculator,
+    className: "border-rule-strong bg-card text-ink",
+  },
+  PLAN_CHANGE: {
+    label: "Suggested change",
+    description:
+      "Written by \"Apply this change\": a change suggested by the simulated path search, not a quote and not verified until the evidence it needs exists.",
+    icon: Wand2,
+    className: "border-dashed border-stated-line bg-stated-soft text-stated",
   },
 };
 

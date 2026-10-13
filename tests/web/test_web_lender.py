@@ -247,6 +247,15 @@ def test_an_accepted_decision_is_recorded_per_user(lender: TestClient) -> None:
     assert decide(lender, CLEAN_CREDIT, "request_more_information").status_code == 200
 
 
+def test_the_record_keeps_the_rationale_lines_inside_its_fence(lender: TestClient) -> None:
+    rationale = "First line of the reason.\nSecond line with ``` backticks that try to close the fence."
+    response = decide(lender, CLEAN_CREDIT, "refer", rationale=rationale)
+    assert response.status_code == 200, response.text
+    markdown = response.json()["markdown"]
+    block = markdown.split("```text\n", 1)[1].split("\n```", 1)[0]
+    assert block == "First line of the reason.\nSecond line with ''' backticks that try to close the fence."
+
+
 def test_a_senior_may_decline_with_an_override_reason(lender: TestClient) -> None:
     dev_login(lender, "senior_a", "lender_senior")
     response = decide(lender, CLEAN_CREDIT, "decline", override_reason="information_not_available_to_model")

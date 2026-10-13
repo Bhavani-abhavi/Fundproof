@@ -28,7 +28,7 @@ from uwcopilot.docintel.check_models import (
     found_only,
     make_result,
 )
-from uwcopilot.docintel.checks_loss_runs import carrier_label, years_before
+from uwcopilot.docintel.checks_loss_runs import carrier_label, has_loss_run, loss_run_carriers, years_before
 from uwcopilot.docintel.normalize import canonical_name
 from uwcopilot.docintel.schemas import InsuranceSubmission, casefold_key
 
@@ -48,25 +48,6 @@ def covered_by_rows(start: date, submission: InsuranceSubmission) -> bool:
             printed = year.policy_year_start.value
             if printed is not None and abs((printed - start).days) <= YEAR_MATCH_DAYS:
                 return True
-    return False
-
-
-def loss_run_carriers(submission: InsuranceSubmission) -> set[str]:
-    """Canonical carrier names of the loss runs in the packet."""
-    return {canonical_name(item.carrier.value) for item in submission.loss_runs if item.carrier.found}
-
-
-def has_loss_run(carrier: str, carriers: set[str]) -> bool:
-    """True when a loss run in the packet is from this carrier (canonical names).
-
-    The names match when they are equal, or when one name's words contain the other's, so "Example Mutual" and
-    "Example Mutual Insurance Co" match.
-    """
-    words = set(carrier.split())
-    for other in carriers:
-        other_words = set(other.split())
-        if carrier == other or (words and other_words and (words <= other_words or other_words <= words)):
-            return True
     return False
 
 

@@ -39,16 +39,30 @@ MAX_MONEY = 1_000_000_000.0
 LOAN_TERM_MIN_MONTHS = 24
 LOAN_TERM_MAX_MONTHS = 360
 ANNUAL_RATE_MAX_PCT = 30.0
+MAX_PLAN_CHANGE_EVIDENCE = 8
+MAX_EVIDENCE_CHARS = 400
 MetroModeName = Literal["full", "limited", "synthetic"]
 DataLabelName = Literal["PUBLIC", "SYNTHETIC"]
 RateType = Literal["fixed", "variable"]
 EntryStatus = Literal["USER_STATED", "ASSUMPTION"]
+# Who wrote a plan figure: the founder (USER_STATED), nobody (ASSUMPTION, a stated default), an applied path-search
+# change-set (PLAN_CHANGE, with the evidence a lender would need), or the server's arithmetic (DERIVED).
+FigureStatus = Literal["USER_STATED", "ASSUMPTION", "PLAN_CHANGE", "DERIVED"]
+# The plan fields "Apply this change" may write.
+PLAN_CHANGE_FIELDS: tuple[str, ...] = (
+    "owner_equity",
+    "loan_amount",
+    "loan_term_months",
+    "budget_total",
+    "selected_site_index",
+)
+PlanChangeField = Literal["owner_equity", "loan_amount", "loan_term_months", "budget_total", "selected_site_index"]
 
 
 class RequestModel(BaseModel):
-    """Base of every request body: unknown keys are refused, text is stripped."""
+    """Base of every request body: unknown keys are refused, text is stripped, NaN and Infinity are refused."""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, allow_inf_nan=False)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -72,6 +86,10 @@ class MetroOption(BaseModel):
         "(geocoded by the Census Geocoder) or drop a pin"
     )
     supports_area_suggestions: bool
+    simulation_available: bool = Field(
+        description="False when the metro has no tract data here: every site's demand is then UNKNOWN, so the "
+        "simulation and the path to approval cannot run (site scores still can)"
+    )
     prime_rate: FactorValue | None = Field(
         description="The prime rate the simulator adds the spread to when annual_rate_pct is empty (UNKNOWN = "
         "enter the lender's quoted rate)"
@@ -87,6 +105,10 @@ class BusinessTypeOption(BaseModel):
     build_out_low: float = Field(description="Sum of the profile's capex lows, USD")
     build_out_high: float = Field(description="Sum of the profile's capex highs, USD")
     build_out_status: Literal["SOURCED", "ASSUMPTION"] = Field(description="ASSUMPTION when any capex item is one")
+    build_out_assumed: float = Field(
+        description="The single build-out figure the simulation uses when the budget is left empty: the sum of the "
+        "capex items' most likely values, USD"
+    )
     build_out_note: str
 
 
@@ -192,6 +214,34 @@ class ProjectIn(RequestModel):
     sites: list[SiteIn] = Field(min_length=1, max_length=MAX_SITES)
 
 
+class PlanChangeIn(RequestModel):
+    """Marks the fields a PUT writes as an applied path-to-approval change-set (sent by "Apply this change"), so
+    they are shown as a PLAN_CHANGE with the evidence a lender would need, not as figures the founder typed."""
+
+    source: Literal["path_to_approval"] = "path_to_approval"
+    engine_version: str = Field(min_length=1, max_length=64)
+    fields: list[PlanChangeField] = Field(min_length=1, max_length=len(PLAN_CHANGE_FIELDS))
+    evidence_needed: list[str] = Field(default_factory=list, max_length=MAX_PLAN_CHANGE_EVIDENCE)
+
+    @model_validator(mode="after")
+    def short_evidence(self) -> "PlanChangeIn":
+        """Each evidence line is short (the engine writes one sentence per change)."""
+        if any(len(item) > MAX_EVIDENCE_CHARS for item in self.evidence_needed):
+            raise ValueError(f"each evidence_needed line has at most {MAX_EVIDENCE_CHARS} characters")
+        return self
+
+
+class PlanChangeNote(BaseModel):
+    """A plan figure written by an applied change-set (kept until the founder types the field again)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["path_to_approval"]
+    engine_version: str
+    applied_at: datetime
+    evidence_needed: list[str]
+
+
 class ProjectUpdate(RequestModel):
     """PUT /api/studio/projects/{id}: any subset of ProjectIn's fields. Omitted = unchanged; null clears an
     optional field (budget_total, annual_rate_pct, idea_text, name, opening_date). `version`, when given, must
@@ -210,6 +260,10 @@ class ProjectUpdate(RequestModel):
     rate_type: RateType | None = None
     opening_date: date | None = None
     sites: list[SiteIn] | None = Field(default=None, min_length=1, max_length=MAX_SITES)
+    selected_site_index: int | None = Field(default=None, ge=0, lt=MAX_SITES)
+    plan_change: PlanChangeIn | None = Field(
+        default=None, description="Sent by 'Apply this change': which of the fields set here come from a change-set"
+    )
 
 
 class SiteOut(BaseModel):
@@ -237,17 +291,30 @@ class IdeaOut(BaseModel):
 
 
 class MoneyOut(BaseModel):
-    """The plan's money, each figure with whether the founder typed it."""
+    """The plan's money, each figure with who wrote it (FigureStatus)."""
 
     budget_total: float | None
-    budget_status: EntryStatus
+    budget_status: FigureStatus
+    build_out_assumed: float | None = Field(
+        description="When budget_total is empty: the profile's point estimate the simulation uses (ASSUMPTION)"
+    )
     owner_equity: float
+    owner_equity_status: FigureStatus
     loan_amount: float
+    loan_amount_status: FigureStatus
     loan_term_months: int
+    loan_term_status: FigureStatus
     annual_rate_pct: float | None
     annual_rate_status: EntryStatus
     rate_type: RateType
-    cash_reserve_at_opening: float | None = Field(description="owner_equity + loan_amount - budget_total")
+    cash_reserve_at_opening: float = Field(
+        description="owner_equity + loan_amount - the build-out budget (or build_out_assumed); before the simulated "
+        "build-out overrun"
+    )
+    cash_reserve_status: FigureStatus = Field(description="DERIVED, or ASSUMPTION when it rests on build_out_assumed")
+    plan_changes: dict[str, PlanChangeNote] = Field(
+        description="{field: note} for figures written by an applied change-set, with the evidence still needed"
+    )
     note: str
 
 
@@ -273,6 +340,9 @@ class ProjectOut(BaseModel):
     opening_date: date
     opening_date_status: EntryStatus
     sites: list[SiteOut]
+    selected_site_index: int = Field(description="The site the founder plans with (the results page opens on it)")
+    selected_site_status: FigureStatus
+    seed: int = Field(description="The simulation seed: the same for every version of the plan (common random numbers)")
     disclaimer: str
 
 
@@ -453,24 +523,47 @@ class PathRequest(SiteChoice):
     """POST /api/studio/projects/{id}/path-to-approval."""
 
     targets: TargetsIn | None = None
+    max_extra_owner_cash: float | None = Field(
+        default=None,
+        ge=0,
+        le=MAX_MONEY,
+        description="The most extra cash of your own the search may add (USD). Empty = the default bound (+20% of "
+        "the project cost, a placeholder for your own answer)",
+    )
 
 
-class ProjectMoneyPatch(BaseModel):
-    """Plan fields after a change-set, ready to PUT to /api/studio/projects/{id}."""
+class OwnerCashBound(BaseModel):
+    """How much extra owner cash the search was allowed to add, and where that bound came from."""
 
-    owner_equity: float
-    loan_amount: float
-    loan_term_months: int
-    budget_total: float | None
+    current: float = Field(description="Owner cash equity in the plan now, USD")
+    high: float = Field(description="The most owner cash equity the search tried, USD")
+    extra: float = Field(description="high - current, USD")
+    source: Literal["default", "founder"]
+    note: str
+
+
+class FieldChange(BaseModel):
+    """One plan figure before and after a change-set (every figure that changes, including the balancing ones)."""
+
+    field: str
+    label: str
+    unit: str
+    from_value: float | str
+    to_value: float | str
+    writes_plan: bool = Field(description="True when 'Apply this change' writes this field; False = computed from them")
 
 
 class ApplyPatch(BaseModel):
-    """What "Apply this change" sends: PUT project_fields, then re-run at site_index."""
+    """What "Apply this change" sends: PUT {version, ...project_fields, plan_change}, then re-run at site_index.
+
+    project_fields holds only the fields that change (owner_equity, loan_amount, loan_term_months, budget_total,
+    selected_site_index); plan_change marks them as a PLAN_CHANGE with the evidence a lender would need."""
 
     supported: bool
     reason: str | None = None
     site_index: int
-    project_fields: ProjectMoneyPatch
+    project_fields: dict[str, float | int]
+    plan_change: PlanChangeIn | None
 
 
 class ChangeSetOut(BaseModel):
@@ -485,6 +578,9 @@ class ChangeSetOut(BaseModel):
     plan_before: PlanAmounts
     plan_after: PlanAmounts
     meets_target: bool
+    program_rules_not_met: list[str]
+    evidence_needed: list[str]
+    field_changes: list[FieldChange]
     explanation: str
     unchanged: str
     apply: ApplyPatch
@@ -510,6 +606,7 @@ class PathResponse(BaseModel):
     closest: ChangeSetOut | None
     levers_considered: list[LeverSummary]
     levers_not_available: dict[str, str]
+    owner_cash_bound: OwnerCashBound | None
     skipped_candidates: list[str]
     notes: list[str]
     settings: SearchSettings

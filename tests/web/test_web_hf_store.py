@@ -1,6 +1,8 @@
 """Tests for the Hugging Face dataset store with a fake Hub API (no network)."""
 
 import hashlib
+import threading
+import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -296,3 +298,53 @@ def test_app_opens_and_closes_the_dataset_store(make_settings, key: bytes) -> No
         assert remote_object_paths(api) == []
     # leaving the client runs the shutdown, which flushes the last batch
     assert len(remote_object_paths(api)) == 2
+
+
+class SlowHubApi(FakeHubApi):
+    """A Hub whose commits take a while (a slow network), to check that writes never wait for them."""
+
+    def __init__(self, commit_s: float) -> None:
+        super().__init__()
+        self.commit_s = commit_s
+        self.commit_started = threading.Event()
+
+    def create_commit(self, repo_id: str, operations: list[Any], *, commit_message: str, repo_type: str) -> None:
+        self.commit_started.set()
+        time.sleep(self.commit_s)
+        super().create_commit(repo_id, operations, commit_message=commit_message, repo_type=repo_type)
+
+
+def test_writes_and_requests_do_not_wait_for_a_slow_commit(make_settings, key: bytes) -> None:
+    api = SlowHubApi(commit_s=1.5)
+    settings = make_settings(
+        UWC_STORE="hf_dataset",
+        UWC_HF_DATASET_REPO="astra6/fundproof-data",
+        HF_TOKEN="hf_test_token",
+        UWC_FERNET_KEY=key.decode(),
+    )
+    with TestClient(create_app(settings, hub_api=api)) as test_client:
+        store = test_client.app.state.store
+        store.put_json(OWNER, "projects", "p1", {"a": 1})
+        flushing = threading.Thread(target=store.flush)
+        flushing.start()
+        assert api.commit_started.wait(5)
+        started = time.perf_counter()
+        store.put_json(OWNER, "projects", "p2", {"b": 2})  # a write while the commit is in flight
+        assert test_client.get("/api/health").status_code == 200
+        waited = time.perf_counter() - started
+        flushing.join()
+        assert waited < 0.75, f"a write waited {waited:.2f} s for the Hub commit"
+        assert store.flush() == 2  # the second object is uploaded at the next flush, not lost
+    assert len(remote_object_paths(api)) == 4
+
+
+def test_a_delete_during_a_commit_still_reaches_the_hub(tmp_path: Path, key: bytes) -> None:
+    api = SlowHubApi(commit_s=0.5)
+    store = make_store(tmp_path / "work", api, key)
+    store.put_json(OWNER, "projects", "p1", {"a": 1})
+    flushing = threading.Thread(target=store.flush)
+    flushing.start()
+    assert api.commit_started.wait(5)
+    store.delete(OWNER, "projects", "p1")  # waits for the commit, then deletes what it uploaded
+    flushing.join()
+    assert remote_object_paths(api) == []

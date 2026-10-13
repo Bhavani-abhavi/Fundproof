@@ -6,7 +6,7 @@ import { DataStatusChip } from "@/components/evidence/data-status-chip";
 import { EvidenceChip } from "@/components/evidence/evidence-chip";
 import { ReasonText } from "@/components/studio/reason-text";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatNumber, formatRange, formatScore, formatShare, formatWithUnit, humanize, isNumber } from "@/lib/format";
+import { formatEstimate, formatRange, formatScore, formatShare, formatWithUnit, humanize, isNumber } from "@/lib/format";
 import type { DemandOut, FactorOut, SiteScoreOut, SiteScoresResponse, SourceRecord } from "@/lib/studio-types";
 import { cn } from "@/lib/utils";
 
@@ -49,10 +49,13 @@ export function SiteCards({
   response,
   selected,
   onSelect,
+  simulationAvailable = true,
 }: {
   response: SiteScoresResponse;
   selected: number;
   onSelect: (index: number) => void;
+  /** False in a city without data here: nothing is simulated, so the selected card must not say "Simulated below". */
+  simulationAvailable?: boolean;
 }) {
   const dataStatus = response.data_label === "SYNTHETIC" ? "SYNTHETIC" : "DATA";
   return (
@@ -89,7 +92,11 @@ export function SiteCards({
                   </span>
                   {item.label}
                 </span>
-                {checked ? <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-ink">Simulated below</span> : null}
+                {checked ? (
+                  <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-ink">
+                    {simulationAvailable ? "Simulated below" : "Selected"}
+                  </span>
+                ) : null}
               </span>
               {score ? (
                 <>
@@ -103,7 +110,8 @@ export function SiteCards({
                   )}
                   <span className="flex flex-wrap gap-1.5">
                     {isNumber(score.coverage_score) ? <CoverageBadge coverage={score.coverage_score} /> : null}
-                    <DataStatusChip status={dataStatus} />
+                    {/* No data behind any factor: say UNKNOWN, not "public data". */}
+                    <DataStatusChip status={isNumber(score.coverage_score) && score.coverage_score > 0 ? dataStatus : "UNKNOWN"} />
                   </span>
                   <span className="text-xs text-muted-foreground">
                     Ranks this location within {response.metro_name}; it does not predict sales.
@@ -168,8 +176,13 @@ function SourceLine({ source }: { source: SourceRecord }) {
   );
 }
 
-/** The demand estimate (MODEL_ESTIMATE): P10 / P50 / P90, hard bounds, and every input on request. */
+/**
+ * The demand estimate (MODEL_ESTIMATE): P10 / P50 / P90, hard bounds, and every input on request. When the model
+ * could not estimate anything (no data), the chip says UNKNOWN. Values are rounded to whole units from 10 up: the
+ * model does not know demand to a tenth of a machine turn.
+ */
 function DemandPanel({ demand }: { demand: DemandOut }) {
+  const known = [demand.p10, demand.p50, demand.p90].some(isNumber);
   return (
     <section aria-labelledby="demand-title" className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:p-5">
       <div className="flex items-start justify-between gap-2">
@@ -177,7 +190,7 @@ function DemandPanel({ demand }: { demand: DemandOut }) {
           <Gauge className="size-4 text-accent" aria-hidden="true" />
           Demand estimate
         </h3>
-        <EvidenceChip status="MODEL_ESTIMATE" />
+        <EvidenceChip status={known ? "MODEL_ESTIMATE" : "UNKNOWN"} />
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">{demand.formula_description}</p>
       <dl className="figure-nums grid grid-cols-3 gap-2 text-center">
@@ -190,13 +203,16 @@ function DemandPanel({ demand }: { demand: DemandOut }) {
         ).map(([label, value]) => (
           <div key={label} className="flex flex-col gap-1 rounded-lg bg-paper-sunken p-2.5">
             <dt className="text-xs text-muted-foreground">{label}</dt>
-            <dd className="text-base font-semibold">{formatNumber(value, 1)}</dd>
+            <dd className="text-base font-semibold">{isNumber(value) ? formatEstimate(value) : "Unknown"}</dd>
           </div>
         ))}
       </dl>
       <p className="text-xs text-muted-foreground">
-        In {demand.unit}, {demand.area}. Hard bounds (every rate at its low or high end at once): {formatNumber(demand.low, 1)} to{" "}
-        {formatNumber(demand.high, 1)}. Basis: {demand.basis}.
+        In {demand.unit}, {demand.area}.{" "}
+        {isNumber(demand.low) && isNumber(demand.high)
+          ? `Hard bounds (every rate at its low or high end at once): ${formatEstimate(demand.low)} to ${formatEstimate(demand.high)}. `
+          : "Unknown here: the data the estimate needs is missing, so it is not guessed. "}
+        Basis: {demand.basis}.
         {demand.complete ? "" : ` Incomplete: ${demand.missing.join("; ")}.`}
       </p>
       <details className="min-w-0">

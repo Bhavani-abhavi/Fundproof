@@ -162,8 +162,10 @@ function WizardBody({ options }: { options: StudioOptions }) {
     setStepIndex(index);
   }
 
+  const assumedBuildOut = business?.build_out_assumed ?? null;
+
   function next() {
-    const found = checkStep(step.id, draft, limits);
+    const found = checkStep(step.id, draft, limits, assumedBuildOut);
     setErrors(found);
     if (Object.keys(found).length > 0) {
       return;
@@ -175,7 +177,7 @@ function WizardBody({ options }: { options: StudioOptions }) {
 
   async function submit() {
     for (const [index, item] of STEPS.entries()) {
-      const found = checkStep(item.id, draft, limits);
+      const found = checkStep(item.id, draft, limits, assumedBuildOut);
       if (Object.keys(found).length > 0) {
         setErrors(found);
         setStepIndex(index);
@@ -194,6 +196,8 @@ function WizardBody({ options }: { options: StudioOptions }) {
   }
 
   const rateChip = draft.ratePct.trim() === "" ? <EvidenceChip status="ASSUMPTION" /> : <EvidenceChip status="USER_STATED" />;
+  // A city without a prime rate here cannot fill an empty rate: say so where the rate is typed.
+  const noPrimeRate = metro !== undefined && (metro.prime_rate === null || metro.prime_rate.value === null || metro.prime_rate.status === "UNKNOWN");
 
   return (
     <div className="flex flex-col gap-6">
@@ -235,6 +239,19 @@ function WizardBody({ options }: { options: StudioOptions }) {
                 description: item.coverage_note,
               }))}
             />
+          ) : null}
+          {step.id === "city" && metro && !metro.simulation_available ? (
+            <Alert variant="warning">
+              <ShieldAlert aria-hidden="true" />
+              <AlertTitle>{metro.name}: site scores only on this server</AlertTitle>
+              <AlertDescription className="text-foreground/85">
+                <p>
+                  This server has no data snapshot for {metro.name}, so each site&apos;s demand is unknown: you can add and score
+                  sites, but the simulation and the path to approval will not run. Pick the SYNTHETIC demo city to see the
+                  full flow.
+                </p>
+              </AlertDescription>
+            </Alert>
           ) : null}
 
           {step.id === "business" ? (
@@ -293,7 +310,7 @@ function WizardBody({ options }: { options: StudioOptions }) {
                   optional
                   hint={
                     business
-                      ? `Everything you buy or build before opening. Empty: the ${business.name.toLowerCase()} range of ${formatUsd(business.build_out_low)} to ${formatUsd(business.build_out_high)} (${business.build_out_status === "ASSUMPTION" ? "an assumption" : "sourced"}).`
+                      ? `Everything you buy or build before opening. Empty: the simulation assumes ${formatUsd(business.build_out_assumed)}, the most likely value of the ${business.name.toLowerCase()} range of ${formatUsd(business.build_out_low)} to ${formatUsd(business.build_out_high)} (${business.build_out_status === "ASSUMPTION" ? "an assumption" : "sourced"}).`
                       : "Everything you buy or build before opening."
                   }
                   value={draft.budgetTotal}
@@ -336,7 +353,11 @@ function WizardBody({ options }: { options: StudioOptions }) {
                   label="Interest rate per year"
                   suffix="%"
                   optional
-                  hint={`Empty: ${options.annual_rate_default.rule}`}
+                  hint={
+                    noPrimeRate
+                      ? `${metro?.name ?? "This city"} has no prime rate on this server, so an empty rate cannot be filled in: enter the lender's quoted rate.`
+                      : `Empty: ${options.annual_rate_default.rule}`
+                  }
                   value={draft.ratePct}
                   onChange={(value) => update((current) => ({ ...current, ratePct: value }))}
                   error={errors.ratePct}
@@ -371,7 +392,7 @@ function WizardBody({ options }: { options: StudioOptions }) {
                     <li>
                       Build-out budget:{" "}
                       {draft.budgetTotal.trim() === ""
-                        ? `the ${business?.name.toLowerCase() ?? "profile"} range (assumption)`
+                        ? `${formatUsd(assumedBuildOut)}, assumed for a ${business?.name.toLowerCase() ?? "business of this type"} (assumption)`
                         : formatUsd(parseAmount(draft.budgetTotal))}
                     </li>
                     <li>Your cash: {formatUsd(parseAmount(draft.ownerEquity))}</li>
@@ -446,7 +467,12 @@ export function PlanWizard() {
       <PageIntro
         eyebrow="Founder Studio · New plan"
         title="Start a plan"
-        description={<p>Six short steps. Nothing is shared with anyone; the plan is private to your account.</p>}
+        description={
+          <p>
+            Six short steps. The plan is private to your account and stored encrypted. For a real city, a street address you
+            type is sent to the US Census Geocoder to find it; nothing else you type leaves the server.
+          </p>
+        }
       />
       {status === "loading" ? <WorkspaceSkeleton /> : null}
       {status === "offline" ? <ApiOfflineNotice /> : null}

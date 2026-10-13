@@ -13,8 +13,10 @@ export const metadata: Metadata = {
 
 /**
  * Data sources and licenses. Mirrors the "Datasets and licenses" table in the repository README; update both
- * together. Founder Studio sources are listed as planned until their terms are recorded in
- * docs/studio/data_sources.md.
+ * together. Founder Studio sources are split by what the web app really uses: the Census Geocoder for every
+ * real-city address, and the data-snapshot sources only where a city's snapshot is on the server (the container
+ * image has none, so real cities run in limited mode there). Details: docs/studio/data_sources.md.
+ * "Your information" is the short privacy notice (docs/studio/privacy.md); error messages point here.
  */
 interface DataSource {
   name: string;
@@ -69,11 +71,15 @@ const DATA_SOURCES: DataSource[] = [
   },
 ];
 
-const PLANNED_STUDIO_SOURCES = [
-  "US Census Bureau: American Community Survey, Geocoder, Business Patterns",
+/** Used for every real-city street address a founder types (sent from the server, not cached). */
+const LIVE_STUDIO_SOURCES = ["US Census Bureau Geocoder: finds a typed street address and its census tract"];
+
+/** Used only where a city's data snapshot is on the server; without one the city runs in limited mode. */
+const SNAPSHOT_STUDIO_SOURCES = [
+  "US Census Bureau: American Community Survey, County Business Patterns, LEHD LODES jobs",
   "US Bureau of Labor Statistics: QCEW and OEWS wages",
   "Federal Highway Administration: HPMS traffic counts",
-  "OpenStreetMap (via Overpass): nearby businesses",
+  "Overture Maps places (Overture Maps Foundation, overturemaps.org; mixed licenses by source, including CDLA Permissive 2.0)",
   "FRED: published interest rates",
   "HUD: Fair Market Rents (short-term rental context only)",
 ];
@@ -146,33 +152,65 @@ export default function AboutPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Planned public sources for Founder Studio</CardTitle>
+          <CardTitle>Public sources for Founder Studio</CardTitle>
           <CardDescription>
-            Not used in the web app yet. Each source&apos;s license, terms and rate limits are recorded before it is used,
-            and every figure taken from it will carry its source and request date. Cities without enough data run in
-            limited mode.
+            The SYNTHETIC demo city uses only generated data. For a real city, the web app uses the sources below; every
+            figure taken from them carries its source and request date.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {PLANNED_STUDIO_SOURCES.map((source) => (
-              <li key={source} className="flex gap-2.5 text-sm leading-relaxed text-foreground">
-                <span className="mt-2 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-                {source}
-              </li>
-            ))}
-          </ul>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold">Used for every real-city address</h3>
+            <ul className="grid gap-2">
+              {LIVE_STUDIO_SOURCES.map((source) => (
+                <li key={source} className="flex gap-2.5 text-sm leading-relaxed text-foreground">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                  {source}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold">Used only where the server has the city&apos;s data snapshot</h3>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              The prototype&apos;s container image ships without these snapshots, so there real cities run in limited mode:
+              factors without data are shown as unknown, and the simulation does not run.
+            </p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {SNAPSHOT_STUDIO_SOURCES.map((source) => (
+                <li key={source} className="flex gap-2.5 text-sm leading-relaxed text-foreground">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                  {source}
+                </li>
+              ))}
+            </ul>
+          </div>
         </CardContent>
       </Card>
 
-      <section aria-labelledby="privacy-title" className="flex flex-col gap-3">
+      <section id="privacy" aria-labelledby="privacy-title" className="flex scroll-mt-24 flex-col gap-3">
         <h2 id="privacy-title" className="font-serif text-2xl font-semibold text-foreground">
           Your information
         </h2>
-        <p className="text-base leading-relaxed text-muted-foreground">
-          Sign-in uses your Hugging Face account. Do not enter Social Security numbers, tax returns or bank account
-          numbers: this prototype is not built to hold them. There are no payments and nothing to buy.
-        </p>
+        <ul className="flex flex-col gap-2 text-base leading-relaxed text-muted-foreground">
+          <li>
+            Sign-in uses your Hugging Face account; only your account id, username and display name are kept, in a signed
+            session cookie.
+          </li>
+          <li>
+            Your plans and demo decisions are stored encrypted, under your account only, and deleted automatically after
+            the server&apos;s retention period (each plan&apos;s page shows its date), or sooner when you delete them.
+          </li>
+          <li>
+            When you type a street address for a real city, the server sends that address to the US Census Bureau
+            Geocoder to find it. Nothing else you type leaves the server, and no language model reads it.
+          </li>
+          <li>
+            Social Security numbers, account numbers and long digit runs are refused, never stored. There are no uploads,
+            no payments, nothing to buy, and no analytics or tracking scripts.
+          </li>
+          <li>Logs hold the request path with personal patterns masked, never what you typed.</li>
+        </ul>
       </section>
 
       <section aria-labelledby="team-title" className="flex flex-col gap-3">

@@ -17,21 +17,31 @@ lines that do not (memo lines and their continuations, "Number of transactions")
   statement is dated inside its period, so when the period covers one calendar month, the row's own day and year
   are read and the period's month is used (repair_row_date). The day is never invented: a row whose day cannot be
   read is skipped;
-- deposit or withdrawal: the amount goes to whichever of the Withdrawals / Deposits columns has its right edge
-  (amounts are right-aligned) nearest the amount's right edge. When the header titles cannot be read (OCR), the
-  running balance decides: previous balance + amount = balance means a deposit, previous balance - amount = balance
-  a withdrawal (previous balance = the row above, or the opening balance for the first row). If neither holds,
-  the amount is left out rather than guessed;
+- deposit or withdrawal: the running balance decides first, because it is exact to the cent: previous balance +
+  amount = balance means a deposit, previous balance - amount = balance a withdrawal (previous balance = the row
+  above, or the opening balance for the first row). When the balances are not both known or the arithmetic does
+  not decide, the amount goes to whichever of the Withdrawals / Deposits columns has its right edge (amounts are
+  right-aligned) nearest the amount's right edge. (An OCR word box widened by speckle can sit nearer the wrong
+  column; the balance is stronger evidence than a box edge.) If neither decides, the amount is left out rather
+  than guessed;
 - a lost minus sign: OCR often drops the thin minus of a negative balance ("-42,645.01" read as "42,645.01"). When
   the previous balance and the row amount give exactly the read balance with the opposite sign, the sign is
-  restored (fix_balance_sign). No other value is ever changed by arithmetic.
+  restored (fix_balance_sign).
+- the header Opening / Closing balance can lose its minus the same way (OCR may read "-$1,295.52" as
+  '"$1,295.52', and the stray mark is stripped). Its sign is restored only when the arithmetic proves it
+  (repair_header_sign): the closing balance with the opposite sign equals the last row's balance, or opening +
+  total deposits - total withdrawals, and the value as read equals neither; the opening balance with the opposite
+  sign equals the balance before the first row (that row's balance - deposit + withdrawal) and the value as read
+  does not. When a stray mark sits right before the "$" (parsing.unclear_sign) and the arithmetic cannot decide,
+  the value is left out (the sign is unknown) rather than guessed.
+No other value is ever changed by arithmetic.
 """
 
 from datetime import date
 
 from uwcopilot.docintel.classify import Segment
 from uwcopilot.docintel.layout import Word
-from uwcopilot.docintel.parsing import fix_ocr_digits, parse_amount, parse_date, parse_text, strip_edges
+from uwcopilot.docintel.parsing import fix_ocr_digits, parse_amount, parse_date, parse_text, strip_edges, unclear_sign
 from uwcopilot.docintel.rules_common import (
     LineRef,
     amount_words,
@@ -204,7 +214,7 @@ def parse_transaction(
     if amount is None:
         return transaction
     amount = abs(amount)
-    side = side_by_column(amount_word, columns) or side_by_balance(amount, balance, previous)
+    side = side_by_balance(amount, balance, previous) or side_by_column(amount_word, columns)
     if side == "deposit":
         transaction.deposit = cite_words(ref, [amount_word], amount, doc_id)
     elif side == "withdrawal":
@@ -233,6 +243,44 @@ def transactions(
     return rows
 
 
+def balance_before_first_row(rows: list[Transaction]) -> float | None:
+    """The balance before the first row (its balance - deposit + withdrawal), or None when it cannot be worked out."""
+    if not rows or rows[0].balance.value is None:
+        return None
+    first = rows[0]
+    if first.deposit.value is None and first.withdrawal.value is None:
+        return None
+    return float(first.balance.value) - float(first.deposit.value or 0.0) + float(first.withdrawal.value or 0.0)
+
+
+def repair_header_sign(cited: Cited, expected: list[float | None]) -> Cited:
+    """A header balance with its sign restored, kept, or left out (see the module docstring).
+
+    expected are the balances the arithmetic gives (None when a figure is unknown).
+    """
+    if not cited.found or cited.value == 0:
+        return cited
+    value = float(cited.value)
+    known = [item for item in expected if item is not None]
+    as_read = any(abs(item - value) <= BALANCE_TOLERANCE for item in known)
+    flipped = any(abs(item + value) <= BALANCE_TOLERANCE for item in known)
+    if flipped and not as_read:
+        return cited.model_copy(update={"value": -value})
+    if not as_read and unclear_sign(cited.source_text or ""):
+        return Cited()
+    return cited
+
+
+def closing_expectations(rows: list[Transaction], opening: Cited, deposits: Cited, withdrawals: Cited) -> list:
+    """What the closing balance should be: the last row's balance, and opening + deposits - withdrawals."""
+    expected: list[float | None] = []
+    last = next((row.balance.value for row in reversed(rows) if row.balance.value is not None), None)
+    expected.append(None if last is None else float(last))
+    if opening.found and deposits.found and withdrawals.found:
+        expected.append(float(opening.value) + float(deposits.value) - float(withdrawals.value))
+    return expected
+
+
 def extract_statement(segment: Segment) -> BankStatement:
     """One bank statement document."""
     refs = document_lines(segment)
@@ -240,6 +288,15 @@ def extract_statement(segment: Segment) -> BankStatement:
     start, end = period_values(refs, doc_id)
     period = (start.value, end.value) if start.found and end.found else None
     opening = find_value(refs, ("Opening balance",), parse_amount, doc_id)
+    rows = transactions(refs, opening.value, period, doc_id)
+    repaired = repair_header_sign(opening, [balance_before_first_row(rows)])
+    if repaired.value != opening.value:
+        opening = repaired
+        rows = transactions(refs, opening.value, period, doc_id)
+    deposits = find_value(refs, ("Total deposits",), parse_amount, doc_id)
+    withdrawals = find_value(refs, ("Total withdrawals",), parse_amount, doc_id)
+    closing = find_value(refs, ("Closing balance",), parse_amount, doc_id)
+    closing = repair_header_sign(closing, closing_expectations(rows, opening, deposits, withdrawals))
     return BankStatement(
         doc_id=doc_id,
         bank_name=letterhead(refs, doc_id),
@@ -248,8 +305,8 @@ def extract_statement(segment: Segment) -> BankStatement:
         period_start=start,
         period_end=end,
         opening_balance=opening,
-        total_deposits=find_value(refs, ("Total deposits",), parse_amount, doc_id),
-        total_withdrawals=find_value(refs, ("Total withdrawals",), parse_amount, doc_id),
-        closing_balance=find_value(refs, ("Closing balance",), parse_amount, doc_id),
-        transactions=transactions(refs, opening.value, period, doc_id),
+        total_deposits=deposits,
+        total_withdrawals=withdrawals,
+        closing_balance=closing,
+        transactions=rows,
     )

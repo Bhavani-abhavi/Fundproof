@@ -25,7 +25,7 @@ LENDER = "Sample Lender A"
 SCHEDULED_PAYMENT = 1_250.0
 # (day, description, deposit, withdrawal) rows of every clean month.
 BASE_ROWS: tuple[tuple[int, str, float | None, float | None], ...] = (
-    (3, "CARD SETTLEMENT TALLYPAY", 30_000.0, None),
+    (3, "CARD SETTLEMENT TERNWICK", 30_000.0, None),
     (8, "ACH CREDIT ACORN FOODS INV 1001", 10_000.0, None),
     (10, "CASH DEPOSIT", 2_000.0, None),
     (12, "PAYROLL GRIDWORKS", None, 20_000.0),

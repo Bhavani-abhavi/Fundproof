@@ -10,6 +10,10 @@ body size limit -> CSRF -> the routes. So a 429, 413 or 403 still gets the secur
   buckets live in this process's memory: with several worker processes each one counts separately, and a
   restart forgets them. That is enough for a single-container prototype.
 - BodySizeLimitMiddleware: refuses bodies over max_body_bytes with 413, whether or not Content-Length is sent.
+  The JSON API (/api/*) has a much smaller cap (API_MAX_BODY_BYTES, 64 KiB): its largest real body (a plan with a
+  2,000-character idea and three addresses) is a few KiB, and a big body is expensive to validate and to answer
+  (a 9 MB body of list items froze the event loop for over 30 s before this cap). The global limit stays for
+  future upload routes, which must then be given their own prefix limit here.
 - CsrfMiddleware: double-submit token. GET /api/auth/csrf sets cookie `uwc_csrf` and returns the same value; every
   POST/PUT/PATCH/DELETE under /api must echo it in the `X-CSRF-Token` header. A cross-site page cannot read our
   cookie and cannot send a custom header without a CORS preflight, which this app never approves.
@@ -33,6 +37,8 @@ from uwcopilot.web.cookies import CSRF_COOKIE
 CSRF_HEADER = "x-csrf-token"
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 RATE_LIMIT_EXEMPT_PATHS = frozenset({"/api/health"})
+# Largest JSON body the /api routes accept (a design choice: about 10x the largest real request).
+API_MAX_BODY_BYTES = 64 * 1024
 FRAME_ANCESTORS = "'self' https://huggingface.co"
 # Turn off powerful browser features the app does not use. Revisit when a feature needs one (for example voice).
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
@@ -159,23 +165,34 @@ class BodySizeLimitMiddleware:
     max_bytes plus one chunk) and replayed to the route, so a chunked upload without Content-Length cannot get past.
     """
 
-    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
-        """Wrap app with a limit in bytes."""
+    def __init__(self, app: ASGIApp, max_bytes: int, prefix_limits: Iterable[tuple[str, int]] = ()) -> None:
+        """Wrap app with a limit in bytes. prefix_limits: (path prefix, smaller limit) pairs; the longest matching
+        prefix applies, and a prefix limit never raises the global one."""
         self.app = app
         self.max_bytes = max_bytes
+        self.prefix_limits = sorted(prefix_limits, key=lambda item: len(item[0]), reverse=True)
 
-    def _too_large(self) -> JSONResponse:
+    def limit_for(self, path: str) -> int:
+        """The body limit of one request path."""
+        for prefix, limit in self.prefix_limits:
+            if path.startswith(prefix):
+                return min(limit, self.max_bytes)
+        return self.max_bytes
+
+    @staticmethod
+    def _too_large(limit: int) -> JSONResponse:
         """The 413 response."""
-        return json_error(413, f"request body is larger than {self.max_bytes} bytes")
+        return json_error(413, f"request body is larger than {limit} bytes")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Check the declared length, then the real length, then call the app with the buffered body."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        limit = self.limit_for(scope.get("path", ""))
         declared = Request(scope).headers.get("content-length")
-        if declared is not None and declared.isdigit() and int(declared) > self.max_bytes:
-            await self._too_large()(scope, receive, send)
+        if declared is not None and declared.isdigit() and int(declared) > limit:
+            await self._too_large(limit)(scope, receive, send)
             return
 
         chunks: list[bytes] = []
@@ -187,8 +204,8 @@ class BodySizeLimitMiddleware:
                 return
             chunk = message.get("body", b"")
             size += len(chunk)
-            if size > self.max_bytes:
-                await self._too_large()(scope, receive, send)
+            if size > limit:
+                await self._too_large(limit)(scope, receive, send)
                 return
             chunks.append(chunk)
             more_body = message.get("more_body", False)

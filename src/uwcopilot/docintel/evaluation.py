@@ -14,111 +14,58 @@ What is counted (see each function):
   per page condition: "clean" (text layer) or "scanned" pages of the TRUTH row (a false positive takes the
   condition of the page it cites; one without a page is counted only under "all").
 - rows: table rows (transactions, claims, locations) matched by their row key; "exact" rows have every field right;
-- citations: for every correctly extracted value, whether the CITED page's truth text lines contain the value in
-  one of its printed forms (printed_forms), and whether the cited page is the truth page;
+- citations (evaluation_citations.py): page level for correct values (the cited page prints the value; the cited
+  page is the true page: a sanity check for the rules extractor), "supported" for EVERY extracted value (the cited
+  page prints the extracted value, so a misread fails) and line level for correct values (the cited line is the
+  true line: same line number on a text-layer page, box within half a line after aligning a scanned page);
+- fields are also counted per true document type of their page (fields.<condition>.doc.<doc_type>), because the
+  bank-statement rows dominate the overall count;
 - pages: predicted page type vs the truth document type of every page; documents: truth documents whose exact
   pages and type the pipeline found;
 - checklist: for every checklist code of the line, "missing" (required_documents check) vs the truth's
-  missing_required_documents, and "provided" (to_application's documents_provided) vs the as-documented application;
+  missing_required_documents (also per code: checklist.code.<code>), and "provided" (to_application's
+  documents_provided) vs the as-documented application;
+- checks: how often each check passed, failed or was not evaluated (checks.<check_id>.<status>), so a check the
+  SYNTHETIC packets never exercise is visible;
 - contradictions: detected contradictions matched with injected problems (match_contradictions);
 - injections: planted instructions found on their page by the pipeline (page-text scan and free-text fields, as
   the embedded_instructions check reports them), and hits on other pages.
 """
 
-import re
 from collections import Counter
-from datetime import date
 from typing import Any, NamedTuple
 
 from uwcopilot.agent.applications import CREDIT_DOCUMENTS, INSURANCE_DOCUMENTS
+from uwcopilot.docintel.evaluation_citations import Located, line_counts, oracle_positions, true_position
 from uwcopilot.docintel.evaluation_problems import contradiction_counts, injection_counts, match_contradictions
+from uwcopilot.docintel.evaluation_values import (  # noqa: F401  (FIELD_TYPES is re-exported)
+    FIELD_TYPES,
+    field_type,
+    normalize_value,
+    printed_forms,
+    value_on_page,
+)
 from uwcopilot.docintel.pipeline import PacketResult
 from uwcopilot.docintel.schemas import flatten_fields
 
-# fmt: off
-FIELD_TYPES: dict[str, tuple[str, ...]] = {
-    "money": (
-        "accounts_receivable", "annual_payroll", "annual_revenue", "balance", "building_value",
-        "business_income_value", "cash", "closing_balance", "contents_value", "cost_of_goods_sold", "deposit",
-        "depreciation_amortization", "ebitda", "equity", "gl_earned_premium", "gl_limit_aggregate",
-        "gl_limit_per_occurrence", "gl_premium", "gross_receipts", "incurred", "interest_expense", "inventory",
-        "long_term_debt", "monthly_payment", "net_income", "opening_balance", "operating_expenses", "paid",
-        "property_earned_premium", "property_premium", "requested_amount", "reserve", "revenue",
-        "stated_annual_revenue", "stated_tiv", "stated_total_incurred", "tiv", "total_assets", "total_balance",
-        "total_deposits", "total_incurred", "total_liabilities", "total_monthly_payment", "total_paid",
-        "total_reserve", "total_tiv", "total_withdrawals", "value", "withdrawal",
-    ),
-    "percent": ("largest_customer_revenue_pct", "note_rate_pct", "ownership_pct", "subcontracted_work_pct"),
-    "date": (
-        "application_date", "as_of", "date_of_birth", "date_of_loss", "expiry_date", "formation_date",
-        "inspection_date", "maturity", "period_end", "period_start", "policy_year_start", "posted_date",
-        "proposed_effective_date", "sent_date", "signed_date", "valuation_date", "valued_as_of",
-    ),
-    "identifier": ("account_number", "claim_number", "fein", "id_number", "location_id", "policy_number"),
-    "name": (
-        "account_holder", "bank_name", "business_name", "carrier", "entity_name", "insured_name", "legal_name",
-        "lender", "name", "named_insured", "recipient", "sender",
-    ),
-    "code": (
-        "business_class", "business_structure", "collateral_type", "construction_class", "country", "coverage",
-        "debt_type", "entity_type", "industry", "line", "occupancy", "product", "purpose", "rate_type", "state",
-        "status", "title",
-    ),
-    "integer": (
-        "claim_count", "credit_score", "protection_class", "roof_year", "square_feet", "stated_claim_count",
-        "stories", "tax_year", "term_months", "year_built", "years_in_business",
-    ),
-    "boolean": (
-        "bankruptcy_within_7_years", "carrier_produced", "foreign_products", "has_subcontractor_coi_tracking",
-        "is_control_person", "sprinklered", "tax_lien_unresolved", "to_be_refinanced",
-    ),
-    "free_text": ("address", "body", "business_address", "description", "remarks", "subject"),
-}
-# fmt: on
-TYPE_OF_LEAF: dict[str, str] = {leaf: kind for kind, leaves in FIELD_TYPES.items() for leaf in leaves}
 CONDITIONS: tuple[str, ...] = ("all", "clean", "scanned")
 TABLE_ROWS: dict[str, str] = {
     "transactions": "statement.transactions",
     "claims": "loss_run.claims",
     "locations": "property_schedule.locations",
 }
-MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-# Booleans printed as a phrase rather than Yes/No (the same phrases the generator's own test accepts).
-BOOLEAN_PHRASES: dict[str, str] = {"is_control_person": "control person", "carrier_produced": "carrier-produced"}
 
 
 class Row(NamedTuple):
-    """One extracted or true value: field path, row key, value, document and page (None when not cited)."""
+    """One extracted or true value: field path, row key, value, document, page, line and box (None when unknown)."""
 
     field: str
     key: str | None
     value: Any
     doc_id: str | None
     page: int | None
-
-
-def field_type(field: str) -> str:
-    """The type of a field path from its last part ("statement.transactions.deposit" -> "money")."""
-    return TYPE_OF_LEAF.get(field.rsplit(".", 1)[-1], "free_text")
-
-
-def normalize_value(kind: str, value: Any) -> Any:
-    """A value as the evaluation compares it: amounts to cents, text casefolded with single spaces.
-
-    Identifiers also lose every space ("BWC 20-1" == "BWC20-1"); dates are compared as ISO strings.
-    """
-    if value is None:
-        return None
-    if kind == "boolean":
-        return bool(value)
-    if kind in ("money", "percent"):
-        return round(float(value), 2)
-    if kind == "integer":
-        return int(value)
-    text = " ".join(str(value).split()).casefold()
-    if kind == "identifier":
-        return text.replace(" ", "")
-    return text
+    line: int | None = None
+    bbox: tuple[float, float, float, float] | None = None
 
 
 def truth_rows(truth: Any) -> list[Row]:
@@ -128,7 +75,10 @@ def truth_rows(truth: Any) -> list[Row]:
 
 def predicted_rows(extraction: Any) -> list[Row]:
     """The extraction flattened (schemas.flatten_fields) into Rows."""
-    return [Row(item.field, item.key, item.value, item.doc_id, item.page) for item in flatten_fields(extraction)]
+    rows = []
+    for item in flatten_fields(extraction):
+        rows.append(Row(item.field, item.key, item.value, item.doc_id, item.page, item.line, item.bbox))
+    return rows
 
 
 class FieldMatch(NamedTuple):
@@ -165,9 +115,11 @@ def page_conditions(truth: Any) -> dict[int, str]:
     return {page.page_number: ("scanned" if page.scanned else "clean") for page in truth.pages}
 
 
-def field_counts(match: FieldMatch, conditions: dict[int, str]) -> Counter:
-    """tp / fp / fn per condition (all, clean, scanned) and field type (plus "all"), as flat counter names."""
+def field_counts(match: FieldMatch, conditions: dict[int, str], doc_types: dict[int, str] | None = None) -> Counter:
+    """tp / fp / fn per condition (all, clean, scanned) and field type (plus "all"), as flat counter names, and
+    per condition and true document type of the page (fields.<condition>.doc.<doc_type>.<outcome>)."""
     counts: Counter = Counter()
+    page_types = doc_types or {}
 
     def add(row: Row, outcome: str, page: int | None) -> None:
         groups = ["all"]
@@ -176,6 +128,8 @@ def field_counts(match: FieldMatch, conditions: dict[int, str]) -> Counter:
         for group in groups:
             for kind in ("all", field_type(row.field)):
                 counts[f"fields.{group}.{kind}.{outcome}"] += 1
+            if page in page_types:
+                counts[f"fields.{group}.doc.{page_types[page]}.{outcome}"] += 1
 
     for truth_row, _ in match.pairs:
         add(truth_row, "tp", truth_row.page)
@@ -212,57 +166,53 @@ def rows_per_key(rows: list[Row], prefix: str) -> dict[str | None, int]:
     return result
 
 
-def printed_forms(field: str, value: Any) -> list[str]:
-    """Ways a true value can be printed on a page (casefolded): amounts, percents, three date styles, labels."""
-    kind = field_type(field)
-    leaf = field.rsplit(".", 1)[-1]
-    if kind == "boolean":
-        forms = ["yes" if value else "no"]
-        return forms + ([BOOLEAN_PHRASES[leaf]] if leaf in BOOLEAN_PHRASES else [])
-    if kind == "integer":
-        return [str(value), f"{int(value):,}"]
-    if kind == "money":
-        return [f"{abs(float(value)):,.2f}"]
-    if kind == "percent":
-        return [f"{float(value):.1f}%", f"{float(value):.2f}%"]
-    text = str(value)
-    if kind == "date" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        day = date.fromisoformat(text)
-        styles = [
-            text,
-            f"{day.month:02d}/{day.day:02d}/{day.year:04d}",
-            f"{day.day:02d}-{MONTHS[day.month - 1]}-{day.year}",
-        ]
-        return [style.casefold() for style in styles]
-    return list(dict.fromkeys([text.casefold(), text.replace("_", " ").casefold()]))
-
-
-def value_on_page(field: str, value: Any, lines: list[str]) -> bool:
-    """True when a printed form of the value is on one of the lines (or across lines) as a whole token.
-
-    "Whole token" means the characters around the match are not letters or digits, so "US" is not found inside
-    "BUSINESS" and "no" is not found inside "Account no".
-    """
-    texts = [line.casefold() for line in lines]
-    texts.append(" ".join(texts))
-    for form in printed_forms(field, value):
-        pattern = re.compile(r"(?<![0-9a-z])" + re.escape(form) + r"(?![0-9a-z])")
-        if any(pattern.search(text) for text in texts):
-            return True
-    return False
-
-
 def citation_counts(match: FieldMatch, page_lines: dict[int, list[str]]) -> Counter:
-    """For every correct value: is it printed on the cited page (truth text lines), and is that the truth page?"""
+    """citations.page.* for correct values and citations.supported.* for every extracted value with a page
+    (see evaluation_citations.py for the definitions)."""
     counts: Counter = Counter()
     for truth_row, found in match.pairs:
         for kind in ("all", field_type(truth_row.field)):
-            counts[f"citations.{kind}.total"] += 1
+            counts[f"citations.page.{kind}.total"] += 1
             lines = page_lines.get(found.page) if found.page is not None else None
             if lines is not None and value_on_page(truth_row.field, truth_row.value, lines):
-                counts[f"citations.{kind}.correct"] += 1
+                counts[f"citations.page.{kind}.correct"] += 1
             if found.page == truth_row.page:
-                counts[f"citations.{kind}.same_page"] += 1
+                counts[f"citations.page.{kind}.same_page"] += 1
+    for found in [row for _, row in match.pairs] + match.extra:
+        if found.page is None or found.value is None:
+            continue
+        lines = page_lines.get(found.page, [])
+        supported = value_on_page(found.field, found.value, lines)
+        for kind in ("all", field_type(found.field)):
+            counts[f"citations.supported.{kind}.total"] += 1
+            counts[f"citations.supported.{kind}.correct"] += int(supported)
+    return counts
+
+
+def same_value(found: Row, oracle: Located) -> bool:
+    """True when an extracted row and an oracle entry hold the same normalized value."""
+    kind = field_type(found.field)
+    return normalize_value(kind, found.value) == normalize_value(kind, oracle.value)
+
+
+def citation_line_counts(match: FieldMatch, truth: Any) -> Counter:
+    """citations.line.* for the correct values (evaluation_citations.line_counts)."""
+    oracle = oracle_positions(truth.oracle_extraction)
+    scanned = {page.page_number for page in truth.pages if page.scanned}
+    matched = []
+    for _, found in match.pairs:
+        position = true_position(found, oracle, same_value)
+        if position is not None:
+            cited = Located(found.field, found.key, found.value, found.page, found.line, found.bbox)
+            matched.append((cited, position, found.field))
+    return line_counts(matched, scanned, field_type)
+
+
+def check_status_counts(result: PacketResult) -> Counter:
+    """checks.<check_id>.<status>: how each check of the packet ended (pass / fail / not_evaluated)."""
+    counts: Counter = Counter()
+    for check in result.checks:
+        counts[f"checks.{check.check_id}.{check.status}"] += 1
     return counts
 
 
@@ -291,8 +241,12 @@ def checklist_counts(truth: Any, result: PacketResult, documents_provided: list[
     predicted_missing = set(check.values.get("missing", [])) if check is not None else set()
     true_missing = set(truth.missing_required_documents)
     for code in codes:
+        right = int((code in predicted_missing) == (code in true_missing))
         counts["checklist.total"] += 1
-        counts["checklist.correct"] += int((code in predicted_missing) == (code in true_missing))
+        counts["checklist.correct"] += right
+        counts[f"checklist.code.{code}.total"] += 1
+        counts[f"checklist.code.{code}.correct"] += right
+        counts[f"checklist.code.{code}.truth_missing"] += int(code in true_missing)
     counts["checklist.packets"] += 1
     counts["checklist.packets_exact"] += int(predicted_missing == true_missing)
     if documents_provided is not None:
@@ -327,13 +281,18 @@ def evaluate_packet(truth: Any, result: PacketResult, documents_provided: list[s
     page_lines = {page.page_number: list(page.text_lines) for page in truth.pages}
     page_docs = {page.page_number: page.doc_id for page in truth.pages}
     counts: Counter = Counter()
-    counts.update(field_counts(match, page_conditions(truth)))
+    doc_types = {page.page_number: page.doc_type for page in truth.pages}
+    counts.update(field_counts(match, page_conditions(truth), doc_types))
     counts.update(row_counts(expected, found, match))
     counts.update(citation_counts(match, page_lines))
+    if truth.pages:
+        counts.update(citation_line_counts(match, truth))
+    counts.update(check_status_counts(result))
     counts.update(page_counts(truth, result))
     counts.update(checklist_counts(truth, result, documents_provided))
+    doc_type_of = {document.doc_id: document.doc_type for document in truth.documents}
     problems, contradictions = match_contradictions(
-        list(truth.problems), list(result.contradictions.contradictions), page_docs
+        list(truth.problems), list(result.contradictions.contradictions), page_docs, doc_type_of
     )
     counts.update(contradiction_counts(problems, contradictions))
     injection_counter, injections = injection_counts(truth, result)

@@ -79,7 +79,16 @@ export function ChartFrame({
           <span className="group-open:hidden">Show the numbers as a table</span>
           <span className="hidden group-open:inline">Hide the table</span>
         </summary>
-        <div className="max-h-80 overflow-auto border-t border-border">{table}</div>
+        {/* The table scrolls inside this box, so it must be reachable and scrollable from the keyboard
+            (axe scrollable-region-focusable): a focusable, named region. */}
+        <div
+          role="region"
+          aria-label={`${title}: the numbers as a table`}
+          tabIndex={0}
+          className="max-h-80 overflow-auto border-t border-border outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+        >
+          {table}
+        </div>
       </details>
     </figure>
   );

@@ -6,18 +6,24 @@ Access: every route needs a signed-in user (401 otherwise) except GET /api/studi
 which hold no personal data. POST/PUT/DELETE also need the X-CSRF-Token header (403 otherwise). A plan belongs to
 the user who created it (stored per stable owner id, encrypted at rest); another user's plan id answers 404.
 Errors: {"detail": "...", "reasons": [...]?}. 422 = values that cannot be used (also pydantic's own 422, whose
-"detail" is a list); 409 = limited mode / stale version / already decided; 503 = a heavy job took longer than
+"detail" is a list of {"type", "loc", "msg"}, never the input, at most 20 plus a count line); 413 = a body over
+64 KiB; 409 = limited mode / stale version / already decided / the plan cap (20 plans per user); 429 = too many
+address lookups (one batch at a time per user, a small per-user budget); 503 = a heavy job took longer than
 UWC_COMPUTE_TIMEOUT_S (default 60 s; it keeps running and its result is cached for the next try), the server is
-busy, or the Census Geocoder is unreachable. Heavy work runs in worker threads and is cached per plan version.
+busy (also: one user may have at most 3 heavy jobs running or queued), or the Census Geocoder is unreachable.
+Heavy work runs in worker threads and is cached per plan version; address lookups run in their own small pool.
 
 GET /api/studio/options -> 200
     {"metros": [{"id": "synthetic_metro", "name": "Synthetic Metro (SYNTHETIC)", "mode": "synthetic"|"limited"|"full",
                  "mode_reason": "...", "data_label": "SYNTHETIC"|"PUBLIC", "coverage_note": "...", "verified": false,
                  "n_tracts": 300, "site_input": "map"|"address_or_map", "supports_area_suggestions": true,
+                 "simulation_available": true (false: no tract data here, demand is UNKNOWN, no simulation),
                  "prime_rate": {"factor": "prime_rate", "value": 7.5|null, "unit": "...", "status": "SYNTHETIC"|
                                 "DATA"|"UNKNOWN", "reason": "...", "source": {...SourceRecord}|null, ...}|null}],
      "business_types": [{"id": "car_wash", "name": "Car wash", "demand_unit": "cars/day", "build_out_low": 0.0,
-                         "build_out_high": 0.0, "build_out_status": "ASSUMPTION"|"SOURCED", "build_out_note": "..."}],
+                         "build_out_high": 0.0, "build_out_status": "ASSUMPTION"|"SOURCED",
+                         "build_out_assumed": 0.0 (the point the simulation uses for an empty budget),
+                         "build_out_note": "..."}],
      "levers": [{"name": "owner_equity", "label": "...", "unit": "USD", "kind": "amount",
                  "default_bounds": {"low": {"basis": "project_cost", "value": 0.0}, "high": {...}}|null,
                  "options": [60, 72]|null, "round_to": 500.0|null, "effort_weight": 2.0, "note": "...",
@@ -36,35 +42,46 @@ POST /api/studio/projects  body (ProjectIn; money in USD):
     {"name": "My car wash"|null, "metro_id": "synthetic_metro", "business_type_id": "car_wash",
      "idea_text": "..."|null (<= 2000 chars; screened for injection: flagged text is stored, shown as flagged and
                                never given to any language model; SSN / account numbers are refused with 422),
-     "budget_total": 1500000|null (build-out + equipment = capex; null = the profile's capex range, ASSUMPTION),
-     "owner_equity": 600000, "loan_amount": 1100000 (owner_equity + loan_amount must cover budget_total),
+     "budget_total": 1500000|null (build-out + equipment = capex; null = the profile's point estimate,
+                     build_out_assumed in the options, ASSUMPTION),
+     "owner_equity": 600000, "loan_amount": 1100000 (owner_equity + loan_amount must cover budget_total, or
+                     build_out_assumed when the budget is empty; the 422 names both amounts),
      "loan_term_months": 84 (24-360), "annual_rate_pct": 8.0|null (null = metro prime + spread, ASSUMPTION),
      "rate_type": "variable"|"fixed" (default variable), "opening_date": "2027-04-01"|null (null = first day of the
-     month six months after creation, ASSUMPTION),
+     month six months after creation, ASSUMPTION; given: from one year ago to five years ahead),
      "sites": [{"label": "North lot", "lat": 10.02, "lon": -140.03} | {"label": "Main St", "address": "..."}] (1-3;
               addresses only for real metros, geocoded by the Census Geocoder; SYNTHETIC metro pins must be within
-              3 miles of one of its tracts)}
+              3 miles of one of its tracts; names and addresses with an SSN or account number are refused before
+              any lookup; the metro's own 11-digit tract ids are allowed in names)}
     -> 201 Project:
     {"id": "16 hex", "version": 1, "name": ..., "created_at": "...", "updated_at": "...", "expires_at": "..."|null,
      "retention_days": 30|null, "metro_id": ..., "metro_name": ..., "metro_mode": "synthetic", "data_label": ...,
      "business_type_id": ..., "business_type_name": ..., "demand_unit": ...,
      "idea": {"text": ..., "flagged": false, "flags": ["decision_directive"], "note": "..."},
-     "money": {"budget_total": ..., "budget_status": "USER_STATED"|"ASSUMPTION", "owner_equity": ...,
-               "loan_amount": ..., "loan_term_months": ..., "annual_rate_pct": ...|null,
-               "annual_rate_status": "USER_STATED"|"ASSUMPTION", "rate_type": ..., "cash_reserve_at_opening": ...|null,
-               "note": "..."},
+     "money": {"budget_total": ...|null, "budget_status": S, "build_out_assumed": ...|null, "owner_equity": ...,
+               "owner_equity_status": S, "loan_amount": ..., "loan_amount_status": S, "loan_term_months": ...,
+               "loan_term_status": S, "annual_rate_pct": ...|null, "annual_rate_status": "USER_STATED"|"ASSUMPTION",
+               "rate_type": ..., "cash_reserve_at_opening": ..., "cash_reserve_status": "DERIVED"|"ASSUMPTION",
+               "plan_changes": {field: {"source": "path_to_approval", "engine_version", "applied_at",
+                                        "evidence_needed": ["..."]}},
+               "note": "..."}
+       (S = "USER_STATED" typed by the founder | "ASSUMPTION" left empty | "PLAN_CHANGE" written by "Apply this
+        change", until the founder types the field again),
      "opening_date": "2027-04-01", "opening_date_status": "USER_STATED"|"ASSUMPTION",
      "sites": [{"index": 0, "label": ..., "lat": ..., "lon": ..., "location_source": "map_pin"|"census_geocoder",
                 "address": ...|null, "matched_address": ...|null, "tract_geoid": ...|null, "location_check": "...",
                 "geocode_source": {SourceRecord}|null}],
-     "disclaimer": "..."}
+     "selected_site_index": 0, "selected_site_status": S, "seed": 123 (the same for every version: common random
+     numbers), "disclaimer": "..."}
 
 GET /api/studio/projects -> 200 {"projects": [{"id", "version", "name", "metro_id", "metro_name",
     "business_type_id", "business_type_name", "n_sites", "created_at", "updated_at", "expires_at",
     "idea_flagged"}], "total": 1}   (newest change first)
 GET /api/studio/projects/{id} -> 200 Project | 404
 PUT /api/studio/projects/{id}  body: any subset of the POST fields, plus optional "version" (must equal the stored
-    version, else 409). Omitted = unchanged; null clears an optional field. -> 200 Project (version + 1)
+    version, else 409), "selected_site_index" (0..sites-1) and "plan_change" ({"source": "path_to_approval",
+    "engine_version", "fields": [...the fields this PUT sets], "evidence_needed": [...]}, sent by "Apply this
+    change"). Omitted = unchanged; null clears an optional field. -> 200 Project (version + 1)
 DELETE /api/studio/projects/{id} -> 200 {"project_id", "deleted": true, "pending": false, "message"} | 404 |
     202 {"detail": "..."} when the backup copy could not be deleted yet (retried; the data is not fully gone yet)
 
@@ -101,25 +118,35 @@ POST /api/studio/projects/{id}/feasibility  body {"site_index": 0} -> 200
     cannot be simulated (for example the metro has no prime rate and no annual_rate_pct was entered, or equity +
     loan do not cover the profile's build-out range); the message says what to change.
 
-POST /api/studio/projects/{id}/path-to-approval  body {"site_index": 0, "targets": {"p_dscr_min": 0.8, ...}|null}
+POST /api/studio/projects/{id}/path-to-approval  body {"site_index": 0, "targets": {"p_dscr_min": 0.8, ...}|null,
+    "max_extra_owner_cash": 25000|null (USD; null = the default bound, shown in owner_cash_bound)}
     -> 200 {"project_id", "project_version", "site_index", "site_label", "label", "disclaimer",
             "status": "already_meets_target"|"paths_found"|"no_path_within_bounds", "message",
             "guardrail_note": "Reaching the targets is not an approval: ...", "guardrails": ["..."],
             "target": Target, "before": Outcome, "plan_before": PlanAmounts,
             "change_sets": [{"rank", "changes": [{"lever", "label", "unit", "from_value", "to_value", "effort",
-                             "fields_changed"}], "n_levers", "effort", "before": Outcome, "after": Outcome,
-                             "plan_before", "plan_after", "meets_target", "explanation", "unchanged",
+                             "fields_changed", "own_change", "evidence_needed"}], "n_levers", "effort",
+                             "before": Outcome, "after": Outcome, "plan_before", "plan_after", "meets_target",
+                             "program_rules_not_met": ["..."], "evidence_needed": ["..."],
+                             "field_changes": [{"field", "label", "unit", "from_value", "to_value",
+                                                "writes_plan"}] (EVERY figure that changes, also the balancing
+                                                ones: more owner cash lowers the loan),
+                             "explanation", "unchanged",
                              "apply": {"supported": true, "reason": null, "site_index": 0,
-                                       "project_fields": {"owner_equity", "loan_amount", "loan_term_months",
-                                                          "budget_total"}}}] (at most 3),
+                                       "project_fields": {only the changed fields of owner_equity, loan_amount,
+                                                          loan_term_months, budget_total, selected_site_index},
+                                       "plan_change": {PlanChange for the PUT}|null}}] (at most 3),
             "closest": change-set|null, "levers_considered", "levers_not_available": {lever: why},
+            "owner_cash_bound": {"current", "high", "extra", "source": "default"|"founder", "note"}|null,
             "skipped_candidates": ["label: why"], "notes", "settings" (QUICK mode), "search" (runtime_ms, ...),
             "metro_mode", "data_label", "engine_version", "simulator_version"}
     Outcome = {"label", "n_paths", "seed", "p_dscr_at_least_target_year2", "p_stressed_dscr_at_least_min_year2",
                "p_cash_negative_within_months", "projected_dscr_base_case", "stressed_dscr_base_case",
                "annual_debt_service", "meets_target", "targets_missed", "shortfall"}
-    "Apply this change" = PUT /api/studio/projects/{id} with apply.project_fields, then re-run at apply.site_index.
-    Price and days open are locked (the v0.1 form has no field for them), so every change-set can be applied.
+    "Apply this change" = PUT /api/studio/projects/{id} with {version, ...apply.project_fields, "plan_change":
+    apply.plan_change}, then re-run at apply.site_index. The seed is the same for every version, so the re-run shows
+    exactly the "after" numbers of the card. Price and days open are locked by the server (the v0.1 form has no
+    field for them), so every change-set can be applied.
     409 (limited mode, demand UNKNOWN) and 422 as for feasibility.
 
 POST /api/studio/areas/suggest  body {"metro_id", "business_type_id"} -> 200 Suggestions (studio.siteiq.models:
@@ -140,6 +167,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, status
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from uwcopilot.studio.siteiq.models import Suggestions
 from uwcopilot.web.auth import Principal, require_role
@@ -160,6 +188,7 @@ from uwcopilot.web.schemas_studio import (
     SiteScoresResponse,
 )
 from uwcopilot.web.services import WebServices, get_services, projects, studio_runs
+from uwcopilot.web.services.geocoding import PrefetchedGeocoder
 from uwcopilot.web.services.http import get_store, no_store
 from uwcopilot.web.services.studio_options import studio_options
 from uwcopilot.web.store import Store
@@ -193,11 +222,18 @@ async def options(services: Services) -> OptionsResponse:
     dependencies=[Depends(no_store)],
 )
 async def create_project(body: ProjectIn, principal: SignedIn, services: Services, store: StoreDep) -> ProjectOut:
-    """Create a plan (sites are checked, real-metro addresses geocoded) and store it for this user."""
+    """Create a plan (sites are checked, real-metro addresses geocoded) and store it for this user.
+
+    Order: the cheap checks of the site text (nothing with an SSN or account number is ever sent to the geocoder),
+    the address lookups (their own pool, per-user limits), then building and saving the plan in a worker thread
+    (the store may wait on disk or on the dataset store's lock; the event loop never does)."""
     await services.compute.run(studio_options, key=("studio", "options"))
-    record = await services.compute.run(partial(projects.build_record, body, services.geocoder))
-    meta = projects.save(store, principal.owner_id, record)
-    return projects.project_out(record, meta)
+    owner = principal.owner_id
+    await run_in_threadpool(projects.check_plan_count, store, owner)
+    await run_in_threadpool(projects.check_sites_text, body.metro_id, body.sites)
+    geocoder = await services.geocoding.prefetch(owner, projects.addresses_to_geocode(body.sites))
+    record, meta = await run_in_threadpool(projects.create, store, owner, body, geocoder)
+    return await run_in_threadpool(projects.project_out, record, meta)
 
 
 @router.get("/projects", response_model=ProjectList, dependencies=[Depends(no_store)])
@@ -219,12 +255,18 @@ def get_project(project_id: ProjectId, principal: SignedIn, store: StoreDep) -> 
 async def update_project(
     project_id: ProjectId, body: ProjectUpdate, principal: SignedIn, services: Services, store: StoreDep
 ) -> ProjectOut:
-    """Change a plan; the version goes up by one, so its results are computed afresh."""
-    current = projects.load(store, principal.owner_id, project_id)
-    record = await services.compute.run(partial(projects.updated_record, current, body, services.geocoder))
-    meta = projects.save(store, principal.owner_id, record)
-    services.compute.forget(("studio", principal.owner_id, project_id))
-    return projects.project_out(record, meta)
+    """Change a plan; the version goes up by one, so its results are computed afresh (same seed: see projects.py)."""
+    owner = principal.owner_id
+    current = await run_in_threadpool(projects.load, store, owner, project_id)
+    geocoder = PrefetchedGeocoder()  # a PUT without new sites looks nothing up (stored addresses are reused)
+    if body.sites is not None:
+        metro_id = body.metro_id or current.metro_id
+        await run_in_threadpool(projects.check_sites_text, metro_id, body.sites)
+        addresses = projects.addresses_to_geocode(body.sites, known=current.sites)
+        geocoder = await services.geocoding.prefetch(owner, addresses)
+    record, meta = await run_in_threadpool(projects.update, store, owner, project_id, body, geocoder)
+    services.compute.forget(("studio", owner, project_id))
+    return await run_in_threadpool(projects.project_out, record, meta)
 
 
 @router.delete("/projects/{project_id}", response_model=ProjectDeleted, dependencies=[Depends(no_store)])
@@ -241,9 +283,10 @@ def delete_project(project_id: ProjectId, principal: SignedIn, services: Service
 @router.post("/projects/{project_id}/sites/score", response_model=SiteScoresResponse, dependencies=[Depends(no_store)])
 async def score_sites(project_id: ProjectId, principal: SignedIn, services: Services, store: StoreDep) -> Any:
     """SiteIQ for every site of the plan."""
-    record = projects.load(store, principal.owner_id, project_id)
+    record = await run_in_threadpool(projects.load, store, principal.owner_id, project_id)
     key = project_key(principal, record, "sites")
-    return await services.compute.run(partial(studio_runs.score_project_sites, record), key=key)
+    work = partial(studio_runs.score_project_sites, record)
+    return await services.compute.run(work, key=key, owner=principal.owner_id)
 
 
 @router.post("/projects/{project_id}/feasibility", response_model=FeasibilityResponse, dependencies=[Depends(no_store)])
@@ -251,9 +294,10 @@ async def feasibility(
     project_id: ProjectId, body: FeasibilityRequest, principal: SignedIn, services: Services, store: StoreDep
 ) -> Any:
     """The Monte Carlo feasibility of one site (1,000 paths, seed fixed per plan version)."""
-    record = projects.load(store, principal.owner_id, project_id)
+    record = await run_in_threadpool(projects.load, store, principal.owner_id, project_id)
     key = project_key(principal, record, "feasibility", body.site_index)
-    return await services.compute.run(partial(studio_runs.run_feasibility, record, body.site_index), key=key)
+    work = partial(studio_runs.run_feasibility, record, body.site_index)
+    return await services.compute.run(work, key=key, owner=principal.owner_id)
 
 
 @router.post("/projects/{project_id}/path-to-approval", response_model=PathResponse, dependencies=[Depends(no_store)])
@@ -261,11 +305,11 @@ async def path_to_approval(
     project_id: ProjectId, body: PathRequest, principal: SignedIn, services: Services, store: StoreDep
 ) -> Any:
     """The smallest plan changes that reach the targets (QUICK mode)."""
-    record = projects.load(store, principal.owner_id, project_id)
+    record = await run_in_threadpool(projects.load, store, principal.owner_id, project_id)
     targets = body.targets.model_dump_json(exclude_none=True) if body.targets else ""
-    key = project_key(principal, record, "paths", body.site_index, targets)
-    work = partial(studio_runs.run_path_to_approval, record, body.site_index, body.targets)
-    return await services.compute.run(work, key=key)
+    key = project_key(principal, record, "paths", body.site_index, targets, body.max_extra_owner_cash)
+    work = partial(studio_runs.run_path_to_approval, record, body.site_index, body.targets, body.max_extra_owner_cash)
+    return await services.compute.run(work, key=key, owner=principal.owner_id)
 
 
 @router.post("/areas/suggest", response_model=Suggestions)
@@ -273,7 +317,7 @@ async def suggest(body: AreasRequest, principal: SignedIn, services: Services) -
     """The top tracts of a metro for a business type (409 in limited mode)."""
     key = ("studio", "suggest", body.metro_id, body.business_type_id)
     work = partial(studio_runs.run_suggest, body.metro_id, body.business_type_id)
-    return await services.compute.run(work, key=key)
+    return await services.compute.run(work, key=key, owner=principal.owner_id)
 
 
 @router.get("/metros/{metro_id}/tracts.geojson", response_class=JSONResponse)

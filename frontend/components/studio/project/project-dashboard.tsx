@@ -3,7 +3,7 @@
 import { ArrowLeft, MapPin, RotateCcw, ShieldAlert } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { DataStatusChip } from "@/components/evidence/data-status-chip";
 import { Figure } from "@/components/evidence/figure";
@@ -16,6 +16,7 @@ import { MetroModeBadge } from "@/components/studio/metro-mode-badge";
 import { FeasibilityPanel } from "@/components/studio/project/feasibility-panel";
 import { PathPanel } from "@/components/studio/project/path-panel";
 import { PlanActions } from "@/components/studio/project/plan-actions";
+import { PlanEditor } from "@/components/studio/project/plan-editor";
 import { isScored, SiteCards, SiteCardsSkeleton, SiteDetail } from "@/components/studio/project/site-panels";
 import type { TargetEdits } from "@/components/studio/project/target-editor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -28,7 +29,7 @@ import { useSession } from "@/lib/auth";
 import { formatDate, formatPercent, formatUsd } from "@/lib/format";
 import { useQueryParam } from "@/lib/location";
 import { studioApi } from "@/lib/studio-api";
-import type { ChangeSet, Project, StudioOptions } from "@/lib/studio-types";
+import type { ChangeSet, PlanChangeNote, Project, StudioOptions } from "@/lib/studio-types";
 import { useApiResource } from "@/lib/use-api";
 
 const SiteMap = dynamic(() => import("@/components/studio/map/site-map"), {
@@ -45,8 +46,10 @@ const SiteMap = dynamic(() => import("@/components/studio/map/site-map"), {
  * 3. POST feasibility for the selected site;
  * 4. POST path-to-approval for the same site (after the simulation, to keep the server's load down), with the
  *    founder's edits to the planning targets when there are any ("Edit the targets").
- * Results are keyed by the plan version, so "Apply this change" (a PUT that bumps the version) re-runs them all.
- * The server caches results per version, so reloading the page does not recompute.
+ * Results are keyed by the plan version, so "Apply this change" or "Edit the numbers" (a PUT that bumps the version)
+ * re-runs them all. The server caches results per version, so reloading the page does not recompute, and it uses
+ * the same simulation seed for every version, so an applied change shows exactly the numbers its card promised.
+ * The page opens on the plan's selected site (stored with the plan, so an applied site switch survives a reload).
  */
 
 function SectionHeading({ id, eyebrow, title, children }: { id: string; eyebrow: string; title: string; children?: ReactNode }) {
@@ -61,31 +64,70 @@ function SectionHeading({ id, eyebrow, title, children }: { id: string; eyebrow:
   );
 }
 
-/** The plan's money as the founder gave it, each figure with its status (typed = USER_STATED, empty = ASSUMPTION). */
+/** The note under a figure written by "Apply this change": what a lender would need before it counts. */
+function PlanChangeNoteText({ note }: { note: PlanChangeNote | undefined }) {
+  if (!note) {
+    return null;
+  }
+  return (
+    <span>
+      Written by &ldquo;Apply this change&rdquo;, not typed by you.
+      {note.evidence_needed.length > 0 ? ` A lender would need: ${note.evidence_needed.join("; ")}.` : ""}
+    </span>
+  );
+}
+
+/**
+ * The plan's money, each figure with who wrote it: typed by the founder (user stated), left empty (assumption: the
+ * value the simulation uses is shown), written by an applied change-set (suggested change, with the evidence a lender
+ * would need) or calculated by the server.
+ */
 function PlanFigures({ project }: { project: Project }) {
   const money = project.money;
-  const reserveStatus = money.budget_status === "ASSUMPTION" ? "ASSUMPTION" : "USER_STATED";
+  const changes = money.plan_changes;
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
       <Figure
         label="Build-out and equipment budget"
-        value={money.budget_total === null ? "Profile range" : formatUsd(money.budget_total)}
+        value={money.budget_total === null ? formatUsd(money.build_out_assumed) : formatUsd(money.budget_total)}
         status={money.budget_status}
+        note={
+          money.budget_total === null ? (
+            `You left it empty: the simulation assumes this ${project.business_type_name.toLowerCase()} build-out.`
+          ) : (
+            <PlanChangeNoteText note={changes.budget_total} />
+          )
+        }
       />
-      <Figure label="Your own cash (equity)" value={formatUsd(money.owner_equity)} status="USER_STATED" />
-      <Figure label="Loan amount" value={formatUsd(money.loan_amount)} status="USER_STATED" />
-      <Figure label="Loan term" value={`${money.loan_term_months} months`} status="USER_STATED" />
+      <Figure
+        label="Your own cash (equity)"
+        value={formatUsd(money.owner_equity)}
+        status={money.owner_equity_status}
+        note={<PlanChangeNoteText note={changes.owner_equity} />}
+      />
+      <Figure
+        label="Loan amount"
+        value={formatUsd(money.loan_amount)}
+        status={money.loan_amount_status}
+        note={<PlanChangeNoteText note={changes.loan_amount} />}
+      />
+      <Figure
+        label="Loan term"
+        value={`${money.loan_term_months} months`}
+        status={money.loan_term_status}
+        note={<PlanChangeNoteText note={changes.loan_term_months} />}
+      />
       <Figure
         label={`Interest rate (${money.rate_type})`}
         value={money.annual_rate_pct === null ? "Prime + spread" : formatPercent(money.annual_rate_pct)}
         status={money.annual_rate_status}
-        note={money.annual_rate_pct === null ? "The simulation shows the rate it used." : undefined}
+        note={money.annual_rate_pct === null ? "The simulation shows the rate it used and its source." : undefined}
       />
       <Figure
         label="Cash reserve at opening"
-        value={money.cash_reserve_at_opening === null ? "Not available" : formatUsd(money.cash_reserve_at_opening)}
-        status={reserveStatus}
-        note="Your cash plus the loan, minus the build-out budget (computed by the server)."
+        value={formatUsd(money.cash_reserve_at_opening)}
+        status={money.cash_reserve_status}
+        note="Your cash plus the loan, minus the build-out (calculated by the server). Each simulated future also takes a simulated build-out overrun out of it."
       />
     </div>
   );
@@ -117,14 +159,33 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
   const [applyingRank, setApplyingRank] = useState<number | null>(null);
   const [applyProblem, setApplyProblem] = useState<Problem | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [maxExtraCash, setMaxExtraCash] = useState<number | null>(null);
+  const appliedRef = useRef<HTMLParagraphElement | null>(null);
+  const savedRef = useRef<HTMLParagraphElement | null>(null);
 
   const metro = options?.metros.find((item) => item.id === project.metro_id);
+  const business = options?.business_types.find((item) => item.id === project.business_type_id) ?? null;
   const version = project.version;
 
   const scores = useApiResource(`scores:${project.id}:${version}`, (signal) => studioApi.scoreSites(project.id, signal), "Scoring the sites");
   const scoredSites = scores.data?.sites.filter(isScored) ?? [];
-  const siteIndex = selected ?? scoredSites[0]?.index ?? null;
+  const storedChoice = scoredSites.some((item) => item.index === project.selected_site_index) ? project.selected_site_index : null;
+  const siteIndex = selected ?? storedChoice ?? scoredSites[0]?.index ?? null;
   const selectedSite = scores.data?.sites.find((item) => item.index === siteIndex) ?? null;
+
+  // After "Apply this change" or a save, move keyboard and screen-reader focus to the status line that says what
+  // happened (it is far above the button that was pressed).
+  useEffect(() => {
+    if (applied) {
+      appliedRef.current?.focus();
+    }
+  }, [applied]);
+  useEffect(() => {
+    if (saved) {
+      savedRef.current?.focus();
+    }
+  }, [saved]);
 
   const feasibility = useApiResource(
     siteIndex === null || scores.status !== "ready" ? null : `feas:${project.id}:${version}:${siteIndex}`,
@@ -135,8 +196,8 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
   const path = useApiResource(
     siteIndex === null || feasibility.status !== "ready"
       ? null
-      : `path:${project.id}:${version}:${siteIndex}:${JSON.stringify(targetEdits ?? {})}`,
-    (signal) => studioApi.pathToApproval(project.id, siteIndex ?? 0, signal, targetEdits),
+      : `path:${project.id}:${version}:${siteIndex}:${JSON.stringify(targetEdits ?? {})}:${maxExtraCash ?? "default"}`,
+    (signal) => studioApi.pathToApproval(project.id, siteIndex ?? 0, signal, targetEdits, maxExtraCash),
     "The path to approval",
   );
   const tracts = useApiResource(
@@ -150,15 +211,26 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
     setApplyProblem(null);
     setApplied(null);
     try {
-      const updated = await studioApi.updateProject(project.id, { version: project.version, ...changeSet.apply.project_fields });
+      const updated = await studioApi.updateProject(project.id, {
+        version: project.version,
+        ...changeSet.apply.project_fields,
+        plan_change: changeSet.apply.plan_change,
+      });
       setSelected(changeSet.apply.site_index);
       onProjectChange(updated);
-      setApplied(`Applied. Your plan is now version ${updated.version}; the sites, the simulation and the path are being recomputed.`);
+      setApplied(
+        `Applied. Your plan is now version ${updated.version} (site ${changeSet.apply.site_index + 1}); the changed figures are marked as suggested changes, and the sites, the simulation and the path are being recomputed.`,
+      );
     } catch (error) {
       setApplyProblem(describeProblem(error, "Applying the change"));
     } finally {
       setApplyingRank(null);
     }
+  }
+
+  function onSaved(updated: Project) {
+    onProjectChange(updated);
+    setSaved(`Saved. Your plan is now version ${updated.version}; the sites, the simulation and the path are being recomputed.`);
   }
 
   function downloadPayload(): object {
@@ -213,6 +285,12 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
                 {metro?.mode_reason ?? "Some factors have no public data here."} Factors without data show as unknown or as an
                 assumption and are never filled in silently.
               </p>
+              {metro && !metro.simulation_available ? (
+                <p>
+                  Without data, each site&apos;s demand is unknown, so the simulation and the path to approval do not run for this
+                  city on this server. The SYNTHETIC demo city shows the full flow.
+                </p>
+              ) : null}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -234,16 +312,24 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
       </div>
 
       <section aria-labelledby="plan-title" className="flex flex-col gap-4">
-        <SectionHeading id="plan-title" eyebrow="Your plan" title="The numbers you gave">
+        <SectionHeading id="plan-title" eyebrow="Your plan" title="The numbers of your plan">
           Typed by you, so they count as <strong className="font-semibold text-foreground">user stated</strong> until a document backs
-          them. A field you left empty uses a stated range or default, marked as an assumption.
+          them. A field you left empty uses a stated default, marked as an assumption. A figure written by &ldquo;Apply this
+          change&rdquo; is marked as a <strong className="font-semibold text-foreground">suggested change</strong> until you type it
+          yourself.
         </SectionHeading>
+        {saved ? (
+          <p ref={savedRef} tabIndex={-1} role="status" className="rounded-lg border border-accent/30 bg-accent-soft p-3 text-sm outline-none focus-visible:outline-2 focus-visible:outline-ring">
+            {saved}
+          </p>
+        ) : null}
         <PlanFigures project={project} />
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">Opening date:</span>
           <span className="font-medium">{formatDate(project.opening_date)}</span>
           <DataStatusChip status={project.opening_date_status} />
         </p>
+        {options ? <PlanEditor key={version} project={project} business={business} limits={options.limits} onSaved={onSaved} /> : null}
         <PlanActions projectId={project.id} download={downloadPayload} />
       </section>
 
@@ -268,7 +354,12 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
         {scores.problem ? <ProblemNotice problem={scores.problem} onRetry={scores.reload} retrying={scores.refreshing} /> : null}
         {scores.data ? (
           <div className={scores.refreshing ? "opacity-60 transition-opacity" : undefined}>
-            <SiteCards response={scores.data} selected={siteIndex ?? -1} onSelect={setSelected} />
+            <SiteCards
+              response={scores.data}
+              selected={siteIndex ?? -1}
+              onSelect={setSelected}
+              simulationAvailable={metro?.simulation_available ?? true}
+            />
           </div>
         ) : null}
         {scores.data && scoredSites.length === 0 ? (
@@ -296,18 +387,23 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
         {feasibility.problem ? <ProblemNotice problem={feasibility.problem} onRetry={feasibility.reload} retrying={feasibility.refreshing} /> : null}
         {feasibility.data ? (
           <div className={feasibility.refreshing ? "opacity-60 transition-opacity" : undefined}>
-            <FeasibilityPanel response={feasibility.data} target={path.data?.target ?? options?.default_target ?? null} />
+            <FeasibilityPanel
+              response={feasibility.data}
+              target={path.data?.target ?? options?.default_target ?? null}
+              rateTyped={project.money.annual_rate_status === "USER_STATED"}
+            />
           </div>
         ) : null}
       </section>
 
       <section aria-labelledby="path-title" className="flex flex-col gap-4">
-        <SectionHeading id="path-title" eyebrow="Step 3 · Path to approval" title="The smallest changes that reach common lender targets">
+        <SectionHeading id="path-title" eyebrow="Step 3 · Path to approval" title="The smallest plan changes that reach your planning targets">
           The search moves only your own plan choices (cash, loan, build-out, reserve, term, site) inside set bounds. It never
-          changes facts or assumptions. Reaching the targets does not mean a lender will approve the loan.
+          changes facts or assumptions. The targets are planning targets you can edit, not a lender&apos;s rules, and reaching
+          them does not mean a lender will approve the loan.
         </SectionHeading>
         {applied ? (
-          <p role="status" className="rounded-lg border border-accent/30 bg-accent-soft p-3 text-sm">
+          <p ref={appliedRef} tabIndex={-1} role="status" className="rounded-lg border border-accent/30 bg-accent-soft p-3 text-sm outline-none focus-visible:outline-2 focus-visible:outline-ring">
             {applied}
           </p>
         ) : null}
@@ -339,6 +435,8 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
               defaults={options?.default_target ?? null}
               edits={targetEdits}
               onEditTargets={setTargetEdits}
+              maxExtraCash={maxExtraCash}
+              onMaxExtraCash={setMaxExtraCash}
               searching={path.refreshing}
             />
           </div>

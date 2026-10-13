@@ -128,9 +128,13 @@ def test_statement_rows_use_the_header_columns_in_both_layouts() -> None:
     assert deposit.deposit.value == 500.0 and not deposit.withdrawal.found
     assert deposit.description.value == "CASH DEPOSIT"
     assert withdrawal.withdrawal.value == 200.0 and not withdrawal.deposit.found
-    # Layout 1 swaps the columns: the same x positions now mean the opposite.
-    swapped = extract_statement(segment("bank_statement", [statement_page(1, rows)]))
+    # Layout 1 swaps the columns: the same x positions now mean the opposite (with balances that agree).
+    swapped_rows = [list(row) for row in rows]
+    swapped_rows[0][-1] = ("500.00", 515, 558)
+    swapped_rows[1][-1] = ("700.00", 515, 558)
+    swapped = extract_statement(segment("bank_statement", [statement_page(1, swapped_rows)]))
     assert swapped.transactions[0].withdrawal.value == 500.0
+    assert swapped.transactions[1].deposit.value == 200.0
 
 
 def test_without_a_header_the_running_balance_decides_and_a_lost_minus_is_restored() -> None:

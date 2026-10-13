@@ -9,9 +9,15 @@ How a plan becomes simulator inputs:
 - Plan: opening_date, owner_equity, capex = budget_total (empty = the profile's capex range, ASSUMPTION);
 - Loan: amount, term_months, annual_rate_pct (empty = the metro's prime rate + the spread ASSUMPTION), rate_type;
 - the site's demand: SiteIQ's estimate for that site (score_site), as the simulator's own adapter reads it;
-- seed: fixed per plan version (ProjectRecord.seed), n = 1,000 paths, 36 months (the S3 defaults).
-The path search runs in QUICK mode (studio.path_to_approval.QUICK_SETTINGS, with the plan version's seed); the
-plan's other sites are its candidate sites; price and days open are locked (the v0.1 form has no field for them).
+- seed: fixed per plan, the same for every version (ProjectRecord.seed), n = 1,000 paths, 36 months (the S3
+  defaults). Because the path search uses the same seed, an applied change-set reproduces its "after" outcome.
+The path search runs in QUICK mode (studio.path_to_approval.QUICK_SETTINGS, with the plan's seed); the plan's other
+sites are its candidate sites; price and days open are locked by the server (the v0.1 form has no field for them, and
+the answer says so instead of the engine's "locked by you"). The founder may bound the extra owner cash the search
+may add (max_extra_owner_cash); otherwise the engine's default bound applies and the answer shows it.
+
+"Apply this change" (apply_patch) writes only the fields a change-set changes, marked as a PLAN_CHANGE with the
+evidence a lender would need (ChangeSet.evidence_needed), never as figures the founder typed (USER_STATED).
 """
 
 from typing import Any
@@ -21,18 +27,22 @@ from uwcopilot.studio.data.provenance import SourceRecord
 from uwcopilot.studio.feasibility import Loan, Plan, as_site_demand, simulate
 from uwcopilot.studio.feasibility.result import FeasibilityResult
 from uwcopilot.studio.path_to_approval import (
+    PATH_ENGINE_VERSION,
     QUICK_SETTINGS,
     Candidate,
     ChangeSet,
     GuardrailViolation,
+    LeverBounds,
     LeverError,
     OutOfBounds,
     PathResult,
+    PlanAmounts,
     PlanCase,
     candidate_from_site_score,
     custom_target,
     default_target,
     find_paths,
+    load_levers,
 )
 from uwcopilot.studio.siteiq import SiteInputs, SiteOutsideMetro, SiteScore, score_site, suggest_areas
 from uwcopilot.studio.siteiq.models import SCORING_METHOD, Suggestions
@@ -43,16 +53,18 @@ from uwcopilot.web.schemas_studio import (
     DemandOut,
     FactorOut,
     FeasibilityResponse,
+    FieldChange,
     Headline,
+    OwnerCashBound,
     PathResponse,
-    ProjectMoneyPatch,
+    PlanChangeIn,
     SiteScoreOut,
     SiteScoresResponse,
     TargetsIn,
 )
 from uwcopilot.web.services.errors import Conflict, InputError, NotFound
 from uwcopilot.web.services.projects import ProjectRecord, StoredSite
-from uwcopilot.web.services.studio_options import metro_catalog, metro_entry, profile_for
+from uwcopilot.web.services.studio_options import WEB_DSCR_TARGET_LABEL, metro_catalog, metro_entry, profile_for
 
 N_PATHS = 1000
 MONTHS = 36
@@ -66,7 +78,26 @@ PATCHABLE_LEVERS = frozenset(
 # (find_paths' `locked`), so every change-set it returns can be applied to the plan.
 LOCKED_LEVERS: tuple[str, ...] = ("price", "days_open_per_week")
 LOCKED_NOTE = (
-    "Price and days open are not part of the plan form yet, so the search did not move them (they are locked)."
+    "Price and days open are not part of the plan form yet, so the search did not move them (the server locks them)."
+)
+LOCKED_REASON = "not part of the v0.1 plan form yet, so the search does not move it (locked by the server, not by you)"
+OWNER_CASH_CAVEAT = (
+    "Extra owner cash counts only if you really have it: a lender checks it against bank statements. The cash-reserve "
+    "lever is funded by your own cash too."
+)
+OWNER_CASH_FOUNDER_NOTE = (
+    "Bound you set: the most extra cash of your own the search may add. A lender checks owner cash against bank "
+    "statements; the cash-reserve lever is funded by your own cash too."
+)
+# Plan figures of the path search (PlanAmounts) and the plan field "Apply this change" writes for each (None = a
+# figure computed from the others, shown but not written).
+PLAN_FIGURES: tuple[tuple[str, str, str, str | None], ...] = (
+    ("owner_equity", "Owner cash equity", "USD", "owner_equity"),
+    ("loan_amount", "Loan amount", "USD", "loan_amount"),
+    ("build_out_cost", "Build-out and equipment cost", "USD", "budget_total"),
+    ("cash_reserve_at_opening", "Cash reserve at opening", "USD", None),
+    ("loan_term_months", "Loan term", "months", "loan_term_months"),
+    ("site_label", "Site", "site", "selected_site_index"),
 )
 LIMITED_SUGGEST_MESSAGE = "limited mode: not enough data to suggest areas"
 LIMITED_DEMAND_MESSAGE = (
@@ -264,6 +295,9 @@ def run_feasibility(record: ProjectRecord, site_index: int) -> FeasibilityRespon
         )
     except (ValueError, TypeError) as error:
         raise InputError(f"the plan cannot be simulated: {error}") from error
+    result = result.model_copy(
+        update={"dscr_target": result.dscr_target.model_copy(update={"label": WEB_DSCR_TARGET_LABEL})}
+    )
     return FeasibilityResponse(
         project_id=record.id,
         project_version=record.version,
@@ -307,30 +341,69 @@ def candidates_for(record: ProjectRecord, site_index: int) -> tuple[list[Candida
     return candidates, skipped
 
 
+def changed_fields(record: ProjectRecord, change_set: ChangeSet, site_index: int) -> dict[str, float | int]:
+    """The plan fields that differ after the change-set (only those are written by "Apply this change")."""
+    applied = change_set.applied_plan
+    after: dict[str, float | int | None] = {
+        "owner_equity": applied.plan.owner_equity,
+        "loan_amount": applied.loan.amount,
+        "loan_term_months": applied.loan.term_months,
+        "budget_total": applied.plan.capex,
+        "selected_site_index": site_index,
+    }
+    before: dict[str, float | int | None] = {
+        "owner_equity": record.owner_equity,
+        "loan_amount": record.loan_amount,
+        "loan_term_months": record.loan_term_months,
+        "budget_total": record.budget_total,
+        "selected_site_index": record.selected_site_index,
+    }
+    return {field: value for field, value in after.items() if value is not None and value != before[field]}
+
+
 def apply_patch(record: ProjectRecord, change_set: ChangeSet) -> ApplyPatch:
-    """How the frontend applies a change-set: the plan fields to PUT and the site to re-run."""
+    """How the frontend applies a change-set: PUT the changed fields (marked as a plan change), re-run the site."""
     applied = change_set.applied_plan
     levers = {change.lever for change in change_set.changes}
     labels = [site.label for site in record.sites]
-    site_index = labels.index(applied.site_label) if applied.site_label in labels else 0
+    site_index = labels.index(applied.site_label) if applied.site_label in labels else record.selected_site_index
     unsupported = sorted(levers - PATCHABLE_LEVERS)
+    fields = changed_fields(record, change_set, site_index)
+    plan_change = None
+    if fields:
+        plan_change = PlanChangeIn(
+            engine_version=PATH_ENGINE_VERSION,
+            fields=sorted(fields),  # type: ignore[arg-type]  # the keys are PLAN_CHANGE_FIELDS by construction
+            evidence_needed=list(change_set.evidence_needed),
+        )
     return ApplyPatch(
-        supported=not unsupported,
+        supported=not unsupported and bool(fields),
         reason=(f"this change-set moves {', '.join(unsupported)}, which the plan form does not hold yet")
         if unsupported
-        else None,
+        else (None if fields else "the change-set leaves every plan field as it is"),
         site_index=site_index,
-        project_fields=ProjectMoneyPatch(
-            owner_equity=applied.plan.owner_equity,
-            loan_amount=applied.loan.amount,
-            loan_term_months=applied.loan.term_months,
-            budget_total=applied.plan.capex,
-        ),
+        project_fields=fields,
+        plan_change=plan_change,
     )
 
 
+def field_changes(before: PlanAmounts, after: PlanAmounts) -> list[FieldChange]:
+    """Every plan figure that differs between before and after, including the ones that balance a lever's move
+    (more owner cash also lowers the loan) and the computed cash reserve."""
+    changes = []
+    for name, label, unit, plan_field in PLAN_FIGURES:
+        old, new = getattr(before, name), getattr(after, name)
+        if old != new:
+            changes.append(
+                FieldChange(
+                    field=name, label=label, unit=unit, from_value=old, to_value=new, writes_plan=plan_field is not None
+                )
+            )
+    return changes
+
+
 def change_set_out(record: ProjectRecord, change_set: ChangeSet) -> ChangeSetOut:
-    """A change-set with its "apply this change" patch."""
+    """A change-set with every figure it changes and its "apply this change" patch."""
     return ChangeSetOut(
         rank=change_set.rank,
         changes=change_set.changes,
@@ -341,13 +414,60 @@ def change_set_out(record: ProjectRecord, change_set: ChangeSet) -> ChangeSetOut
         plan_before=change_set.plan_before,
         plan_after=change_set.plan_after,
         meets_target=change_set.meets_target,
+        program_rules_not_met=change_set.program_rules_not_met,
+        evidence_needed=change_set.evidence_needed,
+        field_changes=field_changes(change_set.plan_before, change_set.plan_after),
         explanation=change_set.explanation,
         unchanged=change_set.unchanged,
         apply=apply_patch(record, change_set),
     )
 
 
-def run_path_to_approval(record: ProjectRecord, site_index: int, targets: TargetsIn | None) -> PathResponse:
+def owner_cash_bounds(record: ProjectRecord, max_extra_owner_cash: float | None) -> dict[str, LeverBounds]:
+    """The founder's bound on extra owner cash, as the engine's lever bounds (empty = the engine's default)."""
+    if max_extra_owner_cash is None:
+        return {}
+    return {"owner_equity": LeverBounds(high=record.owner_equity + max_extra_owner_cash)}
+
+
+def owner_cash_bound(result: PathResult, given: float | None) -> OwnerCashBound | None:
+    """The owner-equity bound the search used (None when the owner-equity lever was not available)."""
+    lever = next((item for item in result.levers_considered if item.name == "owner_equity"), None)
+    if lever is None or lever.high is None or not isinstance(lever.current, int | float):
+        return None
+    current = float(lever.current)
+    return OwnerCashBound(
+        current=current,
+        high=float(lever.high),
+        extra=round(float(lever.high) - current, 2),
+        source="founder" if given is not None else "default",
+        note=OWNER_CASH_FOUNDER_NOTE if given is not None else default_owner_cash_note(),
+    )
+
+
+def default_owner_cash_note() -> str:
+    """The engine's default bound on owner cash in words, read from config/studio/levers.yaml."""
+    bounds = load_levers()["owner_equity"].default_bounds
+    if bounds is None or bounds.high.basis != "project_cost":
+        return f"Default bound from config/studio/levers.yaml (a DESIGN_CHOICE). {OWNER_CASH_CAVEAT}"
+    return (
+        f"Default bound: owner cash may grow by up to {bounds.high.value:.0%} of the project cost "
+        f"(config/studio/levers.yaml), a placeholder (DESIGN_CHOICE) for your own answer. {OWNER_CASH_CAVEAT}"
+    )
+
+
+def not_available_reasons(result: PathResult) -> dict[str, str]:
+    """The engine's reasons, with the server's own locks named as such (the founder locked nothing)."""
+    reasons = dict(result.levers_not_available)
+    for lever in LOCKED_LEVERS:
+        if lever in reasons and "locked" in reasons[lever]:
+            reasons[lever] = LOCKED_REASON
+    return reasons
+
+
+def run_path_to_approval(
+    record: ProjectRecord, site_index: int, targets: TargetsIn | None, max_extra_owner_cash: float | None = None
+) -> PathResponse:
     """S5 find_paths in QUICK mode for one site of the plan (the other sites are candidates)."""
     site = site_at(record, site_index)
     score = site_score_or_error(record, site)
@@ -366,6 +486,7 @@ def run_path_to_approval(record: ProjectRecord, site_index: int, targets: Target
             case,
             candidates,
             target_for(targets),
+            bounds=owner_cash_bounds(record, max_extra_owner_cash),
             settings=QUICK_SETTINGS.model_copy(update={"seed": record.seed}),
             locked=LOCKED_LEVERS,
             fabric=entry.context.fabric,
@@ -389,7 +510,8 @@ def run_path_to_approval(record: ProjectRecord, site_index: int, targets: Target
         change_sets=[change_set_out(record, item) for item in result.change_sets],
         closest=change_set_out(record, result.closest) if result.closest is not None else None,
         levers_considered=result.levers_considered,
-        levers_not_available=result.levers_not_available,
+        levers_not_available=not_available_reasons(result),
+        owner_cash_bound=owner_cash_bound(result, max_extra_owner_cash),
         skipped_candidates=skipped,
         notes=[*result.notes, LOCKED_NOTE],
         settings=result.settings,

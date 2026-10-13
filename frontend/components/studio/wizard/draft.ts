@@ -5,10 +5,13 @@
  * Money fields are kept as the strings the founder typed and parsed only when checked, so an input never jumps
  * while someone is typing. The checks use the limits the server publishes in GET /api/studio/options (sites per
  * plan, idea length, loan term, rate) and the simulator's one hard rule: the founder's cash plus the loan must cover
- * the build-out budget, or the plan would open with negative cash. The server checks everything again.
+ * the build-out budget (or, when the budget is left empty, the business type's assumed build-out from the options:
+ * the figure the simulation will use), or the plan would open with negative cash. The server checks everything
+ * again.
  */
 
 import type { MetroOption, ProjectInput, SiteInput, StudioLimits } from "@/lib/studio-types";
+import { formatUsd } from "@/lib/format";
 
 /** Used until the server's limits arrive (the same values as schemas_studio.Limits). */
 export const DEFAULT_LIMITS: StudioLimits = {
@@ -83,7 +86,7 @@ export function parseAmount(value: string): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
-function checkMoney(draft: Draft, limits: StudioLimits): StepErrors {
+function checkMoney(draft: Draft, limits: StudioLimits, assumedBuildOut: number | null): StepErrors {
   const errors: StepErrors = {};
   const budget = parseAmount(draft.budgetTotal);
   const equity = parseAmount(draft.ownerEquity);
@@ -112,6 +115,9 @@ function checkMoney(draft: Draft, limits: StudioLimits): StepErrors {
     errors.loanAmount =
       "Your own cash plus the loan must cover the build-out budget; otherwise the plan opens with negative cash.";
   }
+  if (draft.budgetTotal.trim() === "" && assumedBuildOut !== null && equity !== null && loan !== null && equity + loan < assumedBuildOut) {
+    errors.loanAmount = `With the budget left empty, the simulation assumes a build-out of ${formatUsd(assumedBuildOut)}; your own cash plus the loan must cover it. Raise them, or type your own budget.`;
+  }
   return errors;
 }
 
@@ -134,8 +140,16 @@ function checkSites(draft: Draft, limits: StudioLimits): StepErrors {
   return errors;
 }
 
-/** The problems that stop the founder from leaving a step (empty when the step is complete). */
-export function checkStep(step: StepId, draft: Draft, limits: StudioLimits = DEFAULT_LIMITS): StepErrors {
+/**
+ * The problems that stop the founder from leaving a step (empty when the step is complete). assumedBuildOut: the
+ * chosen business type's build_out_assumed from the options (null when unknown).
+ */
+export function checkStep(
+  step: StepId,
+  draft: Draft,
+  limits: StudioLimits = DEFAULT_LIMITS,
+  assumedBuildOut: number | null = null,
+): StepErrors {
   switch (step) {
     case "city":
       return draft.metroId ? {} : { metroId: "Pick a city." };
@@ -147,7 +161,7 @@ export function checkStep(step: StepId, draft: Draft, limits: StudioLimits = DEF
       }
       return draft.idea.length > limits.idea_text_max_chars ? { idea: `Keep it under ${limits.idea_text_max_chars} characters.` } : {};
     case "money":
-      return checkMoney(draft, limits);
+      return checkMoney(draft, limits, assumedBuildOut);
     case "sites":
       return checkSites(draft, limits);
     case "review":

@@ -196,7 +196,7 @@ def render_debt_schedule(writer: DocumentWriter, case: CreditCase) -> DebtSchedu
     page, name, _ = statement_title(
         writer, case, "debt_schedule", "Schedule of Business Debt as of", case.application_date
     )
-    note(page, "SYNTHETIC schedule prepared by the applicant")
+    note(page, "SYNTHETIC schedule prepared by the applicant; lender names are fictional")
     page.skip(6)
     result = DebtSchedule(doc_id=writer.doc_id, business_name=name)
     loans = case.loans()

@@ -45,6 +45,17 @@ export function formatNumber(value: number | null | undefined, digits = 0): stri
 }
 
 /**
+ * An estimate rounded to what it can carry: whole units from 10 up ("204", "3,965"), one decimal below 10 ("4.2").
+ * For model estimates such as demand per day, where "204.2 turns/day" would claim precision the model does not have.
+ */
+export function formatEstimate(value: number | null | undefined): string {
+  if (!isNumber(value)) {
+    return NOT_AVAILABLE;
+  }
+  return formatNumber(value, Math.abs(value) >= 10 ? 0 : 1);
+}
+
+/**
  * A share (0-1) as a percent: 0.674 -> "67.4%". `digits` decimals (default 1). Probabilities from the simulator are
  * shares of simulated paths, so one decimal shows the value as computed (1,000 paths -> steps of 0.1%).
  */

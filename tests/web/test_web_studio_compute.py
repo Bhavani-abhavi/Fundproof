@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 from web_helpers import csrf_headers, dev_login
 
+from uwcopilot.studio.data.errors import HostUnreachable
 from uwcopilot.studio.data.fabric_snapshot import SnapshotFabric
 from uwcopilot.studio.metros import load_metro
 from uwcopilot.studio.siteiq.context import MetroContext
@@ -115,22 +116,26 @@ def test_feasibility_headline_matches_the_result(studio: TestClient) -> None:
     assert all(item["status"] and item["source"] for item in result["distributions"])
 
 
-def test_feasibility_is_deterministic_per_plan_version(studio: TestClient) -> None:
+def test_feasibility_is_deterministic_and_every_version_shares_the_seed(studio: TestClient) -> None:
     project = create(studio)
     path = f"/api/studio/projects/{project['id']}/feasibility"
     first = post(studio, path, {"site_index": 1}).json()
     studio.app.state.services.compute.forget(("studio",))
     again = post(studio, path, {"site_index": 1}).json()
-    assert again == first
+    assert again == first and first["seed"] == project["seed"]
     studio.put(f"/api/studio/projects/{project['id']}", json={"name": "renamed"}, headers=csrf_headers(studio))
     changed = post(studio, path, {"site_index": 1}).json()
-    assert changed["project_version"] == 2 and changed["seed"] != first["seed"]
+    # Common random numbers: a new version is simulated on the same futures, so a change that does not touch the
+    # numbers gives the same result.
+    assert changed["project_version"] == 2 and changed["seed"] == first["seed"]
+    assert changed["result"] == first["result"]
 
 
 def test_feasibility_errors_are_explained(studio: TestClient) -> None:
-    project = create(studio, budget_total=None, owner_equity=1_000.0, loan_amount=1_000.0)
-    response = post(studio, f"/api/studio/projects/{project['id']}/feasibility", {"site_index": 0})
-    assert response.status_code == 422 and "cannot be simulated" in response.json()["detail"]
+    # Too little money for the assumed build-out is refused when the plan is saved, with the amount named.
+    short = plan_body(budget_total=None, owner_equity=1_000.0, loan_amount=1_000.0)
+    response = studio.post("/api/studio/projects", json=short, headers=csrf_headers(studio))
+    assert response.status_code == 422 and "must cover" in response.json()["detail"]
     two_sites = create(studio, sites=suggested_sites(2))
     response = post(studio, f"/api/studio/projects/{two_sites['id']}/feasibility", {"site_index": 2})
     assert response.status_code == 422 and "site_index" in response.json()["detail"]
@@ -149,10 +154,31 @@ def test_path_to_approval_quick_mode(studio: TestClient) -> None:
     assert "not an approval" in body["guardrail_note"] and body["guardrails"]
     assert len(body["change_sets"]) <= 3 and body["before"]["label"] == SIMULATED
     assert body["settings"]["seed"] == post(studio, f"/api/studio/projects/{project['id']}/feasibility").json()["seed"]
+    assert body["owner_cash_bound"]["source"] == "default" and body["owner_cash_bound"]["extra"] > 0
+    for lever in studio_runs.LOCKED_LEVERS:
+        assert body["levers_not_available"][lever] == studio_runs.LOCKED_REASON
+    fields = {"owner_equity", "loan_amount", "loan_term_months", "budget_total", "selected_site_index"}
     for change_set in body["change_sets"] + ([body["closest"]] if body["closest"] else []):
         apply = change_set["apply"]
         assert 0 <= apply["site_index"] < 3
-        assert set(apply["project_fields"]) == {"owner_equity", "loan_amount", "loan_term_months", "budget_total"}
+        assert set(apply["project_fields"]) <= fields and apply["project_fields"]
+        assert apply["plan_change"]["fields"] == sorted(apply["project_fields"])
+        assert apply["plan_change"]["evidence_needed"] == change_set["evidence_needed"]
+        assert {item["field"] for item in change_set["field_changes"]} >= {"cash_reserve_at_opening"} or all(
+            item["field"] != "cash_reserve_at_opening" for item in change_set["field_changes"]
+        )
+        assert isinstance(change_set["program_rules_not_met"], list)
+
+
+def test_the_founder_can_bound_the_extra_owner_cash(studio: TestClient) -> None:
+    project = create(studio)
+    path = f"/api/studio/projects/{project['id']}/path-to-approval"
+    body = post(studio, path, {"site_index": 0, "max_extra_owner_cash": 5_000.0}).json()
+    bound = body["owner_cash_bound"]
+    assert bound["source"] == "founder" and bound["extra"] == 5_000.0 and bound["high"] == 155_000.0
+    for change_set in body["change_sets"] + ([body["closest"]] if body["closest"] else []):
+        assert change_set["plan_after"]["owner_equity"] <= 155_000.0
+    assert post(studio, path, {"site_index": 0, "max_extra_owner_cash": -1}).status_code == 422
 
 
 def test_path_to_approval_accepts_edited_targets(studio: TestClient) -> None:
@@ -186,16 +212,57 @@ def test_change_sets_can_be_applied_to_the_plan(studio: TestClient, monkeypatch:
         apply, after = change_set["apply"], change_set["plan_after"]
         assert apply["supported"] is True and apply["reason"] is None
         fields = apply["project_fields"]
-        assert fields["owner_equity"] == after["owner_equity"] and fields["loan_amount"] == after["loan_amount"]
-        assert fields["loan_term_months"] == after["loan_term_months"]
+        # Only the fields that change are written, each equal to the changed plan.
+        expected = {
+            "owner_equity": after["owner_equity"],
+            "loan_amount": after["loan_amount"],
+            "loan_term_months": after["loan_term_months"],
+            "budget_total": after["build_out_cost"],
+            "selected_site_index": labels.index(after["site_label"]),
+        }
+        assert fields and all(fields[name] == expected[name] for name in fields)
+        changed = {item["field"] for item in change_set["field_changes"]}
         assert labels[apply["site_index"]] == after["site_label"]
-    first = body["change_sets"][0]["apply"]
-    response = studio.put(
-        f"/api/studio/projects/{project['id']}", json=first["project_fields"], headers=csrf_headers(studio)
-    )
-    assert response.status_code == 200 and response.json()["version"] == 2
+        # The card lists every figure "Apply" writes (more owner cash also lowers the loan, for example).
+        figure_of = {"budget_total": "build_out_cost", "selected_site_index": "site_label"}
+        assert {figure_of.get(name, name) for name in fields} <= changed
+        if "owner_equity" in levers:
+            assert {"owner_equity", "loan_amount"} <= changed
+    chosen = body["change_sets"][0]
+    first = chosen["apply"]
+    put_body = {"version": 1, **first["project_fields"], "plan_change": first["plan_change"]}
+    response = studio.put(f"/api/studio/projects/{project['id']}", json=put_body, headers=csrf_headers(studio))
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["version"] == 2 and updated["seed"] == project["seed"]
+    assert updated["selected_site_index"] == first["site_index"]
+    money = updated["money"]
+    status_of = {
+        "owner_equity": money["owner_equity_status"],
+        "loan_amount": money["loan_amount_status"],
+        "loan_term_months": money["loan_term_status"],
+        "budget_total": money["budget_status"],
+        "selected_site_index": updated["selected_site_status"],
+    }
+    for name in first["project_fields"]:
+        assert status_of[name] == "PLAN_CHANGE"  # never shown as typed by the founder
+        assert money["plan_changes"][name]["evidence_needed"] == chosen["evidence_needed"]
+    # The same seed for every version: the applied plan reproduces exactly what the card promised.
     rerun = post(studio, f"/api/studio/projects/{project['id']}/feasibility", {"site_index": first["site_index"]})
     assert rerun.status_code == 200 and rerun.json()["project_version"] == 2
+    headline, after = rerun.json()["headline"], chosen["after"]
+    assert headline["p_dscr_year2_at_least_target"] == after["p_dscr_at_least_target_year2"]
+    assert headline["p_stressed_dscr_year2_at_least_min"] == after["p_stressed_dscr_at_least_min_year2"]
+    again = post(studio, path, {"site_index": first["site_index"], "targets": targets}).json()
+    assert again["before"]["meets_target"] is True and again["status"] == "already_meets_target"
+    # Typing a field again makes it the founder's own figure.
+    retyped = studio.put(
+        f"/api/studio/projects/{project['id']}",
+        json={"loan_term_months": updated["money"]["loan_term_months"]},
+        headers=csrf_headers(studio),
+    ).json()
+    assert retyped["money"]["loan_term_status"] == "USER_STATED"
+    assert "loan_term_months" not in retyped["money"]["plan_changes"]
 
 
 # --- area suggestions and tracts ---
@@ -234,8 +301,10 @@ def without_snapshots(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
     monkeypatch.setattr(studio_options, "metro_context", no_snapshot_context)
     studio_options.metro_catalog.cache_clear()
+    studio_options.studio_options.cache_clear()
     yield
     studio_options.metro_catalog.cache_clear()
+    studio_options.studio_options.cache_clear()
 
 
 def test_a_real_metro_in_limited_mode_says_so(studio: TestClient, without_snapshots: None) -> None:
@@ -258,6 +327,28 @@ def test_a_real_metro_in_limited_mode_says_so(studio: TestClient, without_snapsh
     assert response.status_code == 409
     layer = studio.get("/api/studio/metros/houston_tx/tracts.geojson").json()
     assert layer["features"] == [] and layer["metadata"]["mode"] == "limited" and layer["metadata"]["note"]
+    # The city picker says up front that the simulation cannot run here (not only after six steps).
+    metros = {item["id"]: item for item in studio.get("/api/studio/options").json()["metros"]}
+    houston = metros["houston_tx"]
+    assert houston["simulation_available"] is False and "simulation" in houston["coverage_note"]
+    assert metros[SYNTHETIC_METRO]["simulation_available"] is True
+
+
+class OfflineGeocoder:
+    """A geocoder whose host cannot be reached."""
+
+    def geocode(self, address: str) -> Any:
+        raise HostUnreachable("geocoding.geo.census.gov", "test: no network")
+
+
+def test_geocoder_down_message_offers_a_pin_only_where_there_is_a_map(
+    studio: TestClient, without_snapshots: None
+) -> None:
+    studio.app.state.services.geocoding.geocoder = OfflineGeocoder()
+    body = plan_body(metro_id="houston_tx", sites=[{"label": "Main", "address": "1 Test Street (SYNTHETIC)"}])
+    response = studio.post("/api/studio/projects", json=body, headers=csrf_headers(studio))
+    assert response.status_code == 503 and "Census Geocoder" in response.json()["detail"]
+    assert "pin" not in response.json()["detail"]  # this metro has no map here
 
 
 def test_suggest_needs_a_known_metro_and_type(studio: TestClient) -> None:

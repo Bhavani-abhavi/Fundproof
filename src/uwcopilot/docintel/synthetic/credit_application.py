@@ -92,22 +92,30 @@ def average_daily_balance(statements: list[Statement]) -> float:
 
 
 def average_monthly(statements: list[Statement], category: str) -> float:
-    """Sum of one withdrawal category over the statements, divided by the number of statements.
+    """Sum of one withdrawal category, divided by the number of statement months with at least one such row
+    (NBC-4.1 "observed monthly total"; 0.0 when no month has one).
 
     The sum is accumulated statement by statement, in the same order as docintel/deposits.py, so the rounded
     result is identical to the cent.
     """
-    if not statements:
-        return 0.0
     total = 0.0
+    months = 0
     for item in statements:
-        total += sum(row.amount for row in item.rows if row.kind == "W" and row.category == category)
-    return round(total / len(statements), 2)
+        amount = sum(row.amount for row in item.rows if row.kind == "W" and row.category == category)
+        if amount:
+            total += amount
+            months += 1
+    return round(total / months, 2) if months else 0.0
+
+
+def last_period_end(statements: list[Statement]) -> date:
+    """The end of the most recent statement period present (the as-of date of the NBC-4.4 stacking window)."""
+    return max(item.period_end for item in statements)
 
 
 def new_loans(statements: list[Statement], as_of: date) -> int:
-    """Loan-proceeds deposits posted in the 90 days up to and including as_of."""
-    earliest = as_of - timedelta(days=NEW_LOAN_DAYS)
+    """Loan-proceeds deposits posted in the 90 days ending on as_of (as_of - 89 days through as_of)."""
+    earliest = as_of - timedelta(days=NEW_LOAN_DAYS - 1)
     return sum(
         1
         for item in statements
@@ -117,14 +125,18 @@ def new_loans(statements: list[Statement], as_of: date) -> int:
 
 
 def schedule_totals(case: CreditCase) -> tuple[float, float, float]:
-    """(non-refinanced monthly payment, refinanced monthly payment, total balance) printed on the debt schedule."""
+    """(monthly payment of every row, refinanced monthly payment, total balance) printed on the debt schedule.
+
+    The first figure includes the rows marked to be refinanced: agent.credit_calculations.existing_annual_debt_service
+    subtracts refinanced_monthly_payment itself, and only when a payoff letter is in the file (NBC-4.4).
+    """
     if "debt_schedule" in case.missing_documents:
         return 0.0, 0.0, 0.0
     loans = case.loans()
-    kept = round(sum(debt.scheduled_payment for debt in loans if not debt.to_be_refinanced), 2)
+    every_row = round(sum(debt.scheduled_payment for debt in loans), 2)
     refinanced = round(sum(debt.scheduled_payment for debt in loans if debt.to_be_refinanced), 2)
     balance = round(sum(debt.balance for debt in loans), 2)
-    return kept, refinanced, balance
+    return every_row, refinanced, balance
 
 
 def documents_provided(case: CreditCase) -> list[str]:
@@ -224,7 +236,7 @@ def application_as_documented(case: CreditCase) -> dict:
         "stated_annual_revenue": round(case.stated_revenue, 2),
         "bank_statements": statement_summary(case),
         "debt": debt_inputs(case),
-        "new_loans_last_90_days": new_loans(present, case.application_date),
+        "new_loans_last_90_days": new_loans(present, last_period_end(present)),
         "tax_lien_unresolved": case.tax_lien,
         "largest_customer_revenue_pct": case.largest_customer_pct,
         "collateral": [

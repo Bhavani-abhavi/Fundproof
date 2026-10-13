@@ -12,7 +12,10 @@ build_contradictions(extraction, checks) turns every issue of a failing check in
   of documents, or the printed total; the rest is the other side). One-sided issues (an owner missing from one
   document, embedded instructions) have an empty second side. supporting holds evidence that is on neither side
   but was used to explain (deposit rows, the P&L, the tax returns, the cover email).
-- explanation, explanation_code, explanation_detail: from contradiction_rules.explain (deterministic; no LLM).
+- explanation, explanation_code, explanation_detail: from contradiction_rules.explain (deterministic; no LLM),
+  then reviewed by contradiction_ocr.review: a disagreement that an OCR misread may explain (a low-confidence OCR
+  value on a side, a loss run read by OCR said to miss a claim, an OCR owners table that does not add up) becomes
+  unknown / possible_ocr_misread and its severity drops one level.
 
 The contradiction graph is a networkx MultiDiGraph. Nodes (attribute "kind"):
 - entity: "business", "owner:O1", "location:L1", "carrier:<carrier name, casefolded>";
@@ -34,6 +37,7 @@ import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field
 
 from uwcopilot.docintel.check_models import CheckIssue, CheckResult, Evidence, Severity, unique_evidence
+from uwcopilot.docintel.contradiction_ocr import review
 from uwcopilot.docintel.contradiction_rules import Explanation, explain
 from uwcopilot.docintel.schemas import PacketExtraction
 
@@ -124,11 +128,12 @@ def make_contradiction(
 ) -> Contradiction:
     """One contradiction from one failing check issue."""
     verdict = explain(result.check_id, issue, extraction)
+    verdict, severity = review(result.check_id, issue, verdict, result.severity, extraction)
     sides = issue.side_a + issue.side_b
     return Contradiction(
         contradiction_id=f"CT-{number:02d}",
         type=CONTRADICTION_TYPE_BY_CHECK[result.check_id],
-        severity=result.severity,
+        severity=severity,
         check_id=result.check_id,
         issue=issue.issue,
         entity=issue.entity,

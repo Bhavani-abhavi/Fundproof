@@ -5,25 +5,41 @@ reads what a careful reader of the documents would conclude):
 - application_id "APP-C-<nnn>" from the packet id "PKT-C-<nnn>"; form fields from the loan application;
 - bank_statements: the account number printed on the statements; one MonthlyDeposits per statement present, oldest
   first, by the keyword rules of docintel/deposits.py; NSF events (last 6 months), negative closing balances (last
-  12 months) and the average daily balance (last 3 months) with the same module; cash_intensive_approved False;
-- debt: EBITDA and revenue from the P&L; existing_monthly_payment_schedule / refinanced_monthly_payment = the debt
-  schedule's monthly payments of the rows not marked / marked "to be refinanced"; existing_total_debt_balance = the
-  schedule's printed total balance (the sum of the rows when the total is not printed); all 0 when the packet has
-  no debt schedule or it lists no debt; observed loan payments and MCA remittances = deposits.py monthly averages;
-- new_loans_last_90_days: deposits.new_loans_last_90_days up to the application date;
+  12 months) and the average daily balance (last 3 months) with the same module; cash_intensive_approved False.
+  A month whose deposit rows do not add up to the printed "Total deposits" (more than $1.00 apart: rows OCR could
+  not read, or a total that is itself wrong) keeps the rows' figures but its path is listed in unknowns;
+- debt: EBITDA and revenue from the P&L; existing_monthly_payment_schedule = the debt schedule's monthly payments of
+  EVERY row (the agent's existing_annual_debt_service subtracts refinanced_monthly_payment itself, and only when a
+  payoff letter is in the file, NBC-4.4); refinanced_monthly_payment = the payments of the rows marked "to be
+  refinanced"; existing_total_debt_balance = the schedule's printed total balance (the sum of the rows when the
+  total is not printed); all 0 when the schedule lists no debt; observed loan payments and MCA remittances =
+  deposits.py averages over the months with a payment (NBC-4.1 "observed monthly total");
+- new_loans_last_90_days: deposits.new_loans_last_90_days over the 90 days ending on the last statement period end
+  (NBC-4.4 "the most recent 90 days of statements");
 - collateral: one item per collateral valuation; owners: the application's owners table (O1, O2, ...) with the
   credit score and bankruptcy flag of the credit-report row with the same (canonical) name, for persons only;
 - documents_provided: the checklist codes of checks_credit.documents_provided (or, when check results are passed,
   the required_documents check's values["provided"]), in the agent's CREDIT_DOCUMENTS order;
 - notes: the Remarks text ("" when there is none); ground_truth None.
+
+Nothing is filled in silently (NBC-8.1 and the repo rules). Where the agent's model has no room for None (the
+DebtServiceInputs amounts, is_control_person, bankruptcy_within_7_years), the default is written AND the path is
+listed in unknowns, so a reviewer and the agent see that it was not read:
+- no debt schedule in the packet: the three schedule figures are 0.0 and listed; a schedule row whose monthly
+  payment or balance (when no total is printed) was not read, or whose "to be refinanced" flag was not read, lists
+  the figure it feeds;
+- a person principal (20% or more, the control person, or a percentage that was not read) without a matching
+  credit-report row (no report, or a name OCR misread): credit_score None and bankruptcy False, both listed;
+- an owner whose control-person cell was not read: False, listed.
 """
 
 from uwcopilot.agent.applications import CREDIT_DOCUMENTS
+from uwcopilot.agent.policy_credit import PRINCIPAL_OWNERSHIP_PCT
 from uwcopilot.docintel import deposits
 from uwcopilot.docintel.check_models import CheckResult
 from uwcopilot.docintel.checks_credit import documents_provided as credit_documents_provided
 from uwcopilot.docintel.normalize import canonical_name
-from uwcopilot.docintel.schemas import Cited, LoanApplicationForm, LoanPacket
+from uwcopilot.docintel.schemas import Cited, ExtractedOwner, LoanApplicationForm, LoanPacket
 from uwcopilot.docintel.to_application_common import (
     CENTS,
     ApplicationBuilder,
@@ -49,6 +65,15 @@ def account_number(statements: list, builder: ApplicationBuilder) -> str | None:
     return None
 
 
+def rows_disagree_with_total(statement, month: dict) -> bool:
+    """True when the statement has no deposit row, or its deposit rows and printed total are more than $1.00 apart."""
+    has_rows = any(row.kind == "deposit" for row in deposits.classify_rows(statement))
+    if not has_rows:
+        return True
+    printed = statement.total_deposits.value
+    return printed is not None and abs(float(printed) - float(month["total_deposits"])) > TOTAL_TOLERANCE_USD
+
+
 def bank_statements(packet: LoanPacket, builder: ApplicationBuilder) -> dict:
     """The BankStatementSummary dict (see the module docstring)."""
     ordered = deposits.sorted_by_month(packet.statements)
@@ -56,6 +81,8 @@ def bank_statements(packet: LoanPacket, builder: ApplicationBuilder) -> dict:
     for index, statement in enumerate(ordered):
         months.append(deposits.monthly_deposits(statement))
         builder.computed(f"bank_statements.months[{index}]", months[-1], [statement.period_start])
+        if rows_disagree_with_total(statement, months[-1]):
+            builder.unknowns.append(f"bank_statements.months[{index}]")
     sources = statement_sources(ordered)
     known = bool(ordered)
     nsf = deposits.nsf_events(ordered) if known else None
@@ -75,28 +102,52 @@ def bank_statements(packet: LoanPacket, builder: ApplicationBuilder) -> dict:
     }
 
 
+SCHEDULE_PATHS: tuple[str, ...] = (
+    "debt.existing_monthly_payment_schedule",
+    "debt.refinanced_monthly_payment",
+    "debt.existing_total_debt_balance",
+)
+TOTAL_TOLERANCE_USD = 1.00  # NBC-9.1: printed totals and rows may differ by up to $1.00
+
+
+def add_unknown(builder: ApplicationBuilder, path: str) -> None:
+    """List a path in unknowns once."""
+    if path not in builder.unknowns:
+        builder.unknowns.append(path)
+
+
 def schedule_figures(packet: LoanPacket, builder: ApplicationBuilder) -> tuple[float, float, float]:
-    """(kept monthly payment, refinanced monthly payment, total balance) from the debt schedule (0s when absent)."""
+    """(monthly payment of every row, refinanced monthly payment, total balance) from the debt schedule.
+
+    0s when the packet has no debt schedule, then listed in unknowns (module docstring).
+    """
     schedule = packet.debt_schedule
     if schedule is None:
+        for path in SCHEDULE_PATHS:
+            add_unknown(builder, path)
         return 0.0, 0.0, 0.0
-    kept = 0.0
+    every_row = 0.0
     refinanced = 0.0
     item_balance = 0.0
     payments = []
     for item in schedule.items:
+        if not item.monthly_payment.found:
+            add_unknown(builder, "debt.existing_monthly_payment_schedule")
+        if not item.to_be_refinanced.found:
+            add_unknown(builder, "debt.refinanced_monthly_payment")
+        if not item.balance.found and not schedule.total_balance.found:
+            add_unknown(builder, "debt.existing_total_debt_balance")
         payment = float(item.monthly_payment.value or 0.0)
         payments.append(item.monthly_payment)
         item_balance += float(item.balance.value or 0.0)
+        every_row += payment
         if item.to_be_refinanced.value is True:
             refinanced += payment
-        else:
-            kept += payment
     total = schedule.total_balance.value if schedule.total_balance.found else item_balance
-    builder.computed("debt.existing_monthly_payment_schedule", round(kept, CENTS), payments)
+    builder.computed("debt.existing_monthly_payment_schedule", round(every_row, CENTS), payments)
     builder.computed("debt.refinanced_monthly_payment", round(refinanced, CENTS), payments)
     builder.computed("debt.existing_total_debt_balance", round(float(total), CENTS), [schedule.total_balance])
-    return round(kept, CENTS), round(refinanced, CENTS), round(float(total), CENTS)
+    return round(every_row, CENTS), round(refinanced, CENTS), round(float(total), CENTS)
 
 
 def debt_inputs(packet: LoanPacket, builder: ApplicationBuilder) -> dict:
@@ -121,8 +172,15 @@ def debt_inputs(packet: LoanPacket, builder: ApplicationBuilder) -> dict:
     }
 
 
+def is_principal(owner: ExtractedOwner) -> bool:
+    """NBC-1.2 principal: 20% or more, or the control person; True too when the percentage was not read."""
+    if owner.is_control_person.value is True:
+        return True
+    return owner.ownership_pct.value is None or float(owner.ownership_pct.value) >= PRINCIPAL_OWNERSHIP_PCT
+
+
 def credit_owners(packet: LoanPacket, form: LoanApplicationForm, builder: ApplicationBuilder) -> list[dict]:
-    """The application's owners with the credit report's score and bankruptcy flag for persons."""
+    """The application's owners with the credit report's score and bankruptcy flag for persons (module docstring)."""
     report = {}
     if packet.credit_report is not None:
         for entry in packet.credit_report.entries:
@@ -138,13 +196,18 @@ def credit_owners(packet: LoanPacket, form: LoanApplicationForm, builder: Applic
         if entry is not None:
             score = builder.value(f"{path}.credit_score", entry.credit_score)
             bankruptcy = bool(builder.value(f"{path}.bankruptcy_within_7_years", entry.bankruptcy_within_7_years))
+        elif entity_type != "organization" and is_principal(owner):
+            add_unknown(builder, f"{path}.credit_score")
+            add_unknown(builder, f"{path}.bankruptcy_within_7_years")
+        if not owner.is_control_person.found:
+            add_unknown(builder, f"{path}.is_control_person")
         owners.append(
             {
                 "owner_id": f"O{index}",
                 "name": builder.value(f"{path}.name", owner.name),
                 "entity_type": entity_type,
                 "ownership_pct": builder.value(f"{path}.ownership_pct", owner.ownership_pct),
-                "country": owner.country.value,
+                "country": builder.value(f"{path}.country", owner.country),
                 "is_control_person": owner.is_control_person.value is True,
                 "credit_score": score,
                 "bankruptcy_within_7_years": bankruptcy,
@@ -176,7 +239,6 @@ def credit_application(
     form = packet.application or LoanApplicationForm(doc_id="")
     if packet.application is None:
         builder.unknowns.append("application_form")
-    application_date = form.application_date.value
     collateral = []
     for index, item in enumerate(packet.collateral):
         collateral.append(
@@ -186,8 +248,9 @@ def credit_application(
             }
         )
     new_loans = None
-    if application_date is not None:
-        new_loans = deposits.new_loans_last_90_days(packet.statements, application_date)
+    as_of = deposits.last_period_end(packet.statements)
+    if as_of is not None:
+        new_loans = deposits.new_loans_last_90_days(packet.statements, as_of)
     application = {
         "application_id": application_id(packet.packet_id),
         "data_label": "SYNTHETIC",
