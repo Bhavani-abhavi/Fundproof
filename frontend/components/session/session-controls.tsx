@@ -99,8 +99,9 @@ export function SessionControls({
   const name = me.display_name || me.username || "Signed in";
 
   if (compact) {
+    // Stacked so the role and the DEV mark both fit next to the product name at 375 px.
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-col items-end gap-0.5">
         {role ? <RoleBadge role={role} /> : null}
         {me.auth_mode === "dev" ? <DevBadge /> : null}
       </div>

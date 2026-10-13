@@ -196,6 +196,15 @@ def mean_confidence(lines: list[Line]) -> float:
     return sum(confidences) / len(confidences) if confidences else 0.0
 
 
+def confident_characters(lines: list[Line]) -> float:
+    """Sum over words of confidence x number of letters and digits: the expected count of correctly read characters."""
+    total = 0.0
+    for line in lines:
+        for word in line.words:
+            total += word.conf * sum(1 for character in word.text if character.isalnum())
+    return total
+
+
 def ocr_page(pdf_path: Path, page_number: int, width: float, height: float) -> PageText:
     """OCR one packet page (see the module docstring) and keep the better page segmentation mode."""
     image, angle = deskew(render_page_image(pdf_path, page_number))
@@ -205,12 +214,12 @@ def ocr_page(pdf_path: Path, page_number: int, width: float, height: float) -> P
         outputs = run_tesseract_modes(image_path)
     best_lines: list[Line] = []
     best_mode = PSM_MODES[0]
-    best_conf = -1.0
+    best_score = -1.0
     for mode in PSM_MODES:
         lines = parse_tsv(outputs.get(mode, ""))
-        conf = mean_confidence(lines)
-        if conf > best_conf:
-            best_lines, best_mode, best_conf = lines, mode, conf
+        score = confident_characters(lines)
+        if score > best_score:
+            best_lines, best_mode, best_score = lines, mode, score
     return PageText(
         page_number=page_number,
         width=width,
@@ -219,6 +228,6 @@ def ocr_page(pdf_path: Path, page_number: int, width: float, height: float) -> P
         lines=best_lines,
         char_count=sum(len(line.text) for line in best_lines),
         ocr_psm=best_mode,
-        ocr_mean_confidence=round(max(best_conf, 0.0), 4),
+        ocr_mean_confidence=round(mean_confidence(best_lines), 4),
         deskew_degrees=angle,
     )
