@@ -25,14 +25,16 @@ Requires Node 22 and npm 10 (checked here: Node v22.22.0, npm 10.9.4).
 | `make web-install` | `npm ci`: installs the exact versions in `frontend/package-lock.json`. |
 | `make web-build` | `next build`: static export to `frontend/out/`. |
 | `make web-serve` | (backend target) FastAPI on http://127.0.0.1:7860 serving the API and `frontend/out/`. |
-| `make web-dev` | FastAPI with `UWC_DEV_AUTH=1` on :8000 plus `next dev` on http://localhost:3000. `next dev` proxies `/api/*` to :8000, so cookies and CSRF behave as in production. |
+| `make web-dev` | FastAPI with `UWC_DEV_AUTH=1` on :8000 plus `next dev` on http://localhost:3000. `next dev` proxies `/api/*` to :8000, so cookies and CSRF behave as in production. Both listen on 127.0.0.1 only (`next dev --hostname 127.0.0.1`): the DEV LOGIN lets anyone pick any role, so it must not be reachable from the local network. |
 | `make web-lint` | ESLint (`--max-warnings=0`), TypeScript (`next typegen && tsc --noEmit`), and the contrast check. |
 | `make web-test` | `pytest tests/web` (backend) and `make web-lint`. |
 | `make web-screenshots` | Playwright screenshots of `frontend/out/` (see section 8). Add `LIVE_URL=http://127.0.0.1:8000` to also drive a running dev server through DEV LOGIN. |
 
 Inside `frontend/` the same steps are `npm run build`, `npm run lint`, `npm run typecheck`,
-`npm run check:contrast`, `npm run dev`. Next.js telemetry is switched off in every script
-(`NEXT_TELEMETRY_DISABLED=1`).
+`npm run check:contrast`, `npm run dev`. `build`, `dev` and `typecheck` run Next.js through
+`scripts/run-next.mjs`, which switches telemetry off (`NEXT_TELEMETRY_DISABLED=1`) and does not pass
+secret-looking environment variables (names containing KEY, TOKEN, SECRET, ...; see the script) to Next.js:
+Turbopack keeps a snapshot of its environment in `.next/cache`, and the data-API keys have no business there.
 
 **Static preview without the API**: `cd frontend/out && python -m http.server 4173`, then open
 http://127.0.0.1:4173/. Every `/api/*` request gets the file server's HTML 404, and the pages show a friendly
@@ -92,8 +94,10 @@ component in `components/`.
 | File | Purpose |
 |---|---|
 | `config.ts` | `PRODUCT_NAME` (rename the product here and in `src/uwcopilot/web/settings.py`), `TAGLINE`, `DISCLAIMER`, `REPO_URL`, `OWNERS`, `HF_LOGIN_PATH`. The server's `/api/config` values win at runtime. |
-| `api.ts` | Typed fetch wrapper. Same-origin `/api`, `credentials: "include"`, `X-CSRF-Token` on every non-GET (token from `GET /api/auth/csrf`, cached, refreshed once on a 403). Throws `ApiError` with `kind: "offline" \| "http"` and `status`. Types for health, config, me, csrf. |
-| `auth.tsx` | `SessionProvider` + `useSession()`: loads `/api/config` and `/api/me` once; `status` is `loading`, `ready` or `offline`; exposes `refresh`, `signOut`, `devLogin`. It never decides access: the server checks roles on every request. |
+| `api.ts` | Typed fetch wrapper. Same-origin `/api`, `credentials: "include"`, `X-CSRF-Token` on every non-GET (token from `GET /api/auth/csrf`, cached, refreshed once on a 403). Throws `ApiError` with `kind: "offline" \| "http"`, `status` and `retryAfterS` (the Retry-After of a 429). Types for health, config, me, csrf. |
+| `auth.tsx` | `SessionProvider` + `useSession()`: loads `/api/config` and `/api/me` once; `status` is `loading`, `ready`, `offline` or `error` (section 6); exposes `error`, `refresh`, `signOut`, `devLogin`. An error keeps the last known user instead of showing "signed out". It never decides access: the server checks roles on every request. |
+| `sign-in.ts` | `signInPageHref(next)` and `hfLoginHref(next)` (sign-in returns to the page it started from; `next` is checked like the server's `safe_next_path`), and the wording for each `/signin?error=` code. |
+| `location.ts` | `useQueryParam()`, `useCurrentPath()`: the URL's query read after hydration (keeps the static HTML; `useSearchParams` would need a Suspense boundary in a static export). |
 | `roles.ts` | Role names, labels, descriptions; `primaryRole()` for the header badge; `hasLenderRole()` for hints. |
 | `evidence.ts` | The six evidence statuses and their plain-language meanings (one source of truth for the words). |
 | `sample-file.ts` | The SYNTHETIC landing-page loan file. Values are typed for illustration; the 12-month deposit total is computed from the monthly figure so the "conflicting" example is consistent. |
@@ -106,18 +110,19 @@ component in `components/`.
 |---|---|
 | `ui/*` | Vendored shadcn/ui-style components on Radix primitives (`radix-ui` package): Button, Card, Badge, Input, Label, Select, Tabs, Dialog, Sheet, Tooltip, Slider, Progress, Separator, Skeleton, Alert. Restyled with our tokens. Tabs, Slider, Progress and Tooltip are not used yet; they are ready for the feature pages. |
 | `evidence/evidence-chip.tsx` | **EvidenceChip**: label + icon + color per status, plus screen-reader text "Evidence status:". |
-| `evidence/figure.tsx` | **Figure**: a value with tabular numerals, its chip, an optional note and an optional "Source" button (`onShowSource`, which will open the evidence drawer). Layouts `tile` and `row`. |
+| `evidence/figure.tsx` | **Figure**: a value with tabular numerals, its chip, an optional note and an optional "Source" button (`onShowSource(button)`, which opens the evidence drawer and gets the button so focus can return to it). Layouts `tile` and `row`. |
 | `evidence/evidence-legend.tsx` | All six statuses with their meanings. |
-| `landing/sample-file-card.tsx` | The SYNTHETIC sample file; "Source" opens a preview of the evidence drawer (a Sheet). |
+| `landing/sample-file-card.tsx` | The SYNTHETIC sample file; "Source" opens a preview of the evidence drawer (a Sheet). The drawer gives focus back to the Source button that opened it when it closes (`onCloseAutoFocus`), and keeps its content while closing: copy this pattern for the real drawer. |
 | `layout/site-header.tsx`, `mobile-nav.tsx`, `nav-links.ts` | Sticky header: brand, "Founder Studio", "Lender Desk", "About", sign-in state. Below 768 px a menu button opens a left Sheet. `aria-current="page"` marks the active link. |
 | `layout/site-footer.tsx` | Disclaimer on every page, prototype / SYNTHETIC / no payments line, links. |
 | `layout/synthetic-banner.tsx` | **SyntheticBanner** and **SyntheticTag**: hatched "specimen tape" marking SYNTHETIC data. |
 | `layout/skip-link.tsx`, `brand-mark.tsx`, `page-intro.tsx` | Skip-to-content link, the logo, the page heading block. |
-| `session/session-controls.tsx` | Header sign-in state: skeleton, "Offline preview", Sign in, or name + role badge + DEV tag + Sign out. Three layouts (desktop, menu, compact phone bar). |
-| `session/sign-in-panel.tsx` | Hugging Face button (a full-page link to `/api/auth/login`), disabled with an explanation when `/api/config` says `hf_oauth: false`; "open in a new tab" notice inside an iframe; DEV LOGIN form when `dev_auth` is true. |
+| `session/session-controls.tsx` | Header sign-in state: skeleton, "Offline preview", "Server busy" / "Server error", Sign in (remembering the page), or name + role badge + DEV tag + Sign out. Three layouts (desktop, menu, compact phone bar; the compact bar also shows DEV for a dev session). |
+| `session/sign-in-panel.tsx` | The page's h1; why the last sign-in failed (`/signin?error=<code>`, in an `role="alert"` box; "Open in a new tab" for `state_mismatch`); the Hugging Face button (a link to `/api/auth/login?next=...`, opened with `target="_blank"` inside an iframe as the Hugging Face docs ask), disabled with an explanation when `/api/config` says `hf_oauth: false`; "open in a new tab" notice inside an iframe; DEV LOGIN form when `dev_auth` is true (it returns to `next` too). |
+| `session/session-error-notice.tsx` | The server answered with an error: "Too many requests right now" with the Retry-After wait, or the HTTP status; says the sign-in is kept; "Try again". |
 | `session/dev-login-form.tsx` | DEV LOGIN: username + role, POST `/api/auth/dev-login`. Dashed amber box labeled "Dev login: local development only". |
 | `session/api-offline-notice.tsx` | The friendly offline state with a "Try again" button. |
-| `session/sign-in-prompt.tsx`, `role-badge.tsx` | Sign-in call to action; role badge with icon and words. |
+| `session/sign-in-prompt.tsx`, `role-badge.tsx` | Sign-in call to action (an h2 card; its link carries `?next=` this page); role badge with icon and words. |
 | `workspace/studio-home.tsx` | Founder Studio landing: states, empty plan list (the "Start a new plan" button is disabled and says why), "What will appear here", cities and business types from the server. |
 | `workspace/lender-home.tsx` | Lender Desk landing: the "never decides" notice, states, empty queue, role hint, SYNTHETIC demo note, "What will appear here". |
 | `workspace/never-decides-notice.tsx` | "The copilot never decides. A person does." |
@@ -127,6 +132,7 @@ component in `components/`.
 ### `scripts/`
 | File | Purpose |
 |---|---|
+| `run-next.mjs` | Runs the Next.js CLI without secret-looking environment variables (section 2). Used by `npm run build`, `dev` and `typecheck`. |
 | `check-contrast.mjs` | Reads the tokens from `globals.css` and checks 21 text/background pairs per theme against WCAG AA (4.5:1). Exit code 1 on failure. |
 | `screenshots.py` | Serves `out/` with `http.server`, screenshots every page at 1280 and 375 px in light and dark, fails on sideways overflow; with `--live-url` also signs in through DEV LOGIN on a running server and fails on any browser console error. |
 
@@ -156,7 +162,8 @@ The product's idea is that every number carries its evidence status, so the desi
 | State | When | What the user sees |
 |---|---|---|
 | loading | First request in flight; also the pre-rendered HTML | Skeletons where session-dependent content goes; static content is already there. |
-| offline | `/api/config` unreachable, or it answers with non-JSON (a static server's HTML 404, a proxy error page while a Space wakes) or an error | "The Fundproof server is not reachable right now" with Try again; header shows "Offline preview"; the Hugging Face button is disabled with a reason. |
+| offline | `/api/config` unreachable, or it answers with non-JSON (a static server's HTML 404, a proxy error page while a Space wakes) | "The Fundproof server is not reachable right now" with Try again; header shows "Offline preview"; the Hugging Face button is disabled with a reason. |
+| error | the API answered with a JSON error, for example 429 "rate limit exceeded" or a 500 | "Too many requests right now ... Try again in N seconds" (or the HTTP status) with Try again; the last known user stays signed in on screen; header shows "Server busy" / "Server error" when nobody was signed in. Checked with a server started with `UWC_RATE_LIMIT_USER_BURST=5`. |
 | signed out | `/api/me` says `signed_in: false` (or 401) | Sign-in prompts on Studio and Lender Desk. |
 | signed in | `/api/me` says `signed_in: true` | Name, role badge (DEV tag for dev sessions), Sign out, empty workspaces. |
 
@@ -228,7 +235,8 @@ Notes:
    `components/<area>/`.
 3. Use `useSession()` for state; show `ApiOfflineNotice`, `SignInPrompt` and a skeleton like the existing pages.
 4. Show every number with `<Figure>` and its real status from the API, and pass `onShowSource` to open the
-   evidence drawer (build it on `Sheet`). Wrap SYNTHETIC data in `SyntheticBanner`. Label simulated values
+   evidence drawer (build it on `Sheet`, and return focus to the Source button on close as
+   `landing/sample-file-card.tsx` does). Wrap SYNTHETIC data in `SyntheticBanner`. Label simulated values
    "simulated, based on stated assumptions".
 5. Record ids go in the query string (`/lender/file/?id=...`) because of the static export.
 6. Run `make web-lint`, `make web-build` and `make web-screenshots`, and look at the 375 px images.

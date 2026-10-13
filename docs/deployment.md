@@ -54,7 +54,7 @@ The deploy pipeline (`.github/workflows/deploy-space.yml`):
 | `deploy/space/README.md` | The Space card. Its YAML header is the Space configuration: `sdk: docker`, `app_port: 7860`, `hf_oauth: true` (Sign in with Hugging Face), title, colors, `short_description`. No `license` key (see Owner decisions). The body has the disclaimer and the SYNTHETIC note. It becomes `README.md` in the Space. |
 | `scripts/deploy_space.py` | `bundle`: copies the allow-list into an empty folder, puts the card in as `README.md`, writes the commit into `ARG UWC_GIT_SHA=`. `push`: creates the Space if missing and replaces its files (`delete_patterns="*"`; the Hub keeps `.gitattributes`). `wait`: waits until the Space's `/api/health` names the pushed commit, failing early on a build or runtime error. Reads `HF_TOKEN` and `HF_SPACE_ID` from the environment and never prints them. |
 | `scripts/smoke_deploy.py` | Checks a running deployment and times it (see section 4). Writes `results/deployment_metrics.json`, one entry per target, each with a provenance block. |
-| `.github/workflows/deploy-space.yml` | The pipeline above. Manual or on tags `v*`; one deploy at a time. |
+| `.github/workflows/deploy-space.yml` | The pipeline above. Manual or on tags `v*`; one deploy at a time. Every action is pinned to a full commit SHA (with its release in a comment, resolved 2026-10-13), uv is pinned to the Dockerfile's version (0.11.32), and checkouts do not keep the GitHub token (`persist-credentials: false`): the deploy job runs code with `HF_TOKEN` in its environment, so a moved tag must not be able to change that code. `ci.yml` uses the same pins. |
 | `Makefile` | `docker-build`, `docker-run`, `docker-smoke`, `space-bundle`. |
 | `tests/web/test_deploy_space.py`, `tests/web/test_smoke_deploy.py` | Offline tests: a fake Hub, `httpx.MockTransport`, a fake clock and a fake `docker`. |
 
@@ -74,18 +74,18 @@ Actions, Hugging Face) the base images' normal certificate stores are used.
 
 ## 4. Measured: local container (NOT the Space)
 
-From `results/deployment_metrics.json`, entry `runs.local-container`, measured 2026-10-12T20:05:58Z by
+From `results/deployment_metrics.json`, entry `runs.local-container`, measured 2026-10-13T03:33:33Z by
 `make docker-smoke`. **This is the image running on the build machine, reached over 127.0.0.1: no internet, no Space
-proxy, not Space hardware.** The code was commit `b76803d` with uncommitted work in the tree (`git_dirty: true`),
-on a 4-CPU machine shared with other jobs (load average 6.15 at the start of the run).
+proxy, not Space hardware.** The code was commit `017667d` with uncommitted work in the tree (`git_dirty: true`),
+on a 4-CPU machine shared with other jobs (load average 2.65 at the start of the run).
 
 | What | Value | How it was measured |
 |---|---|---|
-| Image size on disk | 2.16GB | `docker image ls`, DISK USAGE column (2161253092 bytes from `docker image inspect`) |
-| Image content size (compressed) | 487MB | `docker image ls`, CONTENT SIZE column |
-| Container start to first healthy `/api/health` | 1.11 s | Docker's `State.StartedAt` to the first 200, polling every 0.1 s |
-| First request to `/api/config` | 132.31 ms | the first call loads the Studio metro and business-type YAML files |
-| All paths, 100 requests after the first | p50 1.67 ms, p95 2.42 ms | 20 sequential GETs each to `/api/health`, `/`, `/studio`, `/api/config`, `/api/me` |
+| Image size on disk | 2.16GB | `docker image ls`, DISK USAGE column (2162717269 bytes from `docker image inspect`) |
+| Image content size (compressed) | 488MB | `docker image ls`, CONTENT SIZE column |
+| Container start to first healthy `/api/health` | 1.104 s | Docker's `State.StartedAt` to the first 200, polling every 0.1 s |
+| First request to `/api/config` | 121.1 ms | the first call loads the Studio metro and business-type YAML files |
+| All paths, 100 requests after the first | p50 2.05 ms, p95 3.01 ms | 20 sequential GETs each to `/api/health`, `/`, `/studio`, `/api/config`, `/api/me` |
 | Checks | 9 of 9 passed | see the list below |
 
 The checks: `/api/health` is ok; `/` and `/studio` are HTML with a Content-Security-Policy and `nosniff`;
@@ -133,7 +133,8 @@ the end of `.env.example`; the meaning of each is in `src/uwcopilot/web/settings
 | `HF_TOKEN` | GitHub repository secret | to deploy | write token used by the deploy job |
 | `HF_SPACE_ID` | GitHub repository secret | to deploy | `owner/name` of the Space |
 | `UWC_SESSION_SECRET` | Space secret | **yes** (startup refuses without it in a Space) | signs session cookies; 32+ characters |
-| `UWC_ROLE_ALLOWLIST` | Space secret or variable | for lender/admin roles | `hfuser:role,...`; everyone else is a founder |
+| `UWC_ROLE_ALLOWLIST` | Space secret or variable | for lender/admin roles | `hfuser@<id>:role,...` (pin each entry to the account id, `subject` in `/api/me`; see `docs/web/auth.md`, Roles); everyone else is a founder |
+| `UWC_RETENTION_DAYS`, `UWC_PURGE_EVERY_S` | Space variables | no | how long stored objects live (default 30 days) and how often expired ones are deleted (default 3600 s, plus once at startup) |
 | `UWC_STORE=hf_dataset`, `UWC_HF_DATASET_REPO` | Space variables | for data that survives restarts | private dataset repo, created private if missing |
 | `HF_TOKEN` | Space secret | with `UWC_STORE=hf_dataset` | write access to that dataset (a different token from the deploy one is fine) |
 | `UWC_FERNET_KEY` | Space secret | with `UWC_STORE=hf_dataset` | encrypts stored data; comma-separated for key rotation |
@@ -143,6 +144,22 @@ the end of `.env.example`; the meaning of each is in `src/uwcopilot/web/settings
 Without `UWC_STORE=hf_dataset`, everything users store lives on the container disk and is lost whenever the
 Space restarts or rebuilds (the Hugging Face Docker Spaces docs say data written on disk is lost on restart;
 read 2026-10-12 at huggingface.co/docs/hub/spaces-sdks-docker).
+
+**Deletion and retention** (`src/uwcopilot/web/hf_store.py`, `src/uwcopilot/web/app.py`):
+
+- A dataset repo is a git repo, so a plain delete would leave the file in earlier revisions. After a deletion the
+  next flush (at most `UWC_HF_FLUSH_EVERY_S`, default 300 s, later; also at shutdown) squashes the dataset's
+  history into one commit (`super_squash_history`) and permanently deletes LFS objects no current file uses
+  (`permanently_delete_lfs_files`). The history is also squashed once after every startup.
+- If the Hub cannot be reached, the deletion is kept as "pending" (in memory and in
+  `<store dir>/.pending_deletes.json`), retried at every flush and re-applied at startup, and the caller gets
+  `DeletionPending` instead of a success, so the app must not tell the user the data is gone. If the container
+  restarts before the Hub is reachable again, the pending deletion is lost with the disk; the user was told it was
+  pending and has to delete again.
+- Expired objects (older than `UWC_RETENTION_DAYS`) are hidden at once and deleted once at startup and then every
+  `UWC_PURGE_EVERY_S` seconds, in both stores.
+- All of this is tested with a fake Hub that keeps every revision and LFS object (`tests/web/test_web_hf_store.py`);
+  it has not run against the real Hub yet (section 8).
 
 ## 7. The iframe and cookies
 
@@ -160,11 +177,14 @@ None of these can be checked without a real Space:
 - Sign in with Hugging Face inside the iframe and in a new tab (Chrome, Firefox, Safari).
 - The OAuth callback URL (`https://<SPACE_HOST>/api/auth/callback`) is accepted.
 - How many proxies append to `X-Forwarded-For` in front of the app. `UWC_TRUSTED_PROXY_HOPS` defaults to 1 in a
-  Space; if that is wrong, rate limits may count every user as one client.
+  Space; if that is wrong, rate limits may count every user as one client. (Several `X-Forwarded-For` header
+  lines are joined in order before counting, so a client cannot hide the proxy's entry behind its own line.)
 - Cold start and latency on the Space (the deploy job's `space-smoke` artifact), including waking from sleep.
 - Whether the Space honors the Dockerfile `HEALTHCHECK` (not documented on the Docker Spaces page read
   2026-10-12; `/api/health` works either way).
-- With `UWC_STORE=hf_dataset`: data survives a restart, and deletion removes it from the dataset.
+- With `UWC_STORE=hf_dataset` and a SYNTHETIC test object: data survives a restart; after deleting it and waiting
+  one flush, the dataset has a single commit (`list_repo_commits`), the object's files are gone, and
+  `list_lfs_files` lists no object that the current files do not use.
 
 ## 9. Owner decisions (open)
 
@@ -180,8 +200,9 @@ None of these can be checked without a real Space:
   web app imports.
 - **Who may deploy.** Any branch can be deployed with "Run workflow"; restrict it (for example to tags only) if
   wanted.
-- **`/api/docs`.** Swagger UI loads its script from cdn.jsdelivr.net (only that page's CSP allows it); keep it
-  public or serve it only in development.
+- **`/api/docs`.** Swagger UI loads one pinned script and one pinned stylesheet (`swagger-ui-dist@5.33.0`) from
+  cdn.jsdelivr.net, each with a Subresource Integrity hash, and that page's CSP allows exactly those two URLs, so
+  a changed file is refused by the browser. Keep the page public, or serve it only in development.
 - **Final product name** (two constants, see the top of this page).
 
 ## 10. Troubleshooting

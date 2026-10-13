@@ -68,7 +68,7 @@ So `auth.py` implements the small flow the Hugging Face documentation describes
 
 Failures redirect to `/signin?error=<code>`:
 
-| code | meaning | what the UI should say |
+| code | meaning | what the sign-in page says (`lib/sign-in.ts`, shown in a `role="alert"` box) |
 |---|---|---|
 | `access_denied` | the user pressed cancel | "Sign-in was cancelled." |
 | `state_mismatch` | the `uwc_oauth` cookie was missing or did not match: sign-in took over 10 minutes, or the browser blocked the cookie in the iframe | offer "Open in a new tab" |
@@ -114,9 +114,11 @@ Two consequences:
 
 1. **Sign-in may still fail inside the iframe** on some browsers. The Hugging Face docs say: "You should use
    target=_blank on the button to open the sign-in page in a new tab, unless you run the space outside its
-   iframe. Otherwise, you might encounter issues with cookies on some browsers." So the sign-in button should open
-   `/api/auth/login` in a new tab when the page is framed, and `/signin` shows an "Open in a new tab" link that
-   goes to the Space's own address (`space_url` in `GET /api/config`, `https://<SPACE_HOST>`).
+   iframe. Otherwise, you might encounter issues with cookies on some browsers." So when the page is framed the
+   sign-in button opens `/api/auth/login?next=...` with `target="_blank"`, and `/signin` shows an "Open in a new
+   tab" link that goes to the Space's own address (`space_url` in `GET /api/config`, `https://<SPACE_HOST>`); the
+   same link appears in the `state_mismatch` error message. Both were checked only in a simulated iframe (a local
+   parent page, with `frame-ancestors` relaxed in the test); a real Space has not been tried.
 2. **The iframe and the new tab have separate cookie jars.** Signing in in a new tab signs you in in that tab
    (top-level site `hf.space`), not in the iframe on huggingface.co. The user should keep using the new tab.
 
@@ -145,12 +147,15 @@ CORS: only when the dev login is on, `http://localhost:3000` (the `next dev` ser
 | `lender_senior` | users listed in `UWC_ROLE_ALLOWLIST` (for example, needed to decline) |
 | `admin` | users listed in `UWC_ROLE_ALLOWLIST`; operating the app, deliberately **not** a lender role |
 
-`UWC_ROLE_ALLOWLIST="astra6:admin,astra6:lender_senior,someone:lender_reviewer"`: list a user once per role.
-Usernames are compared without case. Unknown roles stop the app at startup.
+`UWC_ROLE_ALLOWLIST="astra6@<id>:admin,astra6@<id>:lender_senior,someone@<id>:lender_reviewer"`: list a user
+once per role. Usernames are compared without case, ids exactly. Unknown roles stop the app at startup.
 
-Usernames can be renamed on Hugging Face, and a freed name can be taken by someone else. The allowlist uses
-usernames because the owners can read them; review it when people leave. Stored data is keyed by the stable
-subject id (`hf_oauth:<sub>`), not by the username.
+Usernames can be renamed on Hugging Face, and a freed name can be taken by someone else. So an entry should be
+**pinned to the account id**: `hfuser@<id>:role` grants the role only to a session whose subject (the `sub` the
+Hugging Face sign-in returns) is `<id>`; whoever later registers a freed `hfuser` has another id and gets nothing.
+To find your id: sign in once, open `/api/me`, copy `subject`. The plain form `hfuser:role` still works (handy for
+local development), but in a Space the app logs a startup warning for every unpinned entry. Stored data is keyed
+by the same stable subject id (`hf_oauth:<sub>`), never by the username.
 
 Feature routers protect endpoints with one dependency (there is no `src/uwcopilot/security/rbac.py` yet, so the
 role logic lives in `web/auth.py`; move it there if the Phase 5 RBAC module appears):
