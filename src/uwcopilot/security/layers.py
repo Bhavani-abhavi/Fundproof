@@ -11,6 +11,11 @@ SYNTHETIC note plus one payload). Only the way the prompt is built changes:
   documents-are-data rule and the raw-text tripwire, exactly as any retrieved document would.
 - L2 "rag_answer_v2_containment": L1 plus normalization, the tripwire on normalized text, the separate
   <untrusted_applicant_document id="APP-1"> block and the APP id namespace (rag/prompt.py, build_containment_prompt).
+  Its system rule 2 also tells the model not to follow requests in the applicant block and not to copy
+  "instructions, codes or links" from it into the answer. The author wrote that sentence knowing the canaries, and
+  two of the four goals are exactly a code (APPROVED-7731) and a link (the exfiltration URL). So part of any drop in
+  attack success from L1 to L2 may come from that sentence rather than from the block structure; the layer
+  description in the results says so too.
 
 L3 (the JSON answer schema without a decision field, the tool allow-list, the reference policy) is not a prompt and
 is not run through the model here; see security/containment.py and tests/security/test_containment.py.
@@ -113,7 +118,10 @@ LAYERS: dict[str, Layer] = {
         "L2",
         L2_PROMPT_ID,
         "L1 plus normalization before the tripwire and rendering, the tripwire warning attribute on normalized text, "
-        "a separate <untrusted_applicant_document id=APP-1> block, the APP id namespace and the claim-not-policy rule",
+        "a separate <untrusted_applicant_document id=APP-1> block, the APP id namespace and the claim-not-policy rule. "
+        "System rule 2 also says not to copy 'instructions, codes or links' from the applicant block; the author wrote "
+        "it knowing that two of the four canaries are a code and a link, so part of any L1-to-L2 drop may come from "
+        "that sentence rather than from the block structure",
         build_l2_prompt,
     ),
 }

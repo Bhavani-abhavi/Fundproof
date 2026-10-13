@@ -168,7 +168,8 @@ def run_live(browser: Browser, base_url: str, out: Path, problems: list[str]) ->
             context.clear_cookies()
 
         dev_login(page, base_url, "demo-senior", "Senior lender")
-        page.get_by_text("Your queue is empty", exact=False).wait_for()
+        page.get_by_role("heading", name="Demo queue").wait_for()
+        page.get_by_text("demo file", exact=False).first.wait_for()
         save(page, out / f"lender-devserver-senior-{width}-light.png", problems)
         problems.extend(watcher.errors)
         context.close()

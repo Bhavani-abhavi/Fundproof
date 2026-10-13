@@ -574,7 +574,7 @@ This replaces Phase 4 F's "next-best-evidence top-1 vs the resolving document", 
 - **Phase 8 `resume_lines.py`:** new templates, each printed only if its metric exists:
   - "Designed provenance-locked LLM generation for underwriting memos: the model cannot emit numbers or pass/fail judgments (slot grammar plus a deterministic renderer over an evidence ledger). A numeric-provenance checker caught {checker_recall} of {n_mutations} seeded numeric errors. Measured on qwen2.5:3b via Ollama."
   - "Built an LLM migration gate (champion/challenger, paired-bootstrap non-inferiority) over a frozen RAG eval: key-fact recall {kfr} [CI], abstention {abst_k}/{abst_n}; {model swap} → {decision} with a migration certificate."
-  - "Measured indirect prompt-injection attack success by defense layer on a local open model: {asr_l0} → {asr_l2} (n={n}). Decision-level impact is 0 by construction, enforced in CI."
+  - "Measured indirect prompt-injection attack success by defense layer on a local open model: {asr_l0} → {asr_l1} → {asr_l2} (n={n}; L1 is the existing prompt, so L1 → L2 is what S2 adds). Decision-level impact is 0 by construction, enforced in CI."
   - "GenAI controls-as-code: {n_auto} of {n_controls} controls with automated evidence. The CI release gate fails on regressions, missing evidence or stale evidence (prompt, corpus or model hash mismatch)."
   - "Sanctions screening over OFAC + OpenSanctions ({n_entries} entries): list families routed to separate queues; sanctions queue at {alerts} alerts per 1,000 with recall {recall} (synthetic customers, n={n_true_matches})."
 

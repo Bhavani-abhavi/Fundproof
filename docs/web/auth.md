@@ -167,9 +167,9 @@ from uwcopilot.web.auth import Principal, require_role
 
 SeniorLender = Annotated[Principal, Depends(require_role("lender_senior"))]
 
+
 @router.post("/api/lender/files/{file_id}/decision")
-def decide(file_id: str, principal: SeniorLender) -> ...:
-    ...
+def decide(file_id: str, principal: SeniorLender) -> ...: ...
 ```
 
 `require_role()` with no roles means "any signed-in user". Signed out gives 401; signed in without the role

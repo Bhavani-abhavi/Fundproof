@@ -5,8 +5,10 @@
     HF_TOKEN=... HF_SPACE_ID=owner/name uv run python scripts/deploy_space.py wait --git-sha "$(git rev-parse HEAD)"
 
 bundle: copies an explicit allow-list into an EMPTY folder: Dockerfile, .dockerignore, pyproject.toml, uv.lock,
-    src/, config/, corpus/ and the frontend SOURCE (no node_modules, .next or out: the Space builds them), plus
-    deploy/space/README.md as README.md (the Space card). The commit hash is written into the bundle's Dockerfile
+    src/, config/, corpus/, the frontend SOURCE (no node_modules, .next or out: the Space builds them; no mock API or
+    screenshot helpers), the SYNTHETIC demo applications (eval/applications, eval/startup_applications),
+    results/kyc_metrics.json and the two build-time scripts (scripts/download_data.py, scripts/build_index.py),
+    plus deploy/space/README.md as README.md (the Space card). The commit hash is written into the bundle's Dockerfile
     line `ARG UWC_GIT_SHA=`, so GET /api/health on the Space names the commit it runs.
 push: create_repo(repo_type="space", space_sdk="docker", exist_ok=True, private=False), then sets the Space secret
     UWC_SESSION_SECRET to a fresh random value (the app refuses to start in a Space without it; a new value on each
@@ -38,9 +40,19 @@ import httpx
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SPACE_CARD = Path("deploy/space/README.md")
-# Top-level files and folders copied into the bundle, as they are in the repo.
-BUNDLE_FILES: tuple[str, ...] = ("Dockerfile", ".dockerignore", "pyproject.toml", "uv.lock")
-BUNDLE_DIRS: tuple[str, ...] = ("src", "config", "corpus", "frontend")
+# Files and folders copied into the bundle, as they are in the repo: everything the Dockerfile copies. The eval/
+# folders are the Lender Desk demo's SYNTHETIC applications; results/kyc_metrics.json is the screening threshold; the
+# two scripts download the public OFAC lists and build the guideline index while the Space builds the image.
+BUNDLE_FILES: tuple[str, ...] = (
+    "Dockerfile",
+    ".dockerignore",
+    "pyproject.toml",
+    "uv.lock",
+    "results/kyc_metrics.json",
+    "scripts/download_data.py",
+    "scripts/build_index.py",
+)
+BUNDLE_DIRS: tuple[str, ...] = ("src", "config", "corpus", "frontend", "eval/applications", "eval/startup_applications")
 # Never copied, at any depth (file or folder names), whatever folder they are in.
 EXCLUDED_NAMES: tuple[str, ...] = (
     "__pycache__",
@@ -56,7 +68,13 @@ EXCLUDED_NAMES: tuple[str, ...] = (
     "npm-debug.log*",
 )
 # Never copied: paths relative to the repo root.
-EXCLUDED_PATHS: tuple[str, ...] = ("frontend/out", "frontend/scripts/screenshots.py")
+EXCLUDED_PATHS: tuple[str, ...] = (
+    "frontend/out",
+    "frontend/scripts/screenshots.py",
+    "frontend/scripts/screenshots_mock.py",
+    "frontend/scripts/record_mock_fixtures.py",
+    "frontend/mock-api",
+)
 GIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{7,40}$")
 SPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 DOCKERFILE_SHA_LINE = re.compile(r"^ARG UWC_GIT_SHA=.*$", re.MULTILINE)

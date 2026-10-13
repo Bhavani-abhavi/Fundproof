@@ -29,6 +29,7 @@ uses its extract_hybrid function. If that module does not exist yet, extractor="
 HybridUnavailable with an explanation. The rules extractor never needs it.
 """
 
+import importlib
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -131,9 +132,13 @@ def read_pages(pdf_path: Path, ocr: OcrMode, timer: StageTimer) -> tuple[list[Pa
 
 
 def default_hybrid_extractor() -> HybridExtractor:
-    """extract_llm.extract_hybrid, or HybridUnavailable when that module is not available."""
+    """extract_llm.extract_hybrid, or HybridUnavailable when that module is not available.
+
+    importlib.import_module looks the module up in sys.modules first, so a module blocked there (set to None) is
+    reported as unavailable even after another part of the program has imported it.
+    """
     try:
-        from uwcopilot.docintel import extract_llm  # imported here: optional module written separately
+        extract_llm = importlib.import_module("uwcopilot.docintel.extract_llm")  # optional, imported only here
     except ImportError as error:
         raise HybridUnavailable(
             "extractor='hybrid' needs uwcopilot.docintel.extract_llm (extract_hybrid); it is not available"

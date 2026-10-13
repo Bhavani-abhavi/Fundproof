@@ -30,6 +30,8 @@ from uwcopilot.web.cookies import CookiePolicy
 from uwcopilot.web.crypto import encryptor_for_settings
 from uwcopilot.web.hf_store import HFDatasetStore, HubApi
 from uwcopilot.web.routers import auth as auth_router
+from uwcopilot.web.routers import lender as lender_router
+from uwcopilot.web.routers import studio as studio_router
 from uwcopilot.web.routers import system as system_router
 from uwcopilot.web.security import (
     BodySizeLimitMiddleware,
@@ -40,6 +42,7 @@ from uwcopilot.web.security import (
     build_csp,
     inline_script_hashes,
 )
+from uwcopilot.web.services import install_services
 from uwcopilot.web.settings import DEV_FRONTEND_ORIGIN, WebSettings, load_web_settings
 from uwcopilot.web.static import StaticSite
 from uwcopilot.web.store import LocalFileStore, Store
@@ -207,9 +210,12 @@ def create_app(
     app.state.static_site = StaticSite(settings.static_dir, settings.product_name, settings.disclaimer)
     app.state.store = store
     app.state.hub_api = hub_api
+    install_services(app)
 
     app.include_router(system_router.router)
     app.include_router(auth_router.router)
+    app.include_router(studio_router.router)
+    app.include_router(lender_router.router)
     for router in extra_routers:
         app.include_router(router)
 

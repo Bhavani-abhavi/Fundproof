@@ -26,6 +26,7 @@ from typing import Literal
 
 from uwcopilot.agent.claim_checker import decision_language
 from uwcopilot.kyc.memo import disposition_language
+from uwcopilot.security.normalize import detection_text
 
 ViolationCode = Literal[
     "V1_DIGIT",
@@ -156,8 +157,12 @@ def omission_violations(text: str, required_refs: list[str]) -> list[Violation]:
 
 
 def disposition_violations(text: str) -> list[Violation]:
-    """V7: decision or alert-disposition wording, from the existing KYC and agent detectors."""
-    prose = blank(blank(text, SLOT), CITATION)
+    """V7: decision or alert-disposition wording, from the existing KYC and agent detectors.
+
+    The prose is normalized first (uwcopilot.security.normalize.detection_text), so wording hidden with zero-width
+    characters, lookalike letters, fullwidth forms or Unicode tag characters is found as a reader would see it.
+    """
+    prose = detection_text(blank(blank(text, SLOT), CITATION))
     phrases = list(dict.fromkeys([*disposition_language(prose), *decision_language(prose)]))
     return [Violation("V7_DISPOSITION_LANGUAGE", phrase, "the memo may not state a decision") for phrase in phrases]
 

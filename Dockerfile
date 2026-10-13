@@ -5,15 +5,23 @@
 #   docker build -t fundproof:dev .
 #   docker run --rm -p 7860:7860 fundproof:dev          # then open http://127.0.0.1:7860
 #
-# Three stages:
+# Four stages:
 #   1. frontend     node:22-slim builds frontend/out with `npm ci` + `npm run build` (exact versions from the lockfile)
 #   2. python-deps  python:3.11-slim + uv installs the locked Python dependencies into /app/.venv (no dev group)
-#   3. runtime      python:3.11-slim with only the virtualenv, the code, config/, corpus/ and frontend/out;
-#                   runs as the non-root user "user" (uid 1000, the Hugging Face Spaces convention)
+#   3. assets       public data the Lender Desk demo needs, made at BUILD time (network, no keys): the OFAC SDN +
+#                   alternate-name lists, the public regulatory documents, the Qdrant guideline index built from
+#                   them and corpus/guidelines, and the fastembed models the guideline search loads
+#   4. runtime      python:3.11-slim with only the virtualenv, the code, config/, corpus/, frontend/out, the
+#                   SYNTHETIC demo applications and the assets above; runs as the non-root user "user" (uid 1000,
+#                   the Hugging Face Spaces convention)
 #
 # Behind a TLS-inspecting proxy (like the machine this file was first built on), pass the proxy's CA bundle as an
-# OPTIONAL build secret; it is only mounted while packages download and never ends up in the image:
+# OPTIONAL build secret; it is only mounted while packages and data download and never ends up in the image:
 #   docker build --secret id=extra_ca_certs,src=/path/to/ca-bundle.crt -t fundproof:dev .
+# If that proxy listens on the build machine's own loopback (127.0.0.1), the build steps can only reach it on the
+# host network; Docker's predefined proxy build arguments are not stored in the image:
+#   docker build --network=host --build-arg HTTPS_PROXY="$HTTPS_PROXY" --build-arg HTTP_PROXY="$HTTP_PROXY" \
+#       --build-arg NO_PROXY="$NO_PROXY" --secret id=extra_ca_certs,src=/path/to/ca-bundle.crt -t fundproof:dev .
 # Without that secret (GitHub Actions, Hugging Face) the default certificate stores are used.
 
 # Base images pinned by digest (the tag is kept for readers). Reproducible: the same bytes on every build.
@@ -74,7 +82,49 @@ RUN --mount=type=secret,id=extra_ca_certs,required=false \
     && uv sync --locked --no-dev
 
 # ---------------------------------------------------------------------------------------------------------------
-# Stage 3: the runtime image
+# Stage 3: build-time assets for the Lender Desk demo (public data only, no keys)
+# ---------------------------------------------------------------------------------------------------------------
+FROM python-deps AS assets
+
+# UWCOPILOT_ROOT=/app: the scripts write data/raw/, qdrant_storage/, .cache/models/ and results/ under /app.
+ENV PATH=/app/.venv/bin:$PATH \
+    UWCOPILOT_ROOT=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1
+
+COPY corpus ./corpus
+COPY scripts/download_data.py scripts/build_index.py ./scripts/
+
+# 1. OFAC SDN + alternate names (US government public data). Required: the build fails without them, after two
+#    retries (15 s and 60 s later) for a passing network error. Each file's SHA-256 and download date go to
+#    data/raw/checksums.jsonl; the UI shows that date as the list snapshot date.
+#    OpenSanctions is NOT downloaded (about 445 MB, CC BY-NC 4.0); the runtime sets UWC_SCREENING_LISTS=ofac.
+# 2. The public regulatory documents. Optional: some government sites refuse scripted requests from cloud build
+#    machines, so a failed download leaves them out of the index instead of failing the build; build_index.py then
+#    lists them under missing_regulatory_files in results/rag_index_manifest.json, which is kept in the image.
+# 3. The guideline index (embedded Qdrant in /app/qdrant_storage) with the dense and sparse fastembed models.
+# 4. One real search (dense + sparse + the cross-encoder reranker): it downloads the reranker into the image and
+#    fails the build if the index cannot answer.
+# 5. Make the model cache readable for uid 1000: the Hub client writes some cache files as owner-only (0600).
+RUN --mount=type=secret,id=extra_ca_certs,required=false \
+    if [ -f /run/secrets/extra_ca_certs ]; then \
+        export REQUESTS_CA_BUNDLE=/run/secrets/extra_ca_certs SSL_CERT_FILE=/run/secrets/extra_ca_certs; \
+    fi \
+    && (python scripts/download_data.py --datasets ofac_sdn \
+        || (sleep 15 && python scripts/download_data.py --datasets ofac_sdn) \
+        || (sleep 60 && python scripts/download_data.py --datasets ofac_sdn)) \
+    && (python scripts/download_data.py --datasets regulatory_docs \
+        || echo "WARNING: regulatory documents not downloaded; the index holds the SYNTHETIC guidelines only") \
+    && python scripts/build_index.py --threads 2 \
+    && python -c "from uwcopilot.rag.search import search_guidelines; \
+from uwcopilot.tools.schemas import GuidelineQuery; \
+result = search_guidelines(GuidelineQuery(query='minimum debt service coverage ratio', top_k=3)); \
+assert result.hits, 'the guideline index returned no hits'; \
+print(f'guideline search check: {len(result.hits)} hits')" \
+    && chmod -R a+rX /app/.cache/models
+
+# ---------------------------------------------------------------------------------------------------------------
+# Stage 4: the runtime image
 # ---------------------------------------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS runtime
 
@@ -87,11 +137,14 @@ LABEL org.opencontainers.image.title="Fundproof" \
       org.opencontainers.image.source="https://github.com/vajja1405/Underwriting-Copilot-"
 
 # UWCOPILOT_ROOT tells uwcopilot.common.paths where config/, corpus/ and data/ are.
+# UWC_SCREENING_LISTS=ofac: sanctions screening loads only the OFAC lists that are in the image (stage 3).
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/app/.venv/bin:$PATH \
     UWCOPILOT_ROOT=/app \
     HOME=/home/user \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    UWC_SCREENING_LISTS=ofac \
     UWC_GIT_SHA=${UWC_GIT_SHA}
 
 # Hugging Face runs the container as uid 1000; create that user so files and $HOME have an owner.
@@ -99,12 +152,24 @@ RUN useradd --create-home --uid 1000 user
 
 WORKDIR /app
 
-# Code and data files are owned by root and read-only for the app; only data/ (the local store) is writable.
+# Code and data files are owned by root and read-only for the app; only data/ (the local store, data/web) and
+# qdrant_storage/ are writable.
 COPY --from=python-deps /app/.venv /app/.venv
 COPY src ./src
 COPY config ./config
 COPY corpus ./corpus
 COPY --from=frontend /build/frontend/out ./frontend/out
+# The Lender Desk demo files (SYNTHETIC structured applications) and the screening threshold chosen by
+# scripts/eval_kyc.py (results/kyc_metrics.json; without it screening refuses to run instead of guessing).
+COPY eval/applications ./eval/applications
+COPY eval/startup_applications ./eval/startup_applications
+COPY results/kyc_metrics.json ./results/kyc_metrics.json
+# Stage 3's assets. Read-only for the app, except the Qdrant folder: embedded Qdrant writes a lock file there.
+COPY --from=assets /app/data/raw/ofac ./data/raw/ofac
+COPY --from=assets /app/data/raw/checksums.jsonl ./data/raw/checksums.jsonl
+COPY --from=assets /app/.cache/models ./.cache/models
+COPY --from=assets /app/results/rag_index_manifest.json ./results/rag_index_manifest.json
+COPY --from=assets --chown=user:user /app/qdrant_storage ./qdrant_storage
 # Compile the project's own modules now (the dependencies were compiled by uv), because the app cannot write
 # __pycache__ into the root-owned src/ at runtime; this saves compiling them on every start.
 RUN python -m compileall -q /app/src \

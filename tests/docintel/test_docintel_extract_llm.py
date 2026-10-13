@@ -15,7 +15,8 @@ from uwcopilot.docintel import extract_llm
 from uwcopilot.docintel.classify import Segment
 from uwcopilot.docintel.extract_llm import LLMExtractor, prompt_sha256, user_message
 from uwcopilot.docintel.extract_llm_answers import cited_class, parse_json_object
-from uwcopilot.docintel.extract_llm_specs import DOC_SPECS, KIND_PARSERS
+from uwcopilot.docintel.extract_llm_fields import KIND_PARSERS
+from uwcopilot.docintel.extract_llm_specs import DOC_SPECS
 from uwcopilot.docintel.layout import Line, PageText
 from uwcopilot.docintel.schemas import (
     BankStatement,

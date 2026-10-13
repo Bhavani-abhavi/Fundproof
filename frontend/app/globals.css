@@ -53,6 +53,16 @@
 
   /* Hatch pattern for SYNTHETIC tape */
   --hatch: rgba(27, 31, 39, 0.07);
+
+  /*
+   * Chart and map series colors (data marks only, never text). Validated with the dataviz skill's
+   * validate_palette.js against --paper-raised in each theme (lightness band, chroma, CVD and normal-vision
+   * separation, contrast >= 3:1): see docs/web/frontend.md, "Charts and map".
+   */
+  --viz-1: #3d55c9;
+  --viz-2: #e0622f;
+  --viz-grid: #e6e2d7;
+  --viz-axis: #c4bdac;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -91,6 +101,11 @@
     --unknown-line: #47505f;
 
     --hatch: rgba(236, 231, 220, 0.06);
+
+    --viz-1: #6f84f0;
+    --viz-2: #d95926;
+    --viz-grid: #262c36;
+    --viz-axis: #3d4552;
   }
 }
 
@@ -144,6 +159,11 @@
   --color-unknown: var(--unknown);
   --color-unknown-soft: var(--unknown-soft);
   --color-unknown-line: var(--unknown-line);
+
+  --color-viz-1: var(--viz-1);
+  --color-viz-2: var(--viz-2);
+  --color-viz-grid: var(--viz-grid);
+  --color-viz-axis: var(--viz-axis);
 
   /* Self-hosted fonts (@fontsource-variable, imported in app/layout.tsx); no Google Fonts fetch. */
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -210,6 +230,35 @@
   /* Diagonal hatch used by the SYNTHETIC tape (reads as "specimen", without adding a new hue). */
   .hatch {
     background-image: repeating-linear-gradient(-45deg, var(--hatch) 0 6px, transparent 6px 12px);
+  }
+}
+
+/* Map (components/studio/map/site-map.tsx): numbered pins and the zoom buttons in both themes. */
+.map-pin-number {
+  display: flex;
+  height: 1.125rem;
+  width: 1.125rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  /* --accent-ink is white in light mode and near-black in dark mode: >= 4.5:1 on --viz-1 in both. */
+  color: var(--accent-ink);
+  font: 700 0.6875rem/1 var(--font-sans);
+  pointer-events: none;
+}
+
+.maplibregl-ctrl-group {
+  background: var(--paper-raised) !important;
+  border: 1px solid var(--rule);
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--rule) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+    filter: invert(1);
   }
 }
 

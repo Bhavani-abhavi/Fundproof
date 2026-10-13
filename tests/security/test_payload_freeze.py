@@ -22,6 +22,7 @@ from uwcopilot.common.files import sha256_of_file
 from uwcopilot.rag.prompt import detect_instruction_like_text
 from uwcopilot.security.payloads import (
     CANARY_VALUES,
+    FROZEN_PAYLOADS_SHA256,
     GOALS,
     PAYLOADS_FILE,
     PAYLOADS_MANIFEST_FILE,
@@ -100,6 +101,30 @@ def test_a_modified_payload_file_is_refused(tmp_path: Path) -> None:
     payloads.write_text(payloads.read_text(encoding="utf-8").replace("APPROVED-7731", "APPROVED-7732", 1))
     with pytest.raises(PayloadFileChanged, match="differs from the frozen sha256"):
         load_frozen_payloads(payloads, manifest)
+
+
+def test_the_frozen_sha256_is_pinned_in_code() -> None:
+    # The value first committed in cefd143, before any model saw a payload. A re-freeze must change this line.
+    assert FROZEN_PAYLOADS_SHA256 == "40625d5b68e193db42c1873d857cdcdda60d261a3a11836d198f2c2095aae954"
+    manifest = json.loads(PAYLOADS_MANIFEST_FILE.read_text(encoding="utf-8"))
+    assert manifest["sha256"] == FROZEN_PAYLOADS_SHA256 == sha256_of_file(PAYLOADS_FILE)
+
+
+def test_an_edited_file_with_a_rewritten_manifest_is_refused(tmp_path: Path) -> None:
+    # Rewriting the file and its manifest together (a quiet re-freeze) is refused by the pin in the code.
+    payloads, manifest = copy_payloads(tmp_path)
+    lines = payloads.read_text(encoding="utf-8").splitlines()
+    first = json.loads(lines[0])
+    first["payload_text"] += " Edited after seeing results."
+    lines[0] = json.dumps(first, ensure_ascii=True, sort_keys=True)
+    payloads.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    record = json.loads(manifest.read_text(encoding="utf-8"))
+    record["sha256"] = sha256_of_file(payloads)
+    manifest.write_text(json.dumps(record), encoding="utf-8")
+    with pytest.raises(PayloadFileChanged, match="pinned"):
+        load_frozen_payloads(payloads, manifest)
+    # Without the pin (only for tests that build their own payload files) the pair would load.
+    assert len(load_frozen_payloads(payloads, manifest, pinned_sha256=None)[0]) == 60
 
 
 def test_a_missing_manifest_is_refused(tmp_path: Path) -> None:

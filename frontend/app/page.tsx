@@ -35,6 +35,8 @@ interface Side {
   href: string;
   summary: string;
   points: string[];
+  /** What this side of the web app does today (v0.1), said plainly. */
+  today: string;
 }
 
 const SIDES: Side[] = [
@@ -47,9 +49,10 @@ const SIDES: Side[] = [
     points: [
       "Pick a city and a business type; describe the idea, budget and loan need.",
       "Compare candidate sites, each with a data-coverage score.",
-      "See revenue and cash ranges, simulated from assumptions you can edit.",
+      "See revenue and cash ranges, simulated from stated assumptions, each one labeled.",
       "Get a path to approval and a package you choose to share.",
     ],
+    today: "In the web app today: the plan wizard, site scores, the simulation and the path to approval. The shared package comes later.",
   },
   {
     icon: Landmark,
@@ -63,6 +66,8 @@ const SIDES: Side[] = [
       "Stress tests and the next piece of evidence worth asking for.",
       "A draft memo. Approve, refer, request information or decline stays your call.",
     ],
+    today:
+      "In the web app today: SYNTHETIC demo files with findings, calculations, screening and a template memo; your decision goes to a demo sandbox. Documents with page citations come later.",
   },
 ];
 
@@ -106,7 +111,7 @@ const LIMITS: Limit[] = [
   {
     icon: Wrench,
     title: "A prototype",
-    body: "A demonstration project. Today the web app has sign-in and empty workspaces; the planning and review tools are being added.",
+    body: "A demonstration project. The planning tools and a lender demo on SYNTHETIC files work today; documents, sharing and the lender package are still being built.",
   },
   {
     icon: FlaskConical,
@@ -211,7 +216,7 @@ export default function LandingPage() {
                   ))}
                 </ul>
                 <div className="mt-auto flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">In the web app today: sign-in and an empty workspace.</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground sm:max-w-sm">{side.today}</p>
                   <Button asChild variant="link" className="h-auto self-start p-0">
                     <Link href={side.href}>
                       Open {side.name}

@@ -28,7 +28,8 @@ from pathlib import Path
 from typing import Any
 
 from uwcopilot.docintel.extract_llm_answers import compact, date_forms
-from uwcopilot.docintel.extract_llm_specs import DOC_SPECS, DocSpec, FieldSpec
+from uwcopilot.docintel.extract_llm_fields import DocSpec, FieldSpec
+from uwcopilot.docintel.extract_llm_specs import DOC_SPECS
 from uwcopilot.docintel.schemas import Cited, parse_extraction
 from uwcopilot.docintel.synthetic.generate import generate_packets
 from uwcopilot.llm.base import LLMMessage

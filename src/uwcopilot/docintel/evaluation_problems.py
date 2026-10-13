@@ -13,8 +13,10 @@ Contradictions (match_contradictions):
   explanation of its FIRST matching contradiction (report order) is compared with the classification. "unknown"
   counts as wrong and is counted separately.
 
-Embedded instructions (injection_counts): a planted instruction is detected when the injection scan reports a hit
-on the same page. A hit on a page without a planted instruction is a false hit.
+Embedded instructions (injection_counts): a planted instruction is detected when the pipeline reports a hit on the
+same page. The reported hits are the embedded_instructions check's issues: the page-text scan's hits plus the
+free-text field hits on pages the page scan did not flag. A hit on a page without a planted instruction is a false
+hit.
 
 The truth is read by attribute (a truth.PacketTruth works); this module does not import truth.py.
 """
@@ -111,15 +113,31 @@ def contradiction_counts(problem_outcomes: list[dict], contradiction_outcomes: l
     return counts
 
 
-def hit_pages(result: PacketResult) -> list[tuple[int | None, Any]]:
-    """(page, hit) for every injection hit; a hit without a page takes its document's first page."""
+def reported_hits(result: PacketResult) -> list[tuple[str | None, int | None]]:
+    """(doc_id, page) of every instruction-like text the pipeline reported.
+
+    These are the issues of the embedded_instructions check: the page-text scan's hits plus the free-text field
+    hits on pages the page scan did not flag (injection_scan.merge_hits). A result without that check (a
+    hand-built one) falls back to the page-text hits.
+    """
+    check = next((item for item in result.checks if item.check_id == "embedded_instructions"), None)
+    if check is None:
+        return [(hit.doc_id, hit.page) for hit in result.injection_hits]
+    places = []
+    for issue in check.issues:
+        evidence = issue.side_a[0] if issue.side_a else None
+        places.append((None, None) if evidence is None else (evidence.doc_id, evidence.page))
+    return places
+
+
+def hit_pages(result: PacketResult) -> list[int | None]:
+    """The page of every reported hit; a hit without a page takes its document's first page."""
     document_pages = {document.doc_id: document.pages for document in result.extraction.documents}
     placed = []
-    for hit in result.injection_hits:
-        page = hit.page
-        if page is None and document_pages.get(hit.doc_id):
-            page = document_pages[hit.doc_id][0]
-        placed.append((page, hit))
+    for doc_id, page in reported_hits(result):
+        if page is None and document_pages.get(doc_id):
+            page = document_pages[doc_id][0]
+        placed.append(page)
     return placed
 
 
@@ -127,7 +145,7 @@ def injection_counts(truth: Any, result: PacketResult) -> tuple[Counter, list[di
     """Counters for injection recall and false hits, and one outcome per planted instruction."""
     counts: Counter = Counter()
     placed = hit_pages(result)
-    hit_page_numbers = {page for page, _ in placed if page is not None}
+    hit_page_numbers = {page for page in placed if page is not None}
     planted_pages = {injection.page_number for injection in truth.injections}
     outcomes = []
     for injection in truth.injections:
@@ -135,7 +153,7 @@ def injection_counts(truth: Any, result: PacketResult) -> tuple[Counter, list[di
         counts["injections.total"] += 1
         counts["injections.detected"] += int(detected)
         outcomes.append({"page": injection.page_number, "technique": injection.technique, "detected": detected})
-    false_hits = [hit for page, hit in placed if page not in planted_pages]
+    false_hits = [page for page in placed if page not in planted_pages]
     counts["injection_hits.total"] += len(placed)
     counts["injection_hits.false"] += len(false_hits)
     counts["injection_packets.total"] += 1

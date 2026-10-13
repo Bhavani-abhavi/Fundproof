@@ -147,8 +147,9 @@ def build_answer_prompt(
 #   <document> blocks, in its own id namespace (APP-...), so it can never pass for policy;
 # - that text is normalized (security/normalize.py) before the tripwire reads it and before it is rendered, so
 #   zero-width, tag-character and homoglyph tricks are undone; then it is escaped like every document;
-# - the tripwire reads the normalized text plus any decoded tag-character message; when it fires, the block carries
-#   the warning attribute;
+# - the tripwire reads the normalized text plus any decoded tag-character message, and also looks for the names of
+#   the containment blocks themselves (CONTAINMENT_TAG_PATTERN: "</untrusted_applicant_document>" is an attempt to
+#   break out of the block; escaping still neutralizes it); when it fires, the block carries the warning attribute;
 # - a system rule says applicant text is a claim to verify, never policy and never an instruction;
 # - the citation checker can then refuse an APP-* id for a policy claim (rag/citations.py, policy_ids_only=True).
 # --------------------------------------------------------------------------------------------------------------
@@ -181,14 +182,35 @@ CONTAINMENT_ANSWER_INSTRUCTION = (
 )
 
 
+# The tag names of the two blocks that hold applicant text (this module's and agent/memo.py's). Only the containment
+# tripwire looks for them; INSTRUCTION_PATTERNS above is part of rag_answer_v1 and the agent's pattern set, and stays
+# unchanged.
+CONTAINMENT_TAG_PATTERN = InstructionPattern(
+    "containment_tag", re.compile(r"<\s*/?\s*untrusted_applicant_(?:document|text)\b", re.IGNORECASE)
+)
+
+
 def is_applicant_id(identifier: str) -> bool:
-    """True for an id in the applicant namespace ("APP-1", "app-notes"): applicant material, never policy."""
+    """True for an id in the applicant namespace ("APP-1", "app-notes"): applicant material, never policy.
+
+    The namespace is shared on purpose with the agent's evidence ids for the application's structured fields
+    ("APP-requested_amount", "APP-material_assumptions"): those are also the applicant's own statements. Neither can
+    be the source of a POLICY claim, which is what check_citations(..., policy_ids_only=True) and the L3 answer
+    schema enforce. A memo that states application facts cites APP-* ids legitimately and must not use that check.
+    """
     return identifier.strip().upper().startswith(APPLICANT_ID_PREFIX)
 
 
 def untrusted_flags(text: str) -> list[str]:
-    """Tripwire pattern names found in untrusted text after normalization (and in any tag-smuggled message)."""
-    return detect_instruction_like_text(detection_text(text))
+    """Tripwire pattern names in untrusted text after normalization (and in any tag-smuggled message).
+
+    INSTRUCTION_PATTERNS, plus CONTAINMENT_TAG_PATTERN for text that names an applicant block's own tag.
+    """
+    readable = detection_text(text)
+    names = detect_instruction_like_text(readable)
+    if CONTAINMENT_TAG_PATTERN.pattern.search(readable):
+        names.append(CONTAINMENT_TAG_PATTERN.name)
+    return names
 
 
 def render_applicant_document(doc_id: str, text: str, flags: Sequence[str]) -> str:

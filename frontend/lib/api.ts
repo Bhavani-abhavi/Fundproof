@@ -120,9 +120,9 @@ export function isOfflineError(error: unknown): boolean {
   return error instanceof ApiError && error.kind === "offline";
 }
 
-type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-interface RequestOptions {
+export interface RequestOptions {
   method?: HttpMethod;
   /** Sent as a JSON body. */
   json?: unknown;
@@ -149,18 +149,62 @@ async function getCsrfToken(forceRefresh = false): Promise<string> {
   return cachedCsrfToken;
 }
 
-/** Pull a readable message out of a FastAPI error body ({"detail": "..."}), if there is one. */
-function messageFromBody(body: unknown): string | null {
-  if (typeof body === "object" && body !== null && "detail" in body) {
-    const detail = (body as { detail: unknown }).detail;
-    if (typeof detail === "string") {
-      return detail;
-    }
+/**
+ * Pull readable messages out of a FastAPI error body, if there are any:
+ * {"detail": "..."}, {"detail": "...", "reasons": [...]}, {"detail": {"message": "...", "reasons": [...]}} or a
+ * validation error list {"detail": [{"loc": [...], "msg": "..."}]}.
+ */
+export function errorMessages(body: unknown): string[] {
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return [];
   }
-  return null;
+  const detail = (body as { detail: unknown }).detail;
+  // The feature routes answer {"detail": "...", "reasons": [...]} (reasons optional).
+  const reasons = (body as { reasons?: unknown }).reasons;
+  const extra = Array.isArray(reasons) ? reasons.filter((item): item is string => typeof item === "string") : [];
+  if (typeof detail === "string") {
+    return [detail, ...extra];
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        if (typeof item === "object" && item !== null && "msg" in item) {
+          const record = item as { msg: unknown; loc?: unknown };
+          const where = Array.isArray(record.loc) ? record.loc.filter((part) => part !== "body").join(".") : "";
+          return where ? `${where}: ${String(record.msg)}` : String(record.msg);
+        }
+        return null;
+      })
+      .filter((message): message is string => message !== null);
+  }
+  if (typeof detail === "object" && detail !== null) {
+    const record = detail as { message?: unknown; reasons?: unknown; errors?: unknown };
+    const messages: string[] = [];
+    if (typeof record.message === "string") {
+      messages.push(record.message);
+    }
+    for (const list of [record.reasons, record.errors]) {
+      if (Array.isArray(list)) {
+        messages.push(...list.filter((item): item is string => typeof item === "string"));
+      }
+    }
+    return messages;
+  }
+  return [];
 }
 
-async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
+function messageFromBody(body: unknown): string | null {
+  return errorMessages(body)[0] ?? null;
+}
+
+/**
+ * One API call. Exported for the feature clients (lib/studio-api.ts, lib/lender-api.ts) so they share CSRF handling,
+ * offline detection and error parsing.
+ */
+export async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
   const method = options.method ?? "GET";
   const expect = options.expect ?? "json";
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -192,7 +236,8 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   const contentType = response.headers.get("content-type") ?? "";
-  const isJson = contentType.includes("application/json");
+  // application/json, and JSON-based types such as application/geo+json (the tract map layer).
+  const isJson = /^application\/([\w.-]+\+)?json\b/.test(contentType.trim());
 
   if (!isJson) {
     // An HTML or empty answer to a JSON endpoint means we are not talking to the API

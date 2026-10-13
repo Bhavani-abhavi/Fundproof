@@ -25,6 +25,13 @@ GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
 OLD_SHA = "fedcba9876543210fedcba9876543210fedcba98"
 SPACE_ID = "owner/fundproof"
 CARD_COLORS = {"red", "yellow", "green", "blue", "indigo", "purple", "pink", "gray"}
+DEMO_AND_BUILD_FILES = (
+    "eval/applications/APP-C-001.json",
+    "eval/startup_applications/APP-S-001.json",
+    "results/kyc_metrics.json",
+    "scripts/download_data.py",
+    "scripts/build_index.py",
+)
 
 
 def write(path: Path, text: str = "x") -> None:
@@ -42,6 +49,9 @@ def fake_repo(tmp_path: Path) -> Path:
         write(root / name)
     for name in ("corpus/guide.md", "frontend/package.json", "frontend/app/page.tsx"):
         write(root / name)
+    # The Lender Desk demo inputs and the two build-time scripts (stage "assets" of the Dockerfile).
+    for name in DEMO_AND_BUILD_FILES:
+        write(root / name)
     write(root / "deploy/space/README.md", "---\ntitle: Fundproof\nsdk: docker\n---\n# Card\n")
     excluded = (
         "src/uwcopilot/__pycache__/app.cpython-311.pyc",
@@ -51,7 +61,14 @@ def fake_repo(tmp_path: Path) -> Path:
         "frontend/.env.local",
         "frontend/tsconfig.tsbuildinfo",
         "frontend/scripts/screenshots.py",
+        "frontend/scripts/screenshots_mock.py",
+        "frontend/scripts/record_mock_fixtures.py",
+        "frontend/mock-api/fixtures/queue.json",
         "data/web/store/secret.bin",
+        "data/raw/ofac/sdn.csv",
+        "results/risk_metrics.json",
+        "scripts/eval_agent.py",
+        "eval/generation/questions.jsonl",
         ".env",
         "README.md",
     )
@@ -129,6 +146,7 @@ def test_bundle_has_the_allow_listed_files_only(fake_repo: Path, tmp_path: Path)
         "corpus/guide.md",
         "frontend/package.json",
         "frontend/app/page.tsx",
+        *DEMO_AND_BUILD_FILES,
     }
     assert files == expected
     on_disk = {path.relative_to(out).as_posix() for path in out.rglob("*") if path.is_file()}
@@ -278,8 +296,32 @@ def test_dockerignore_starts_from_nothing_and_never_lets_secrets_or_data_back_in
     ]
     assert rules[0] == "*"
     allowed = {rule[1:].rstrip("/") for rule in rules if rule.startswith("!")}
-    assert allowed == {"pyproject.toml", "uv.lock", "README.md", "src", "config", "corpus", "frontend"}
-    assert {"**/.env", "frontend/node_modules", "frontend/out"} <= set(rules)
+    assert allowed == {
+        "pyproject.toml",
+        "uv.lock",
+        "README.md",
+        "src",
+        "config",
+        "corpus",
+        "frontend",
+        # the Lender Desk demo's SYNTHETIC applications, the screening threshold and the two build-time scripts
+        "eval/applications",
+        "eval/startup_applications",
+        "results/kyc_metrics.json",
+        "scripts/download_data.py",
+        "scripts/build_index.py",
+    }
+    assert {"**/.env", "frontend/node_modules", "frontend/out", "frontend/mock-api"} <= set(rules)
+
+
+def test_the_image_builds_the_lender_demo_assets_and_screens_with_ofac_only() -> None:
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "python scripts/download_data.py --datasets ofac_sdn" in dockerfile
+    assert "python scripts/build_index.py" in dockerfile
+    assert "UWC_SCREENING_LISTS=ofac" in dockerfile
+    assert "--datasets opensanctions" not in dockerfile  # 445 MB and CC BY-NC: never in the image
+    for copied in ("eval/applications", "eval/startup_applications", "results/kyc_metrics.json", "qdrant_storage"):
+        assert f"COPY {copied}" in dockerfile or f"/app/{copied}" in dockerfile
 
 
 def test_push_sets_a_fresh_session_secret_each_time_and_never_prints_it(

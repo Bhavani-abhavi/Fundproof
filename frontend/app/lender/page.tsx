@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { LenderHome } from "@/components/workspace/lender-home";
+import { LenderHome } from "@/components/lender/lender-home";
 
 export const metadata: Metadata = {
   title: "Lender Desk",

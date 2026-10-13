@@ -334,3 +334,37 @@ studio-naics:  ## Check the profiles' NAICS codes against the BLS QCEW industry 
 
 studio-layer-fixtures:  ## Re-record the Overture, LODES, HPMS-page and BLS-title test fixtures (network; never in CI)
 	uv run python tests/studio/fixtures/record_fixtures.py --only overture,lodes,hpms_pages,industry_titles
+
+# Web app feature pages without a backend (docs/web/frontend.md, "Mock API"): the mock API replays answers recorded
+# from the real app on SYNTHETIC inputs.
+
+.PHONY: web-mock-fixtures web-mock web-screenshots-mock
+
+web-mock-fixtures:  ## Re-record frontend/mock-api/fixtures from the real app in-process (dev login, SYNTHETIC demo plan and files)
+	UWC_SCREENING_LISTS=ofac uv run python frontend/scripts/record_mock_fixtures.py
+
+web-mock:  ## Serve frontend/out + the mock API on http://127.0.0.1:4174 (build the frontend first; Node only)
+	cd frontend && npm run mock
+
+web-screenshots-mock:  ## Feature-page screenshots on the mock API, 1280/375 px, light + dark -> docs/web/screenshots/mock/
+	PLAYWRIGHT_BROWSERS_PATH=$${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers} uv run --with playwright==1.56.0 --with pillow python frontend/scripts/screenshots_mock.py --small
+
+# Web quality metrics on the LOCAL container (scripts/web_metrics.py, docs/deployment.md): Playwright end-to-end flows,
+# axe-core scans and Lighthouse. The container runs WITH the dev login, because a script cannot sign in with Hugging
+# Face; a Space refuses the dev login. Build the image first (make docker-build).
+
+.PHONY: web-metrics-tools web-metrics
+
+WEB_METRICS_PORT ?= 7862
+WEB_METRICS_NAME ?= fundproof-metrics
+
+web-metrics-tools:  ## Install the pinned Lighthouse CLI and axe-core into tools/web-metrics (npm ci; Node 22)
+	cd tools/web-metrics && npm ci
+
+web-metrics:  ## Start DOCKER_IMAGE with dev login, run flows + axe + Lighthouse, stop it -> results/web_metrics.json
+	@docker rm -f $(WEB_METRICS_NAME) >/dev/null 2>&1 || true
+	docker run -d --rm --name $(WEB_METRICS_NAME) -e UWC_DEV_AUTH=1 -p 127.0.0.1:$(WEB_METRICS_PORT):7860 $(DOCKER_IMAGE) && \
+	PLAYWRIGHT_BROWSERS_PATH=$${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers} uv run --with playwright==1.56.0 --with pillow \
+		python scripts/web_metrics.py --url http://127.0.0.1:$(WEB_METRICS_PORT) --target local-container \
+		--docker-image $(DOCKER_IMAGE) --container $(WEB_METRICS_NAME); \
+	status=$$?; docker stop $(WEB_METRICS_NAME) >/dev/null 2>&1; exit $$status

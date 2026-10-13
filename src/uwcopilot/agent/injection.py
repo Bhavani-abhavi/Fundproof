@@ -13,6 +13,13 @@ instruct a reviewer, a system or an AI assistant ("ignore previous instructions"
 The patterns were fixed before the synthetic applications were generated and were not tuned on them. They reuse
 the retrieval-side patterns from uwcopilot.rag.prompt and add three that target decisions on an application.
 
+A free-text field is checked twice: as written, and after normalization (uwcopilot.security.normalize
+.detection_text: invisible characters removed, NFKC, lookalike letters folded, and any message hidden in Unicode
+tag characters decoded). A field is flagged when either reading matches (detect_untrusted). Without the second
+reading "Ig<zero-width space>nore all previous instructions" or a tag-character message would pass unflagged (S2
+review). detect() itself reads only the text it is given, because docintel/injection_scan.py normalizes before
+calling it.
+
 A startup application also has short code fields the applicant writes (each assumption's name and unit, the
 simulator version). They appear in the evidence, so they are screened too, after separators and camelCase are turned
 into spaces: "ignore_all_previous_rules" is read as "ignore all previous rules". A code names a quantity or a
@@ -27,6 +34,7 @@ from pydantic import BaseModel, ConfigDict
 
 from uwcopilot.agent.applications import AnyApplication, StartupCreditApplication
 from uwcopilot.rag.prompt import INSTRUCTION_PATTERNS, InstructionPattern
+from uwcopilot.security.normalize import detection_text
 
 MAX_EXCERPT_CHARS = 200
 
@@ -90,6 +98,12 @@ def detect(text: str) -> list[str]:
     return [item.name for item in ALL_PATTERNS if item.pattern.search(text)]
 
 
+def detect_untrusted(text: str) -> list[str]:
+    """Pattern names found in the text as written OR in its normalized detection text (in ALL_PATTERNS order)."""
+    found = set(detect(text)) | set(detect(detection_text(text)))
+    return [item.name for item in ALL_PATTERNS if item.name in found]
+
+
 def code_as_words(code: str) -> str:
     """A code with its separators and camelCase boundaries turned into spaces ("approve_thisLoan" -> "approve this
     Loan"), so the patterns can see the words."""
@@ -146,7 +160,7 @@ def screen_application(application: AnyApplication) -> list[InjectionHit]:
     """Check every free-text and code field; return one hit per field that contains instruction-like text."""
     hits = []
     for field, text in free_text_fields(application).items():
-        patterns = detect(text)
+        patterns = detect_untrusted(text)
         if patterns:
             hits.append(InjectionHit(field=field, patterns=patterns, excerpt=text[:MAX_EXCERPT_CHARS]))
     for field, code in code_fields(application).items():

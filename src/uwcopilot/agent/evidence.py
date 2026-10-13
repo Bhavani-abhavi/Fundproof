@@ -38,6 +38,7 @@ from uwcopilot.agent.programs import load_program_chunks
 from uwcopilot.agent.tool_runner import ToolResult
 from uwcopilot.rag.guidelines import load_guideline_chunks
 from uwcopilot.rag.prompt import detect_instruction_like_text
+from uwcopilot.security.normalize import has_visible_text
 
 EvidenceKind = Literal["guideline", "calculation", "tool_result", "application_fact", "check"]
 
@@ -326,7 +327,7 @@ def assumptions_fact(app: StartupCreditApplication) -> str:
     parts = []
     for item in items:
         rank = f"tornado rank {item.tornado_rank}" if item.tornado_rank is not None else "not ranked"
-        source_stated = yes_no(bool((item.source or "").strip()))
+        source_stated = yes_no(has_visible_text(item.source))  # the same presence bit as the NSP-4.3 rule
         parts.append(
             f"{item.name} = {plain_number(item.value)} {item.unit} ({item.status}; {rank}; supporting document "
             f"{yes_no(item.supporting_document_provided)}; source stated {source_stated})"

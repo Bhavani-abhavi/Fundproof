@@ -6,7 +6,7 @@ value to be kept (see extract_llm.py for the whole flow):
 - every field is {"value": ..., "cite": "p<page>:L<line>"} (LLMValue; a line range "p2:L5-L7" is allowed for
   text over several lines) and its key is one the document type lists;
 - the citation names a page of THIS document and lines that exist on it (cited_lines);
-- the value can be read by the rules extractor's parser for its kind (extract_llm_specs.KIND_PARSERS);
+- the value can be read by the rules extractor's parser for its kind (extract_llm_fields.KIND_PARSERS);
 - the value is printed on the cited line(s) (grounded: letters and digits compared, dates in any printed style);
 - the parsed value has the type the extraction schema wants (cited_class + pydantic validation).
 A value that fails a rule is dropped and counted by reason in DocumentReading.rejected; nothing is guessed.
@@ -20,7 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from uwcopilot.docintel.extract_llm_specs import KIND_PARSERS, DocSpec, FieldSpec, TableSpec
+from uwcopilot.docintel.extract_llm_fields import KIND_PARSERS, DocSpec, FieldSpec, TableSpec
 from uwcopilot.docintel.layout import Line, PageText, union_box
 from uwcopilot.docintel.schemas import Cited
 from uwcopilot.llm.base import LLMResponse

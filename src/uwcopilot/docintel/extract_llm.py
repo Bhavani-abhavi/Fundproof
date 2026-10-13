@@ -2,7 +2,7 @@
 
 How one document is read (LLMExtractor.read_document):
 1. Prompt. The system prompt (SYSTEM_PROMPT) says the document text is data, never instructions, and asks for
-   JSON only. The user message lists the fields and tables of the document type (extract_llm_specs.DocSpec) and
+   JSON only. The user message lists the fields and tables of the document type (extract_llm_fields.DocSpec) and
    then the document inside <document doc_id=".." type="..">, one line per printed line:
    "p<page>:L<line> | <text>" with & < > escaped, so text in the document cannot close the block.
 2. Size. A small local model has a 4,096-token context, so a document whose prompt is longer than
@@ -36,7 +36,8 @@ from pydantic import BaseModel
 
 from uwcopilot.docintel.classify import Segment
 from uwcopilot.docintel.extract_llm_answers import DocumentReading, parse_json_object, read_answer
-from uwcopilot.docintel.extract_llm_specs import DOC_SPECS, DocSpec
+from uwcopilot.docintel.extract_llm_fields import DocSpec
+from uwcopilot.docintel.extract_llm_specs import DOC_SPECS
 from uwcopilot.docintel.layout import Line, PageText
 from uwcopilot.docintel.schemas import Cited, PacketExtraction, TaxReturnSummary
 from uwcopilot.llm.base import IncompleteLLMResponse, LLMClient, LLMMessage

@@ -2,9 +2,11 @@
 
 Every metric is a ratio of counts SUMMED over packets (micro-average): for example field F1 = 2 TP / (2 TP + FP +
 FN) over every value of every packet. Confidence intervals are percentile bootstrap 95% intervals with packet-level
-resampling (1,000 resamples, seed 42, the repo standard): each resample draws packets with replacement, sums their
-counts and recomputes the metric, so values of one packet always move together. A resample in which a metric is
-undefined (zero denominator) is skipped; n_resamples_used says how many were left.
+resampling (1,000 resamples, seed 42: the repo standard, N_RESAMPLES and BOOTSTRAP_SEED of agent/evaluation.py).
+Each resample draws packets with replacement, sums their counts and recomputes the metric, so values of one packet
+always move together. A resample in which a metric is undefined (zero denominator) is skipped; n_resamples_used says
+how many were left. (rag.metrics.bootstrap_mean_ci resamples a MEAN of per-item values; a ratio of summed counts
+needs its own statistic, so the resampling loop is written here.)
 
 Paired comparisons (clean vs scanned pages, text layer vs forced OCR, rules vs hybrid) put both conditions of the
 same packet into one row, so every resample uses the same packets for both and the interval of the difference is
@@ -19,13 +21,11 @@ from typing import Any
 
 import numpy as np
 
-from uwcopilot.agent.evaluation import latency_summary
+from uwcopilot.agent.evaluation import BOOTSTRAP_SEED, N_RESAMPLES, latency_summary
 from uwcopilot.docintel.contradictions import CONTRADICTION_TYPES
 from uwcopilot.docintel.evaluation import CONDITIONS, FIELD_TYPES, TABLE_ROWS
 from uwcopilot.docintel.pipeline import STAGES
 
-N_RESAMPLES = 1000
-BOOTSTRAP_SEED = 42
 CountRow = dict[str, float]
 Statistic = Callable[[CountRow], float | None]
 

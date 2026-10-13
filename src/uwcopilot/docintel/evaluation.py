@@ -21,7 +21,8 @@ What is counted (see each function):
 - checklist: for every checklist code of the line, "missing" (required_documents check) vs the truth's
   missing_required_documents, and "provided" (to_application's documents_provided) vs the as-documented application;
 - contradictions: detected contradictions matched with injected problems (match_contradictions);
-- injections: planted instructions found by the injection scan on their page, and hits on other pages.
+- injections: planted instructions found on their page by the pipeline (page-text scan and free-text fields, as
+  the embedded_instructions check reports them), and hits on other pages.
 """
 
 import re

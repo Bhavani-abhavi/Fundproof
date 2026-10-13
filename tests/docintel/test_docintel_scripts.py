@@ -63,6 +63,9 @@ def test_rules_run_writes_metrics_with_provenance(tmp_path: Path) -> None:
     assert report["data_label"] == "SYNTHETIC"
     assert report["evaluation_set"]["packet_ids"] == [entry["packet_id"]]
     assert report["evaluation_set"]["full_split"] is False
+    # The tiny test set is not the committed evaluation set, so the on-disk manifest is what provenance hashes.
+    assert report["evaluation_set"]["matches_committed_manifest"] is False
+    assert "eval/packets/manifest.json" not in report["provenance"]["eval_sets"]
     assert report["rules"]["n_packets"] == 1
     assert report["comparisons"]["text_layer_vs_forced_ocr"] == "not measured (--skip-forced-ocr)"
     assert report["comparisons"]["rules_vs_hybrid"].startswith("not measured")

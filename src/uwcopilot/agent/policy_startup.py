@@ -39,6 +39,7 @@ from uwcopilot.agent.policy_credit import (
     REVENUE_STRESS_SHARE,
 )
 from uwcopilot.agent.vocab import CHIEF_CREDIT_OFFICER, CREDIT_COMMITTEE, KYC_OPERATIONS, SENIOR_UNDERWRITER
+from uwcopilot.security.normalize import has_visible_text
 
 STARTUP_POLICY_VERSION = (
     "reference-policy-v1 (northwind_startup_program 2026.1 SYNTHETIC, with northwind_business_credit 2026.1)"
@@ -894,7 +895,12 @@ def check_startup_stress(app: StartupCreditApplication, service: float, context:
 
 
 def check_projection_assumptions(app: StartupCreditApplication, context: RuleContext) -> None:
-    """NSP-4.3: the projection lists its material assumptions, each with a stated source."""
+    """NSP-4.3: the projection lists its material assumptions, each with a stated source.
+
+    The source is free text the applicant writes. The policy reads one bit of it: whether it holds any visible
+    character (security.normalize.has_visible_text). A source made only of spaces or invisible characters such as a
+    zero-width space is not stated. The words themselves are never read.
+    """
     assumptions = app.material_assumptions
     if not assumptions:
         context.find(
@@ -906,7 +912,7 @@ def check_projection_assumptions(app: StartupCreditApplication, context: RuleCon
             ["APP-material_assumptions"],
         )
         return
-    unsourced = [item.name for item in assumptions if not (item.source or "").strip()]
+    unsourced = [item.name for item in assumptions if not has_visible_text(item.source)]
     if unsourced:
         context.find(
             "projection_assumptions_incomplete",

@@ -1,0 +1,1953 @@
+{
+  "data_label": "SYNTHETIC",
+  "description": "Document pipeline on SYNTHETIC packets: fields, citations, pages, checklist, contradictions, injections, latency and cost. Simulated documents only; no real-world accuracy claim.",
+  "evaluation_set": {
+    "split": "test",
+    "n_packets": 60,
+    "full_split": true,
+    "generator_version": "synthetic-packets-v1",
+    "test_truth_sha256": "9c73de55dde06121e1d976c11c872b737e12293dca2fd33c5f5e9239bba527d8",
+    "matches_committed_manifest": true,
+    "packet_ids": [
+      "PKT-C-002",
+      "PKT-C-003",
+      "PKT-C-012",
+      "PKT-C-018",
+      "PKT-C-019",
+      "PKT-C-022",
+      "PKT-C-029",
+      "PKT-C-034",
+      "PKT-C-044",
+      "PKT-C-048",
+      "PKT-C-049",
+      "PKT-C-052",
+      "PKT-C-060",
+      "PKT-C-063",
+      "PKT-C-066",
+      "PKT-C-077",
+      "PKT-C-084",
+      "PKT-C-094",
+      "PKT-C-095",
+      "PKT-C-100",
+      "PKT-C-102",
+      "PKT-C-120",
+      "PKT-C-122",
+      "PKT-C-126",
+      "PKT-C-128",
+      "PKT-C-132",
+      "PKT-C-133",
+      "PKT-C-135",
+      "PKT-C-138",
+      "PKT-C-142",
+      "PKT-I-003",
+      "PKT-I-004",
+      "PKT-I-006",
+      "PKT-I-014",
+      "PKT-I-020",
+      "PKT-I-028",
+      "PKT-I-029",
+      "PKT-I-042",
+      "PKT-I-043",
+      "PKT-I-045",
+      "PKT-I-048",
+      "PKT-I-049",
+      "PKT-I-052",
+      "PKT-I-061",
+      "PKT-I-072",
+      "PKT-I-080",
+      "PKT-I-081",
+      "PKT-I-086",
+      "PKT-I-091",
+      "PKT-I-092",
+      "PKT-I-107",
+      "PKT-I-110",
+      "PKT-I-112",
+      "PKT-I-117",
+      "PKT-I-119",
+      "PKT-I-124",
+      "PKT-I-127",
+      "PKT-I-132",
+      "PKT-I-143",
+      "PKT-I-149"
+    ]
+  },
+  "protocol": {
+    "bootstrap": {
+      "resamples": 1000,
+      "seed": 42,
+      "interval": "percentile 95%",
+      "unit": "packet"
+    },
+    "averaging": "micro (counts summed over packets)",
+    "documentation": "src/uwcopilot/docintel/evaluation.py, evaluation_problems.py, evaluation_summary.py"
+  },
+  "run": {
+    "extractors": [
+      "rules"
+    ],
+    "provider": null,
+    "model": null,
+    "workers_rules_run": 1,
+    "workers_forced_ocr_run": 2,
+    "wall_seconds": 2286.6
+  },
+  "rules": {
+    "n_packets": 60,
+    "packets_by_line": {
+      "credit": 30,
+      "insurance": 30
+    },
+    "fields": {
+      "overall": {
+        "precision": {
+          "value": 0.9957,
+          "ci_low": 0.9932,
+          "ci_high": 0.9977,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9938,
+          "ci_low": 0.99,
+          "ci_high": 0.9965,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.9948,
+          "ci_low": 0.9916,
+          "ci_high": 0.9971,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "tp": 36963,
+        "fp": 158,
+        "fn": 232
+      },
+      "by_type": {
+        "money": {
+          "precision": {
+            "value": 0.9972,
+            "ci_low": 0.9952,
+            "ci_high": 0.9987,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9956,
+            "ci_low": 0.9924,
+            "ci_high": 0.9978,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9964,
+            "ci_low": 0.9938,
+            "ci_high": 0.9983,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 16600,
+          "fp": 47,
+          "fn": 74
+        },
+        "percent": {
+          "precision": {
+            "value": 0.997,
+            "ci_low": 0.9904,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9909,
+            "ci_low": 0.9716,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9939,
+            "ci_low": 0.9809,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 328,
+          "fp": 1,
+          "fn": 3
+        },
+        "date": {
+          "precision": {
+            "value": 0.9983,
+            "ci_low": 0.9966,
+            "ci_high": 0.9995,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9978,
+            "ci_low": 0.9959,
+            "ci_high": 0.9992,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.998,
+            "ci_low": 0.9964,
+            "ci_high": 0.9994,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 8105,
+          "fp": 14,
+          "fn": 18
+        },
+        "identifier": {
+          "precision": {
+            "value": 0.9944,
+            "ci_low": 0.9897,
+            "ci_high": 0.9982,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.988,
+            "ci_low": 0.9801,
+            "ci_high": 0.9945,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9912,
+            "ci_low": 0.9859,
+            "ci_high": 0.996,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 1072,
+          "fp": 6,
+          "fn": 13
+        },
+        "name": {
+          "precision": {
+            "value": 0.9979,
+            "ci_low": 0.9955,
+            "ci_high": 0.9995,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9962,
+            "ci_low": 0.9917,
+            "ci_high": 0.9995,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9971,
+            "ci_low": 0.9936,
+            "ci_high": 0.9995,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 1859,
+          "fp": 4,
+          "fn": 7
+        },
+        "code": {
+          "precision": {
+            "value": 0.989,
+            "ci_low": 0.9797,
+            "ci_high": 0.997,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.976,
+            "ci_low": 0.9594,
+            "ci_high": 0.9894,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9825,
+            "ci_low": 0.9711,
+            "ci_high": 0.992,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 1262,
+          "fp": 14,
+          "fn": 31
+        },
+        "integer": {
+          "precision": {
+            "value": 0.9755,
+            "ci_low": 0.9369,
+            "ci_high": 0.9984,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9628,
+            "ci_low": 0.9221,
+            "ci_high": 0.9945,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9691,
+            "ci_low": 0.9304,
+            "ci_high": 0.9961,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 596,
+          "fp": 15,
+          "fn": 23
+        },
+        "boolean": {
+          "precision": {
+            "value": 0.9929,
+            "ci_low": 0.9836,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9842,
+            "ci_low": 0.9691,
+            "ci_high": 0.9962,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9885,
+            "ci_low": 0.9771,
+            "ci_high": 0.9973,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 559,
+          "fp": 4,
+          "fn": 9
+        },
+        "free_text": {
+          "precision": {
+            "value": 0.992,
+            "ci_low": 0.9871,
+            "ci_high": 0.9963,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9919,
+            "ci_low": 0.987,
+            "ci_high": 0.9962,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9919,
+            "ci_low": 0.9871,
+            "ci_high": 0.9963,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 6582,
+          "fp": 53,
+          "fn": 54
+        }
+      },
+      "by_condition": {
+        "clean": {
+          "overall": {
+            "precision": {
+              "value": 1.0,
+              "ci_low": 1.0,
+              "ci_high": 1.0,
+              "n_packets": 60,
+              "n_resamples_used": 1000
+            },
+            "recall": {
+              "value": 1.0,
+              "ci_low": 1.0,
+              "ci_high": 1.0,
+              "n_packets": 60,
+              "n_resamples_used": 1000
+            },
+            "f1": {
+              "value": 1.0,
+              "ci_low": 1.0,
+              "ci_high": 1.0,
+              "n_packets": 60,
+              "n_resamples_used": 1000
+            },
+            "tp": 33738,
+            "fp": 0,
+            "fn": 0
+          },
+          "by_type": {
+            "money": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 15424,
+              "fp": 0,
+              "fn": 0
+            },
+            "percent": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 231,
+              "fp": 0,
+              "fn": 0
+            },
+            "date": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 7499,
+              "fp": 0,
+              "fn": 0
+            },
+            "identifier": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 877,
+              "fp": 0,
+              "fn": 0
+            },
+            "name": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 1536,
+              "fp": 0,
+              "fn": 0
+            },
+            "code": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 966,
+              "fp": 0,
+              "fn": 0
+            },
+            "integer": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 514,
+              "fp": 0,
+              "fn": 0
+            },
+            "boolean": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 430,
+              "fp": 0,
+              "fn": 0
+            },
+            "free_text": {
+              "precision": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 1.0,
+                "ci_low": 1.0,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 6261,
+              "fp": 0,
+              "fn": 0
+            }
+          }
+        },
+        "scanned": {
+          "overall": {
+            "precision": {
+              "value": 0.9533,
+              "ci_low": 0.9329,
+              "ci_high": 0.9727,
+              "n_packets": 60,
+              "n_resamples_used": 1000
+            },
+            "recall": {
+              "value": 0.9329,
+              "ci_low": 0.905,
+              "ci_high": 0.9587,
+              "n_packets": 60,
+              "n_resamples_used": 1000
+            },
+            "f1": {
+              "value": 0.943,
+              "ci_low": 0.9206,
+              "ci_high": 0.9646,
+              "n_packets": 60,
+              "n_resamples_used": 1000
+            },
+            "tp": 3225,
+            "fp": 158,
+            "fn": 232
+          },
+          "by_type": {
+            "money": {
+              "precision": {
+                "value": 0.9616,
+                "ci_low": 0.9395,
+                "ci_high": 0.9805,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.9408,
+                "ci_low": 0.9088,
+                "ci_high": 0.9682,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.9511,
+                "ci_low": 0.925,
+                "ci_high": 0.9738,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 1176,
+              "fp": 47,
+              "fn": 74
+            },
+            "percent": {
+              "precision": {
+                "value": 0.9898,
+                "ci_low": 0.9649,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.97,
+                "ci_low": 0.9016,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.9798,
+                "ci_low": 0.9322,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 97,
+              "fp": 1,
+              "fn": 3
+            },
+            "date": {
+              "precision": {
+                "value": 0.9774,
+                "ci_low": 0.9616,
+                "ci_high": 0.9932,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.9712,
+                "ci_low": 0.9515,
+                "ci_high": 0.9887,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.9743,
+                "ci_low": 0.9571,
+                "ci_high": 0.9909,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 606,
+              "fp": 14,
+              "fn": 18
+            },
+            "identifier": {
+              "precision": {
+                "value": 0.9701,
+                "ci_low": 0.9431,
+                "ci_high": 0.9907,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.9375,
+                "ci_low": 0.8995,
+                "ci_high": 0.9718,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.9535,
+                "ci_low": 0.9249,
+                "ci_high": 0.9798,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 195,
+              "fp": 6,
+              "fn": 13
+            },
+            "name": {
+              "precision": {
+                "value": 0.9878,
+                "ci_low": 0.9747,
+                "ci_high": 0.9972,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.9788,
+                "ci_low": 0.9538,
+                "ci_high": 0.9969,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.9833,
+                "ci_low": 0.9651,
+                "ci_high": 0.9969,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 323,
+              "fp": 4,
+              "fn": 7
+            },
+            "code": {
+              "precision": {
+                "value": 0.9548,
+                "ci_low": 0.9177,
+                "ci_high": 0.9879,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.9052,
+                "ci_low": 0.8456,
+                "ci_high": 0.9563,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.9294,
+                "ci_low": 0.8862,
+                "ci_high": 0.9674,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 296,
+              "fp": 14,
+              "fn": 31
+            },
+            "integer": {
+              "precision": {
+                "value": 0.8454,
+                "ci_low": 0.6737,
+                "ci_high": 0.9888,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.781,
+                "ci_low": 0.6201,
+                "ci_high": 0.9611,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.8119,
+                "ci_low": 0.6494,
+                "ci_high": 0.9692,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 82,
+              "fp": 15,
+              "fn": 23
+            },
+            "boolean": {
+              "precision": {
+                "value": 0.9699,
+                "ci_low": 0.937,
+                "ci_high": 1.0,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.9348,
+                "ci_low": 0.8849,
+                "ci_high": 0.9817,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.952,
+                "ci_low": 0.9123,
+                "ci_high": 0.9872,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 129,
+              "fp": 4,
+              "fn": 9
+            },
+            "free_text": {
+              "precision": {
+                "value": 0.8583,
+                "ci_low": 0.7959,
+                "ci_high": 0.9151,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "recall": {
+                "value": 0.856,
+                "ci_low": 0.7952,
+                "ci_high": 0.9129,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "f1": {
+                "value": 0.8571,
+                "ci_low": 0.7952,
+                "ci_high": 0.9133,
+                "n_packets": 60,
+                "n_resamples_used": 1000
+              },
+              "tp": 321,
+              "fp": 53,
+              "fn": 54
+            }
+          }
+        }
+      }
+    },
+    "fields_by_line": {
+      "credit": {
+        "precision": {
+          "value": 0.9973,
+          "ci_low": 0.9951,
+          "ci_high": 0.9988,
+          "n_packets": 30,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9967,
+          "ci_low": 0.9942,
+          "ci_high": 0.9985,
+          "n_packets": 30,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.997,
+          "ci_low": 0.9946,
+          "ci_high": 0.9986,
+          "n_packets": 30,
+          "n_resamples_used": 1000
+        },
+        "tp": 31292,
+        "fp": 85,
+        "fn": 104
+      },
+      "insurance": {
+        "precision": {
+          "value": 0.9873,
+          "ci_low": 0.9753,
+          "ci_high": 0.9957,
+          "n_packets": 30,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9779,
+          "ci_low": 0.9627,
+          "ci_high": 0.9914,
+          "n_packets": 30,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.9826,
+          "ci_low": 0.9698,
+          "ci_high": 0.9931,
+          "n_packets": 30,
+          "n_resamples_used": 1000
+        },
+        "tp": 5671,
+        "fp": 73,
+        "fn": 128
+      }
+    },
+    "rows": {
+      "transactions": {
+        "precision": {
+          "value": 0.9983,
+          "ci_low": 0.9963,
+          "ci_high": 0.9999,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9983,
+          "ci_low": 0.9963,
+          "ci_high": 0.9999,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.9983,
+          "ci_low": 0.9963,
+          "ci_high": 0.9999,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "tp": 6358,
+        "fp": 11,
+        "fn": 11,
+        "exact_share_of_found": {
+          "value": 0.9932,
+          "ci_low": 0.9889,
+          "ci_high": 0.9971,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 6315,
+          "denominator": 6358
+        }
+      },
+      "claims": {
+        "precision": {
+          "value": 0.9869,
+          "ci_low": 0.9661,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9679,
+          "ci_low": 0.9363,
+          "ci_high": 0.9938,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.9773,
+          "ci_low": 0.9542,
+          "ci_high": 0.9962,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "tp": 151,
+        "fp": 2,
+        "fn": 5,
+        "exact_share_of_found": {
+          "value": 0.9669,
+          "ci_low": 0.9147,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 146,
+          "denominator": 151
+        }
+      },
+      "locations": {
+        "precision": {
+          "value": 0.9492,
+          "ci_low": 0.8545,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9333,
+          "ci_low": 0.8421,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.9412,
+          "ci_low": 0.851,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "tp": 56,
+        "fp": 3,
+        "fn": 4,
+        "exact_share_of_found": {
+          "value": 0.9643,
+          "ci_low": 0.9074,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 54,
+          "denominator": 56
+        }
+      }
+    },
+    "citations": {
+      "accuracy": {
+        "value": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 36963,
+        "denominator": 36963
+      },
+      "cited_page_is_truth_page": {
+        "value": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 36963,
+        "denominator": 36963
+      },
+      "by_type": {
+        "money": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 16600,
+          "denominator": 16600
+        },
+        "percent": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 328,
+          "denominator": 328
+        },
+        "date": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 8105,
+          "denominator": 8105
+        },
+        "identifier": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 1072,
+          "denominator": 1072
+        },
+        "name": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 1859,
+          "denominator": 1859
+        },
+        "code": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 1262,
+          "denominator": 1262
+        },
+        "integer": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 596,
+          "denominator": 596
+        },
+        "boolean": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 559,
+          "denominator": 559
+        },
+        "free_text": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 6582,
+          "denominator": 6582
+        }
+      }
+    },
+    "page_classification": {
+      "all": {
+        "value": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 949,
+        "denominator": 949
+      },
+      "clean": {
+        "value": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 786,
+        "denominator": 786
+      },
+      "scanned": {
+        "value": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 163,
+        "denominator": 163
+      }
+    },
+    "document_segmentation": {
+      "value": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0,
+      "n_packets": 60,
+      "n_resamples_used": 1000,
+      "numerator": 876,
+      "denominator": 876
+    },
+    "checklist": {
+      "code_accuracy": {
+        "value": 0.9982,
+        "ci_low": 0.9945,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 569,
+        "denominator": 570
+      },
+      "packet_exact_match": {
+        "value": 0.9833,
+        "ci_low": 0.95,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 59,
+        "denominator": 60
+      },
+      "documents_provided_accuracy": {
+        "value": 0.9982,
+        "ci_low": 0.9945,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 569,
+        "denominator": 570
+      }
+    },
+    "contradictions": {
+      "recall": {
+        "value": 0.9592,
+        "ci_low": 0.8965,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 47,
+        "denominator": 49
+      },
+      "precision": {
+        "value": 0.75,
+        "ci_low": 0.6301,
+        "ci_high": 0.88,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 51,
+        "denominator": 68
+      },
+      "by_type": {
+        "name_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 878,
+            "numerator": 2,
+            "denominator": 2
+          },
+          "precision": {
+            "value": 0.5,
+            "ci_low": 0.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 988,
+            "numerator": 2,
+            "denominator": 4
+          }
+        },
+        "fein_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 653,
+            "numerator": 1,
+            "denominator": 1
+          },
+          "precision": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 653,
+            "numerator": 1,
+            "denominator": 1
+          }
+        },
+        "owner_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 993,
+            "numerator": 5,
+            "denominator": 5
+          },
+          "precision": {
+            "value": 0.7778,
+            "ci_low": 0.3333,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 997,
+            "numerator": 7,
+            "denominator": 9
+          }
+        },
+        "prompt_injection": {
+          "recall": {
+            "value": 0.6667,
+            "ci_low": 0.1667,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 996,
+            "numerator": 4,
+            "denominator": 6
+          },
+          "precision": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 974,
+            "numerator": 4,
+            "denominator": 4
+          }
+        },
+        "revenue_gap": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 10,
+            "denominator": 10
+          },
+          "precision": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 10,
+            "denominator": 10
+          }
+        },
+        "balance_discontinuity": {
+          "recall": {
+            "value": null,
+            "ci_low": null,
+            "ci_high": null,
+            "n_packets": 60,
+            "n_resamples_used": 0,
+            "numerator": 0,
+            "denominator": 0
+          },
+          "precision": {
+            "value": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0,
+            "n_packets": 60,
+            "n_resamples_used": 978,
+            "numerator": 0,
+            "denominator": 7
+          }
+        },
+        "debt_payment_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 879,
+            "numerator": 2,
+            "denominator": 2
+          },
+          "precision": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 879,
+            "numerator": 2,
+            "denominator": 2
+          }
+        },
+        "loss_run_total_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 8,
+            "denominator": 8
+          },
+          "precision": {
+            "value": 0.6923,
+            "ci_low": 0.4,
+            "ci_high": 0.9334,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 9,
+            "denominator": 13
+          }
+        },
+        "paid_reserve_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 633,
+            "numerator": 1,
+            "denominator": 1
+          },
+          "precision": {
+            "value": 0.5,
+            "ci_low": 0.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 859,
+            "numerator": 1,
+            "denominator": 2
+          }
+        },
+        "tiv_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 11,
+            "denominator": 11
+          },
+          "precision": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 12,
+            "denominator": 12
+          }
+        },
+        "claims_history_mismatch": {
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 954,
+            "numerator": 3,
+            "denominator": 3
+          },
+          "precision": {
+            "value": 0.75,
+            "ci_low": 0.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 987,
+            "numerator": 3,
+            "denominator": 4
+          }
+        }
+      },
+      "precision_by_packet_condition": {
+        "packets_without_scanned_pages": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 5,
+          "n_resamples_used": 985,
+          "numerator": 4,
+          "denominator": 4
+        },
+        "packets_with_scanned_pages": {
+          "value": 0.7344,
+          "ci_low": 0.6029,
+          "ci_high": 0.8573,
+          "n_packets": 55,
+          "n_resamples_used": 1000,
+          "numerator": 47,
+          "denominator": 64
+        }
+      }
+    },
+    "benign_vs_unsupported": {
+      "accuracy": {
+        "value": 0.8158,
+        "ci_low": 0.6667,
+        "ci_high": 0.9429,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 31,
+        "denominator": 38
+      },
+      "unknown_share": {
+        "value": 0.1842,
+        "ci_low": 0.0571,
+        "ci_high": 0.3333,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 7,
+        "denominator": 38
+      },
+      "by_class": {
+        "benign": {
+          "accuracy": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 18,
+            "denominator": 18
+          },
+          "unknown_share": {
+            "value": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 0,
+            "denominator": 18
+          }
+        },
+        "unsupported": {
+          "accuracy": {
+            "value": 0.65,
+            "ci_low": 0.4089,
+            "ci_high": 0.875,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 13,
+            "denominator": 20
+          },
+          "unknown_share": {
+            "value": 0.35,
+            "ci_low": 0.125,
+            "ci_high": 0.5911,
+            "n_packets": 60,
+            "n_resamples_used": 1000,
+            "numerator": 7,
+            "denominator": 20
+          }
+        }
+      }
+    },
+    "injections": {
+      "recall": {
+        "value": 0.6667,
+        "ci_low": 0.1667,
+        "ci_high": 1.0,
+        "n_packets": 60,
+        "n_resamples_used": 996,
+        "numerator": 4,
+        "denominator": 6
+      },
+      "by_technique": {
+        "approval_claim": {
+          "total": 1,
+          "detected": 1
+        },
+        "mark_status": {
+          "total": 1,
+          "detected": 1
+        },
+        "novel_software_note": {
+          "total": 1,
+          "detected": 0
+        },
+        "novel_tool_directive": {
+          "total": 1,
+          "detected": 0
+        },
+        "role_spoof": {
+          "total": 2,
+          "detected": 2
+        }
+      },
+      "per_packet_false_positive_rate": {
+        "value": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 0,
+        "denominator": 60
+      },
+      "clean_packet_false_positive_rate": {
+        "value": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_packets": 60,
+        "n_resamples_used": 1000,
+        "numerator": 0,
+        "denominator": 54
+      },
+      "false_hits": 0
+    },
+    "latency": {
+      "per_stage_ms": {
+        "text_layer": {
+          "p50": 446.66,
+          "p50_ci": [
+            244.32,
+            729.32
+          ],
+          "p95": 1038.28,
+          "p95_ci": [
+            934.24,
+            1150.48
+          ],
+          "n": 60
+        },
+        "ocr": {
+          "p50": 9987.69,
+          "p50_ci": [
+            7828.64,
+            11263.07
+          ],
+          "p95": 22763.01,
+          "p95_ci": [
+            17186.61,
+            23414.01
+          ],
+          "n": 60
+        },
+        "classify": {
+          "p50": 3.25,
+          "p50_ci": [
+            1.91,
+            4.49
+          ],
+          "p95": 9.22,
+          "p95_ci": [
+            6.56,
+            14.54
+          ],
+          "n": 60
+        },
+        "extract": {
+          "p50": 43.47,
+          "p50_ci": [
+            25.07,
+            49.74
+          ],
+          "p95": 149.07,
+          "p95_ci": [
+            82.97,
+            162.77
+          ],
+          "n": 60
+        },
+        "llm": {
+          "p50": 0.0,
+          "p50_ci": [
+            0.0,
+            0.0
+          ],
+          "p95": 0.0,
+          "p95_ci": [
+            0.0,
+            0.0
+          ],
+          "n": 60
+        },
+        "injection_scan": {
+          "p50": 29.12,
+          "p50_ci": [
+            15.26,
+            35.57
+          ],
+          "p95": 59.27,
+          "p95_ci": [
+            44.1,
+            62.63
+          ],
+          "n": 60
+        },
+        "checks": {
+          "p50": 11.03,
+          "p50_ci": [
+            3.82,
+            20.48
+          ],
+          "p95": 36.41,
+          "p95_ci": [
+            26.35,
+            42.15
+          ],
+          "n": 60
+        },
+        "contradictions": {
+          "p50": 0.43,
+          "p50_ci": [
+            0.39,
+            0.49
+          ],
+          "p95": 1.03,
+          "p95_ci": [
+            0.84,
+            1.76
+          ],
+          "n": 60
+        },
+        "total": {
+          "p50": 10828.75,
+          "p50_ci": [
+            8302.82,
+            12395.39
+          ],
+          "p95": 23601.74,
+          "p95_ci": [
+            18066.62,
+            24289.97
+          ],
+          "n": 60
+        }
+      },
+      "ocr_pages_total": 163,
+      "packets_with_ocr": 55,
+      "ocr_ms_per_page": {
+        "p50": 3600.74,
+        "p50_ci": [
+          3488.4,
+          3791.36
+        ],
+        "p95": 4811.33,
+        "p95_ci": [
+          4248.1,
+          5408.44
+        ],
+        "n": 55
+      }
+    },
+    "cost": {
+      "llm_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usd_total": 0.0,
+      "usd_per_packet_mean": 0.0
+    }
+  },
+  "comparisons": {
+    "clean_vs_scanned_pages": {
+      "clean": {
+        "precision": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "tp": 33738,
+        "fp": 0,
+        "fn": 0
+      },
+      "scanned": {
+        "precision": {
+          "value": 0.9533,
+          "ci_low": 0.9329,
+          "ci_high": 0.9727,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "recall": {
+          "value": 0.9329,
+          "ci_low": 0.905,
+          "ci_high": 0.9587,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "f1": {
+          "value": 0.943,
+          "ci_low": 0.9206,
+          "ci_high": 0.9646,
+          "n_packets": 60,
+          "n_resamples_used": 1000
+        },
+        "tp": 3225,
+        "fp": 158,
+        "fn": 232
+      },
+      "f1_difference_clean_minus_scanned": {
+        "value": 0.057,
+        "ci_low": 0.0354,
+        "ci_high": 0.0794,
+        "n_packets": 60,
+        "n_resamples_used": 1000
+      }
+    },
+    "text_layer_vs_forced_ocr": {
+      "scope": "values printed on clean (text-layer) pages and the page types of those pages, same packets",
+      "text_layer": {
+        "fields": {
+          "precision": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 33738,
+          "fp": 0,
+          "fn": 0
+        },
+        "page_classification": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 786,
+          "denominator": 786
+        }
+      },
+      "forced_ocr": {
+        "fields": {
+          "precision": {
+            "value": 0.9877,
+            "ci_low": 0.9811,
+            "ci_high": 0.9924,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "recall": {
+            "value": 0.9862,
+            "ci_low": 0.9791,
+            "ci_high": 0.9912,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "f1": {
+            "value": 0.9869,
+            "ci_low": 0.9802,
+            "ci_high": 0.9917,
+            "n_packets": 60,
+            "n_resamples_used": 1000
+          },
+          "tp": 33274,
+          "fp": 416,
+          "fn": 464
+        },
+        "page_classification": {
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n_packets": 60,
+          "n_resamples_used": 1000,
+          "numerator": 786,
+          "denominator": 786
+        },
+        "ocr_ms_per_page": {
+          "p50": 2206.98,
+          "p50_ci": [
+            2071.01,
+            2465.33
+          ],
+          "p95": 8032.27,
+          "p95_ci": [
+            4932.9,
+            8612.7
+          ],
+          "n": 60
+        }
+      },
+      "f1_difference_text_layer_minus_forced_ocr": {
+        "value": 0.0131,
+        "ci_low": 0.0083,
+        "ci_high": 0.0198,
+        "n_packets": 60,
+        "n_resamples_used": 1000
+      }
+    },
+    "rules_vs_hybrid": "not measured (no --provider was given: this run used the rules extractor only; local-model comparisons are run separately with --provider)"
+  },
+  "provenance": {
+    "git_sha": "6e16420b50ab74ff7b79bb7ab72f2fc9d2e4b572",
+    "git_dirty": true,
+    "generated_at_utc": "2026-10-13T19:13:05+00:00",
+    "generated_by": "scripts/eval_docintel.py",
+    "prompts": {},
+    "corpus_checksum": "not applicable (no retrieval corpus is used)",
+    "eval_sets": {
+      "eval/packets/manifest.json": "55a595bb2e4187f72b7a051df15d0266fa780a349d6358f356d5aab682be7634"
+    },
+    "models": [],
+    "data_snapshots": {
+      "tesseract_version": "tesseract 5.3.4",
+      "generator_version": "synthetic-packets-v1",
+      "test_truth_sha256": "9c73de55dde06121e1d976c11c872b737e12293dca2fd33c5f5e9239bba527d8",
+      "packet_seed": 42,
+      "bootstrap_seed": 42
+    },
+    "packages": {
+      "python": "3.11.17",
+      "anthropic": "1.13.0",
+      "openai": "3.28.0",
+      "httpx": "0.28.1",
+      "pydantic": "2.14.0",
+      "pyyaml": "6.0.3",
+      "numpy": "2.4.6",
+      "scikit-learn": "1.9.1",
+      "lightgbm": "4.7.0",
+      "fastembed": "0.9.0",
+      "qdrant-client": "1.19.1",
+      "langgraph": "1.2.14",
+      "mcp": "2.3.0"
+    },
+    "environment": {
+      "cpu_count": 4,
+      "load_average_start": [
+        7.63,
+        7.17,
+        4.96
+      ],
+      "load_average_end": [
+        4.48,
+        5.36,
+        6.89
+      ]
+    }
+  }
+}

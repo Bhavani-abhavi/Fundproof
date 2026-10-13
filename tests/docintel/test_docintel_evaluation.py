@@ -337,15 +337,25 @@ def test_unknown_explanation_is_wrong_and_counted() -> None:
     assert counts["explanations.unsupported.unknown"] == 1
 
 
-def injection_result(hits: list[tuple[str | None, int | None]]) -> SimpleNamespace:
-    """A result with injection hits (doc_id, page) and one document D04 on pages 4-5."""
+def injection_result(hits: list[tuple[str | None, int | None]], checks: list[object] | None = None) -> SimpleNamespace:
+    """A result with page-scan hits (doc_id, page), optional checks, and one document D04 on pages 4-5."""
     documents = [
         DocumentInfo(doc_id="D04", doc_type="cover_email", pages=[4, 5], ocr_used=False, classification_confidence=1.0)
     ]
     return SimpleNamespace(
         injection_hits=[SimpleNamespace(doc_id=doc_id, page=number) for doc_id, number in hits],
+        checks=checks or [],
         extraction=SimpleNamespace(documents=documents),
     )
+
+
+def embedded_instructions_check(places: list[tuple[str, int | None, str]]) -> SimpleNamespace:
+    """An embedded_instructions check result with one issue per (doc_id, page, field) hit."""
+    issues = [
+        SimpleNamespace(side_a=[Evidence(doc_id=doc_id, page=number, line=1, field=field, value="x")])
+        for doc_id, number, field in places
+    ]
+    return SimpleNamespace(check_id="embedded_instructions", issues=issues)
 
 
 def test_injection_counts_recall_and_false_hits() -> None:
@@ -356,6 +366,19 @@ def test_injection_counts_recall_and_false_hits() -> None:
     # A hit without a page takes its document's first page.
     counts, _ = problems_eval.injection_counts(truth, injection_result([("D04", None)]))
     assert counts["injections.detected"] == 1 and counts["injection_hits.false"] == 0
+
+
+def test_field_hits_reported_by_the_check_count_as_detections() -> None:
+    # The page scan found nothing; the free-text field scan (inside the embedded_instructions check) found the
+    # planted remark on page 4 and also flagged page 5, which has no planted instruction.
+    truth = SimpleNamespace(injections=[SimpleNamespace(page_number=4, technique="role_spoof")])
+    check = embedded_instructions_check([("D04", 4, "cover_email.body"), ("D04", 5, "cover_email.body")])
+    counts, outcomes = problems_eval.injection_counts(truth, injection_result([], [check]))
+    assert outcomes == [{"page": 4, "technique": "role_spoof", "detected": True}]
+    assert (counts["injection_hits.total"], counts["injection_hits.false"]) == (2, 1)
+    # When the check exists, its issues are the reported hits (it already holds the page-scan hits).
+    counts, _ = problems_eval.injection_counts(truth, injection_result([("D04", 4)], [embedded_instructions_check([])]))
+    assert counts["injections.detected"] == 0 and counts["injection_hits.total"] == 0
 
 
 def test_a_clean_packet_with_a_hit_is_a_false_positive_packet() -> None:

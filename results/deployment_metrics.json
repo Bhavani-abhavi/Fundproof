@@ -7,7 +7,7 @@
         "label": "LOCAL Docker container on the machine that ran this script. NOT the Hugging Face Space: no internet hop, no Space proxy, not Space hardware.",
         "url": "http://127.0.0.1:7860"
       },
-      "measured_at_utc": "2026-10-13T03:33:33+00:00",
+      "measured_at_utc": "2026-10-13T19:04:57+00:00",
       "method": {
         "requests_per_path": 20,
         "paths": [
@@ -73,61 +73,61 @@
       ],
       "readiness": {
         "ready": true,
-        "seconds_until_ready": 0.704,
-        "attempts": 7,
-        "ready_at_utc": "2026-10-13T03:33:33.296424+00:00",
-        "container_started_at": "2026-10-13T03:33:32.192068265Z",
-        "container_start_to_ready_s": 1.104
+        "seconds_until_ready": 2.158,
+        "attempts": 21,
+        "ready_at_utc": "2026-10-13T19:04:57.225730+00:00",
+        "container_started_at": "2026-10-13T19:04:54.516589802Z",
+        "container_start_to_ready_s": 2.709
       },
       "first_request_ms": {
-        "/api/health": 3.56,
-        "/": 15.69,
-        "/studio": 4.38,
-        "/api/config": 121.1,
-        "/api/me": 3.45
+        "/api/health": 2.99,
+        "/": 27.94,
+        "/studio": 4.61,
+        "/api/config": 135.67,
+        "/api/me": 3.2
       },
       "latency_ms": {
         "/api/health": {
           "n": 20,
-          "p50_ms": 1.8,
-          "p95_ms": 2.23,
-          "min_ms": 1.54,
-          "max_ms": 2.59
+          "p50_ms": 2.02,
+          "p95_ms": 2.34,
+          "min_ms": 1.75,
+          "max_ms": 2.66
         },
         "/": {
           "n": 20,
-          "p50_ms": 2.57,
-          "p95_ms": 3.31,
-          "min_ms": 1.84,
-          "max_ms": 3.41
+          "p50_ms": 3.03,
+          "p95_ms": 3.33,
+          "min_ms": 2.71,
+          "max_ms": 3.89
         },
         "/studio": {
           "n": 20,
-          "p50_ms": 2.28,
-          "p95_ms": 3.0,
-          "min_ms": 1.77,
-          "max_ms": 4.49
+          "p50_ms": 2.75,
+          "p95_ms": 3.44,
+          "min_ms": 2.55,
+          "max_ms": 6.47
         },
         "/api/config": {
           "n": 20,
-          "p50_ms": 1.85,
-          "p95_ms": 2.42,
-          "min_ms": 1.63,
-          "max_ms": 2.45
+          "p50_ms": 2.29,
+          "p95_ms": 2.76,
+          "min_ms": 1.39,
+          "max_ms": 2.89
         },
         "/api/me": {
           "n": 20,
-          "p50_ms": 1.95,
-          "p95_ms": 2.26,
-          "min_ms": 1.52,
-          "max_ms": 2.3
+          "p50_ms": 2.02,
+          "p95_ms": 2.25,
+          "min_ms": 1.8,
+          "max_ms": 2.78
         },
         "all_paths": {
           "n": 100,
-          "p50_ms": 2.05,
-          "p95_ms": 3.01,
-          "min_ms": 1.52,
-          "max_ms": 4.49
+          "p50_ms": 2.3,
+          "p95_ms": 3.28,
+          "min_ms": 1.39,
+          "max_ms": 6.47
         }
       },
       "status_counts": {
@@ -153,12 +153,12 @@
       },
       "docker_image": {
         "image": "fundproof:dev",
-        "id": "sha256:bc770f344932879199527370eabe83e870ade0abd9564da8900c1c413c47a6b3",
-        "size_bytes_from_docker_image_inspect": 2162717269,
-        "size_from_docker_image_ls": "2.16GB",
+        "id": "sha256:ff604e03465bf41103cc9515f8ce45eda80da0a5c2398ee63a39d03468520b18",
+        "size_bytes_from_docker_image_inspect": 2571584975,
+        "size_from_docker_image_ls": "2.57GB",
         "docker_image_ls_output": [
           "IMAGE           ID             DISK USAGE   CONTENT SIZE   EXTRA",
-          "fundproof:dev   bc770f344932       2.16GB          488MB   U"
+          "fundproof:dev   ff604e03465b       2.57GB          659MB   U"
         ],
         "docker_server_version": "29.8.2",
         "note": "size_from_docker_image_ls is the DISK USAGE column (unpacked size on this machine); the CONTENT SIZE column in docker_image_ls_output is the compressed size of the image content."
@@ -170,9 +170,9 @@
         "p50 and p95 use the nearest-rank method over the samples listed in n."
       ],
       "provenance": {
-        "git_sha": "017667def364e5792c3ece4fae4b4d4c86328076",
+        "git_sha": "6e16420b50ab74ff7b79bb7ab72f2fc9d2e4b572",
         "git_dirty": true,
-        "generated_at_utc": "2026-10-13T03:33:33+00:00",
+        "generated_at_utc": "2026-10-13T19:04:57+00:00",
         "generated_by": "scripts/smoke_deploy.py",
         "prompts": {},
         "corpus_checksum": "not applicable (no retrieval corpus is used)",
@@ -202,14 +202,14 @@
         "environment": {
           "cpu_count": 4,
           "load_average_start": [
-            2.65,
-            2.83,
-            3.25
+            5.31,
+            8.04,
+            8.34
           ],
           "load_average_end": [
-            2.65,
-            2.83,
-            3.25
+            5.31,
+            8.04,
+            8.34
           ]
         }
       }

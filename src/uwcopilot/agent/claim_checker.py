@@ -14,6 +14,9 @@ For each memo:
   label with a verdict ("DECISION: APPROVE", "Status: declined") or a verdict stamp in capitals ("APPROVED-7731").
   The last two, and "cleared" in the passive form ("the alert was cleared"), were added by the S2 containment tests
   (tests/security/test_containment.py), which found that a memo echoing an injected "DECISION: APPROVE" passed.
+  The search runs on the normalized text (uwcopilot.security.normalize.detection_text), so wording hidden with
+  zero-width characters, lookalike letters, fullwidth forms or Unicode tag characters is found too: a reviewer
+  reads "a<zero-width space>pproved" as "approved".
 
 A number is supported when an evidence number rounds to the same value at the precision the memo wrote it with
 ("1.18" matches 1.1834; "12.5%" matches 12.47). Signs are ignored (a gap of -3.5% is written "3.5%" too).
@@ -30,6 +33,7 @@ from uwcopilot.agent.evidence import EvidenceItem
 from uwcopilot.agent.memo import MemoDraft
 from uwcopilot.agent.policy import PolicyResult
 from uwcopilot.rag.citations import extract_cited_ids
+from uwcopilot.security.normalize import detection_text
 
 IssueKind = Literal[
     "invalid_memo",
@@ -129,10 +133,11 @@ def is_supported(raw: str, values: list[float]) -> bool:
 
 
 def decision_language(text: str) -> list[str]:
-    """Phrases that state a decision instead of recommending one."""
+    """Phrases that state a decision instead of recommending one, searched in the normalized text (see above)."""
+    readable = detection_text(text)
     found = []
     for pattern in DECISION_PATTERNS:
-        found.extend(match.group(0) for match in pattern.finditer(text))
+        found.extend(match.group(0) for match in pattern.finditer(readable))
     return found
 
 

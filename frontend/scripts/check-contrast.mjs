@@ -34,6 +34,12 @@ const PAIRS = [
   ["ink", "stated-soft", "offline notice text"],
   ["conflicting", "paper-raised", "error text on cards"],
   ["conflicting", "stated-soft", "error text in the DEV LOGIN box"],
+  ["estimate", "paper", "'simulated, based on stated assumptions' label on the page"],
+  ["estimate", "paper-raised", "'simulated, based on stated assumptions' label on cards and charts"],
+  ["stated", "paper-raised", "'Watch:' notes on site cards"],
+  ["verified", "paper-raised", "screening 'clear' and passed-check text on cards"],
+  ["unknown", "paper-raised", "'not available' text on cards"],
+  ["accent-ink", "viz-1", "site numbers on map pins and site cards"],
 ];
 
 /** Parse `--name: #rrggbb;` declarations from a CSS block. */

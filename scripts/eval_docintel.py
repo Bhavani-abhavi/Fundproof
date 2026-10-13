@@ -115,6 +115,15 @@ def load_packets(
     return manifest, entries[:limit]
 
 
+def committed_manifest_matches(manifest: dict[str, Any]) -> bool | None:
+    """True when eval/packets/manifest.json (the committed copy) names the same test set as the packets on disk,
+    False when it names another one, None when the committed copy does not exist."""
+    if not EVAL_MANIFEST.is_file():
+        return None
+    committed = json.loads(EVAL_MANIFEST.read_text(encoding="utf-8"))
+    return committed.get("test_truth_sha256") == manifest["test_truth_sha256"]
+
+
 def evaluate_one(
     packets_dir: Path, entry: dict[str, Any], ocr: str, hybrid: HybridExtractor | None = None
 ) -> dict[str, Any]:
@@ -263,6 +272,13 @@ def main(argv: list[str] | None = None) -> int:
     except EvalSetError as error:
         print(error, file=sys.stderr)
         return 1
+    matches_committed = committed_manifest_matches(manifest)
+    if matches_committed is False:
+        print(
+            "WARNING: the packets on disk are not the test set of eval/packets/manifest.json "
+            "(different test_truth_sha256); the provenance records the on-disk manifest instead.",
+            file=sys.stderr,
+        )
     print(f"Evaluating {len(entries)} SYNTHETIC {args.split} packets from {display_path(args.packets_dir)}")
     rules = evaluate_all(args.packets_dir, entries, "auto", args.workers)
     forced = None if args.skip_forced_ocr else evaluate_all(args.packets_dir, entries, "force", args.ocr_workers)
@@ -286,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
             "full_split": args.limit is None and args.packet_ids is None,
             "generator_version": manifest["generator_version"],
             "test_truth_sha256": manifest["test_truth_sha256"],
+            "matches_committed_manifest": matches_committed,
             "packet_ids": [entry["packet_id"] for entry in entries],
         },
         "protocol": {
@@ -312,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     versions = sorted({record["tesseract_version"] for record in rules + (forced or []) if record["tesseract_version"]})
     report["provenance"] = run.finish(
         prompts=prompts,
-        eval_sets=[EVAL_MANIFEST] if EVAL_MANIFEST.is_file() else None,
+        eval_sets=[EVAL_MANIFEST if matches_committed else args.packets_dir / "manifest.json"],
         models=models,
         data_snapshots={
             "tesseract_version": versions[0] if len(versions) == 1 else (versions or "not used (no page needed OCR)"),
