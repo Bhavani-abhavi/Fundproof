@@ -15,7 +15,7 @@ from uwcopilot.mcp_server.guideline_store import GuidelineStore
 from uwcopilot.provenance.numbers import extract_numbers
 from uwcopilot.rag.eval_set import leaf_refs, load_questions
 from uwcopilot.rag.frozen_hits import KEY_FACTS_FILE
-from uwcopilot.rag.generation_eval import KeyFact, fact_in_text, fold_unit_qualifiers, load_key_facts
+from uwcopilot.rag.generation_eval import KeyFact, fact_in_text, load_key_facts
 
 KEY_FACTS = load_key_facts(KEY_FACTS_FILE)
 QUESTIONS = {question.id: question for question in load_questions()}
@@ -80,12 +80,13 @@ def test_alternates_are_matched_and_validated() -> None:
         KeyFact(text="in writing", kind="term", alternates=["In  Writing"])
 
 
-def test_qualifiers_between_a_number_and_its_unit_are_folded() -> None:
-    assert fold_unit_qualifiers("the most recent 12 consecutive months") == "the most recent 12 months"
-    assert fold_unit_qualifiers("the two most recent tax years") == "the two years"
-    assert fold_unit_qualifiers("12 consecutive payments") == "12 consecutive payments"  # no unit: unchanged
+def test_qualifiers_between_a_number_and_its_unit_are_read_by_the_sig_normalizer() -> None:
     months = KeyFact(text="12 months", kind="number")
     assert fact_in_text(months, "Statements must cover the required 12 consecutive months [NBC-3.5].")
+    assert fact_in_text(months, "the 12 most recent consecutive months of statements")
+    assert not fact_in_text(months, "12 consecutive payments")  # no time unit: a count, not a duration
+    years = KeyFact(text="2 years", kind="number")
+    assert fact_in_text(years, "the two most recent tax years")
 
 
 def test_number_facts_contain_a_quantity_and_term_facts_are_not_bare_numbers() -> None:

@@ -5,7 +5,8 @@ Header fields are label/value lines (rules_common.find_value): Account holder, A
 Closing balance. The bank name is the letterhead: the first line of the statement.
 
 Transactions: the table header is the first line holding at least three of Date / Description / Withdrawals /
-Deposits / Balance. Every later line that starts with a date (within its first two words) is a transaction row;
+Deposits / Balance (or two adjacent lines holding them together: OCR may split the header row). Every later line
+(every line, when no header can be read) that starts with a date within its first two words is a transaction row;
 lines that do not (memo lines and their continuations, "Number of transactions") are skipped. In a row:
 - the table amounts (printed with two decimals) are found by pattern; the LAST one is the running balance and the
   one before it is the transaction amount; a row with a single amount is a balance only when that amount sits
@@ -37,7 +38,7 @@ from uwcopilot.docintel.rules_common import (
     cite_words,
     document_lines,
     find_value,
-    header_index,
+    header_lines,
     title_box,
     trim_noise,
     value_after_label,
@@ -80,15 +81,14 @@ def letterhead(refs: list[LineRef], doc_id: str) -> Cited:
     return cite_words(refs[0], words, parse_text(words_text(words)), doc_id)
 
 
-def amount_columns(header: LineRef | None) -> dict[str, float]:
-    """Right edge of the Withdrawals and Deposits titles on the header line (the titles that were found)."""
+def amount_columns(headers: list[LineRef]) -> dict[str, float]:
+    """Right edge of the Withdrawals, Deposits and Balance titles on the header line(s) (the titles found)."""
     columns: dict[str, float] = {}
-    if header is None:
-        return columns
-    for name, title in (("withdrawal", "Withdrawals"), ("deposit", "Deposits"), ("balance", "Balance")):
-        box = title_box(header, title)
-        if box is not None:
-            columns[name] = box[1]
+    for header in headers:
+        for name, title in (("withdrawal", "Withdrawals"), ("deposit", "Deposits"), ("balance", "Balance")):
+            box = title_box(header, title)
+            if box is not None and name not in columns:
+                columns[name] = box[1]
     return columns
 
 
@@ -140,13 +140,17 @@ def side_by_column(amount: Word, columns: dict[str, float]) -> str | None:
 
 
 def side_by_balance(amount: float, balance: float | None, previous: float | None) -> str | None:
-    """ "deposit" or "withdrawal" from the running balance arithmetic, or None when it does not decide."""
+    """ "deposit" or "withdrawal" from the running balance arithmetic, or None when it does not decide.
+
+    The read balance is tried as printed first, then with the opposite sign (OCR may have lost a minus sign).
+    """
     if balance is None or previous is None:
         return None
-    if abs(previous + amount - balance) <= BALANCE_TOLERANCE:
-        return "deposit"
-    if abs(previous - amount - balance) <= BALANCE_TOLERANCE:
-        return "withdrawal"
+    for read in (balance, -balance):
+        if abs(previous + amount - read) <= BALANCE_TOLERANCE:
+            return "deposit"
+        if abs(previous - amount - read) <= BALANCE_TOLERANCE:
+            return "withdrawal"
     return None
 
 
@@ -215,13 +219,12 @@ def transactions(
     refs: list[LineRef], opening: float | None, period: tuple[date, date] | None, doc_id: str
 ) -> list[Transaction]:
     """Every transaction row after the table header (see the module docstring)."""
-    start = header_index(refs, TABLE_TITLES, 3)
-    if start is None:
-        return []
-    columns = amount_columns(refs[start])
+    header = header_lines(refs, TABLE_TITLES, 3)
+    columns = amount_columns([refs[index] for index in header])
+    first_row = header[-1] + 1 if header else 0
     rows = []
     previous = opening
-    for ref in refs[start + 1 :]:
+    for ref in refs[first_row:]:
         row = parse_transaction(ref, columns, previous, period, doc_id)
         if row is None:
             continue

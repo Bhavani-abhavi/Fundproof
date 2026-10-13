@@ -4,17 +4,18 @@ extract_with_rules(packet_id, line, segments) sends every document found by clas
 for its type and assembles the packet extraction (docintel/schemas.py). The readers are:
 - credit: rules_credit.py (application, P&L, balance sheet, debt schedule, photo IDs, credit report, formation
   document, tax return summary, collateral valuation) and rules_statements.py (bank statements);
-- insurance: rules_insurance.py (application, property schedule, cover email, ownership statement, inspection
-  reports) and rules_loss_runs.py (loss runs);
+- insurance: rules_insurance.py (application, cover email, ownership statement, inspection reports),
+  rules_schedule.py (property schedule) and rules_loss_runs.py (loss runs);
 - shared helpers: rules_common.py (labels, citations, headers) and rules_tables.py (owner and premium rows).
 
 Documents of a type the schema holds once (the application, the P&L, ...) keep the first one found; documents of
-list types (statements, photo IDs, loss runs, ...) keep every one. Every value cites its page, line and word box;
+list types (statements, photo IDs, loss runs, ...) keep every one. The assembled extraction is validated once more
+against the schema, so every value has its field's type. Every value cites its page, line and word box;
 confidence is 1.0 on text-layer pages and the OCR line confidence on scanned pages. Nothing in a document is ever
 treated as an instruction: the extractor only copies printed values into typed fields.
 """
 
-from uwcopilot.docintel import rules_credit, rules_insurance, rules_loss_runs, rules_statements
+from uwcopilot.docintel import rules_credit, rules_insurance, rules_loss_runs, rules_schedule, rules_statements
 from uwcopilot.docintel.classify import Segment, documents_info
 from uwcopilot.docintel.schemas import InsuranceSubmission, LoanPacket, PacketExtraction
 
@@ -57,7 +58,7 @@ def extract_insurance_packet(packet_id: str, segments: list[Segment]) -> Insuran
         elif doc_type == "loss_run":
             submission.loss_runs.append(rules_loss_runs.extract_loss_run(segment))
         elif doc_type == "property_schedule" and submission.property_schedule is None:
-            submission.property_schedule = rules_insurance.extract_property_schedule(segment)
+            submission.property_schedule = rules_schedule.extract_property_schedule(segment)
         elif doc_type == "cover_email" and submission.cover_email is None:
             submission.cover_email = rules_insurance.extract_cover_email(segment)
         elif doc_type == "ownership_statement" and submission.ownership_statement is None:
@@ -67,10 +68,15 @@ def extract_insurance_packet(packet_id: str, segments: list[Segment]) -> Insuran
     return submission
 
 
+def validated(extraction: PacketExtraction) -> PacketExtraction:
+    """The extraction validated once more against its schema, so every Cited value has its field's type."""
+    return type(extraction).model_validate(extraction.model_dump(warnings=False))
+
+
 def extract_with_rules(packet_id: str, line: str, segments: list[Segment]) -> PacketExtraction:
     """The rules extraction of a packet whose pages were segmented into documents."""
     if line == "credit":
-        return extract_credit_packet(packet_id, segments)
+        return validated(extract_credit_packet(packet_id, segments))
     if line == "insurance":
-        return extract_insurance_packet(packet_id, segments)
+        return validated(extract_insurance_packet(packet_id, segments))
     raise ValueError(f"unknown packet line {line!r} (expected 'credit' or 'insurance')")

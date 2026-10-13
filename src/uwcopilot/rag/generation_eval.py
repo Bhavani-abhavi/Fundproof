@@ -16,11 +16,10 @@ Per-question measures:
     authority"); the fact is matched when the text or any alternate is found.
   Reported for all keyed questions and for the subset whose gold section was in the prompt, which separates
   retrieval misses from generation misses.
-- Before any number is extracted, fold_unit_qualifiers() turns "12 consecutive months" into "12 months" (also "most
-  recent", "complete", "policy", "tax" ... between a number and its unit). The shared SIG normalizer reads
-  "12 consecutive months" as a count of 12, not as 12 months, so without this step a correct answer quoting the
-  guideline's own words would miss a "12 months" fact or be flagged untraceable. The fold is done here, not in
-  provenance/numbers.py, because changing the shared normalizer changes SIG's frozen mutation set.
+- "12 consecutive months" is 12 months (also "most recent", "complete", "policy", "tax" ... between a number and a
+  time unit): the shared SIG normalizer (provenance.numbers) reads these qualifiers itself, so a correct answer
+  quoting the guideline's own words matches a "12 months" fact and is not flagged untraceable. (S1b first folded the
+  qualifiers here, before the normalizer handled them; that local workaround is gone.)
 - is_not_found: the answer is the exact not-found sentence (rag.citations.is_not_found_answer: case, surrounding
   whitespace and the final full stop are ignored). Used for abstention_accuracy_unanswerable (unanswerable
   questions) and false_abstention_rate (answerable questions whose gold is in the prompt).
@@ -40,7 +39,6 @@ Per-question measures:
 """
 
 import json
-import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
@@ -50,7 +48,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from uwcopilot.common.stats import rate_summary
-from uwcopilot.provenance.numbers import TENS_WORDS, UNITS_WORDS, NumberMention, extract_numbers, same_quantity
+from uwcopilot.provenance.numbers import NumberMention, extract_numbers, same_quantity
 from uwcopilot.provenance.numeric_check import check_numbers
 from uwcopilot.rag.citations import (
     CitationCheck,
@@ -67,15 +65,6 @@ from uwcopilot.rag.prompt import NOT_FOUND_ANSWER
 from uwcopilot.tools.schemas import GuidelineHit
 
 KeyFactKind = Literal["number", "role", "term"]
-
-# "<number> <qualifier words> <time unit>": the qualifiers are dropped before number extraction (module docstring).
-NUMBER_TOKEN = r"\d[\d,]*(?:\.\d+)?|" + "|".join([*UNITS_WORDS, *TENS_WORDS])
-UNIT_QUALIFIERS = re.compile(
-    rf"\b(?P<number>{NUMBER_TOKEN})"
-    r"(?P<qualifiers>(?:\s+(?:consecutive|most\s+recent|complete|full|policy|tax|fiscal|trailing))+)"
-    r"(?=\s+(?:business\s+|calendar\s+)?(?:months?|years?|days?)\b)",
-    re.IGNORECASE,
-)
 
 # Phrases that state that the documents lack the information (casefolded substring match after normalization).
 ASSERTED_ABSENCE_PHRASES: tuple[str, ...] = (
@@ -187,21 +176,16 @@ def normalize_text(text: str) -> str:
     return normalize_for_match(unicodedata.normalize("NFKC", text))
 
 
-def fold_unit_qualifiers(text: str) -> str:
-    """'the most recent 12 consecutive months' -> 'the most recent 12 months' (see the module docstring)."""
-    return UNIT_QUALIFIERS.sub(lambda match: match.group("number"), text)
-
-
 def fact_in_text(fact: KeyFact, text: str) -> bool:
     """True when the fact is stated in text (rules in the module docstring).
 
     Raises ValueError for a number fact whose text holds no quantity, since it could never be checked.
     """
     if fact.kind == "number":
-        wanted = extract_numbers(fold_unit_qualifiers(fact.text))
+        wanted = extract_numbers(fact.text)
         if not wanted:
             raise ValueError(f"number fact {fact.text!r} contains no quantity")
-        found = extract_numbers(fold_unit_qualifiers(text))
+        found = extract_numbers(text)
         for mention in wanted:
             if not any(same_quantity(mention, other) for other in found):
                 return False
@@ -286,7 +270,7 @@ def split_question_numbers(
     untraceable: Sequence[NumberMention], question: str
 ) -> tuple[list[NumberMention], list[NumberMention]]:
     """(still untraceable, taken from the question): a number the user wrote in the question is not invented."""
-    question_numbers = extract_numbers(fold_unit_qualifiers(question))
+    question_numbers = extract_numbers(question)
     remaining: list[NumberMention] = []
     from_question: list[NumberMention] = []
     for mention in untraceable:
@@ -331,8 +315,8 @@ def score_answer(
 
     phrases = asserted_absence_phrases(answer_text)
     n_factual, n_uncited = factual_sentence_counts(answer_text, check)
-    sources = {hit.section_id: fold_unit_qualifiers(hit.text) for hit in context}
-    numeric = check_numbers(fold_unit_qualifiers(answer_text), sources)
+    sources = {hit.section_id: hit.text for hit in context}
+    numeric = check_numbers(answer_text, sources)
     untraceable, from_question = split_question_numbers([item.mention for item in numeric.untraceable], question)
     return QuestionScore(
         question_id=question_id,

@@ -10,7 +10,10 @@ For each memo:
   "DSCR 1.45 [CALC-dscr]" when the calculation says 1.18), or a number in the summary appears in no cited item;
 - finding_not_covered: a finding of the reference policy is not covered by any reason (a memo may not hide a
   sanctions hit or an embedded instruction);
-- decision_language: wording that states a decision ("is approved", "has been declined", "final decision").
+- decision_language: wording that states a decision ("is approved", "has been declined", "final decision"), a
+  label with a verdict ("DECISION: APPROVE", "Status: declined") or a verdict stamp in capitals ("APPROVED-7731").
+  The last two were added by the S2 containment tests (tests/security/test_containment.py), which found that a memo
+  echoing an injected "DECISION: APPROVE" passed the checker.
 
 A number is supported when an evidence number rounds to the same value at the precision the memo wrote it with
 ("1.18" matches 1.1834; "12.5%" matches 12.47). Signs are ignored (a gap of -3.5% is written "3.5%" too).
@@ -54,6 +57,14 @@ DECISION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(?:i|we)\s+(?:approve|decline|deny)\b", re.IGNORECASE),
     re.compile(r"\b(?:cleared|dismissed)\s+(?:the\s+)?(?:sanctions|screening|alert|match)\b", re.IGNORECASE),
     re.compile(r"\bfalse positive\b", re.IGNORECASE),
+    # A label followed by a verdict: "Decision: approve", "Status - declined", "Outcome = funded" (added in S2).
+    re.compile(
+        r"\b(?:decision|status|outcome|disposition|verdict|determination)\s*[:=-]\s*"
+        r"(?:approved?|declined?|denied|deny|rejected?|bound|funded|cleared)\b",
+        re.IGNORECASE,
+    ),
+    # A verdict stamp written in capitals: "APPROVED", "APPROVED-7731", "DECLINED" (added in S2; case-sensitive).
+    re.compile(r"\b(?:APPROVED|DECLINED|DENIED|REJECTED)\b"),
 )
 
 

@@ -1,12 +1,13 @@
 """Rules extraction of the SYNTHETIC loan packet documents (bank statements are in rules_statements.py).
 
 Each function reads one document (a classify.Segment) and returns its schema model with every value cited. Labels
-are the printed labels of the Northwind layouts; LABELS lists them (with the synonyms an OCR page or another
-layout might use). Values are parsed with docintel/parsing.py; codes are printed as words and mapped back with
-code_from_label ("Line of credit" -> "line_of_credit").
+are the printed labels of the Northwind layouts: APPLICATION_FIELDS lists the application form's labels, and the
+other documents' labels are written where they are read. Values are parsed with docintel/parsing.py (amounts with
+parse_amount: two decimals); codes are printed as words and mapped back with code_from_label ("Line of credit" ->
+"line_of_credit").
 
 Tables:
-- owners (loan application page 2): rules_tables.parse_owner_row, rows after the owners header up to "Section E";
+- owners (loan application page 2): rules_tables.owner_table, rows after the owners header up to "Section E";
 - debt schedule: rows between the header and "Total balance". From the right: Refinance (Yes/No), Maturity (a
   date), then the two amounts (balance, monthly payment). The words left of the amounts are the lender and the
   type: split at the x position of the "Type" title when the header shows it, otherwise at a known debt type
@@ -44,9 +45,10 @@ from uwcopilot.docintel.rules_common import (
     lines_between,
     lines_until,
     title_box,
+    trim_noise,
     words_text,
 )
-from uwcopilot.docintel.rules_tables import owner_rows
+from uwcopilot.docintel.rules_tables import owner_table
 from uwcopilot.docintel.schemas import (
     BalanceSheet,
     Cited,
@@ -82,7 +84,6 @@ APPLICATION_FIELDS: tuple[tuple[str, tuple[str, ...], object], ...] = (
     ("largest_customer_revenue_pct", ("Largest customer share of revenue",), parse_percent),
     ("tax_lien_unresolved", ("Unresolved tax lien",), parse_bool),
 )
-OWNER_TITLES = ("Name", "Type", "Title", "Ownership", "Control person", "Country")
 KNOWN_DEBT_TYPES = (
     "term loan",
     "equipment loan",
@@ -123,9 +124,7 @@ def extract_application(segment: Segment) -> LoanApplicationForm:
     form = LoanApplicationForm(doc_id=segment.doc_id)
     for name, labels, parser in APPLICATION_FIELDS:
         setattr(form, name, find_value(refs, labels, parser, segment.doc_id))
-    start = header_index(refs, OWNER_TITLES, 4)
-    if start is not None:
-        form.owners = owner_rows(lines_until(refs[start + 1 :], ("Section E", "Remarks")), segment.doc_id)
+    form.owners = owner_table(refs, "Section D - Owners", ("Section E", "Remarks"), segment.doc_id)
     remarks = lines_between(refs, "Section E - Remarks", ("Section F", "Certification"))
     if remarks:
         form.remarks = cite_lines(remarks, " ".join(ref.text for ref in remarks), segment.doc_id)

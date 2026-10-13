@@ -175,7 +175,10 @@ def test_question_score_round_trips_through_a_results_row() -> None:
 def test_prompt_registry_points_at_the_existing_constants_and_hashes_them() -> None:
     assert PROMPTS["rag_answer_v1"] == (SYSTEM_PROMPT, ANSWER_INSTRUCTION)
     digest = prompt_sha256("rag_answer_v1")
-    assert len(digest) == 64 and all_prompt_hashes() == {"rag_answer_v1": digest}
+    hashes = all_prompt_hashes()
+    assert len(digest) == 64 and hashes["rag_answer_v1"] == digest
+    # S2 registered two more ids (the L2 containment prompt and the naive L0 baseline); v1 is unchanged.
+    assert set(hashes) == {"rag_answer_v1", "rag_answer_v2_containment", "injection_l0_naive_v1"}
     with pytest.raises(UnknownPromptError):
         get_prompt("rag_answer_v9")
 

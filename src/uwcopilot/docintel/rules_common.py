@@ -30,7 +30,7 @@ from rapidfuzz import fuzz
 
 from uwcopilot.docintel.classify import Segment, normalize_for_match
 from uwcopilot.docintel.layout import Line, PageText, Word, union_box
-from uwcopilot.docintel.parsing import is_table_amount, parse_date
+from uwcopilot.docintel.parsing import is_table_amount
 from uwcopilot.docintel.schemas import Cited
 
 LABEL_MIN_SCORE = 85.0
@@ -215,32 +215,40 @@ def lines_between(refs: list[LineRef], start_phrase: str, end_phrases: tuple[str
     return lines_until(refs[start + 1 :], end_phrases)
 
 
-def first_date(ref: LineRef) -> tuple[Any, list[Word]]:
-    """The first word of a line that is a date, with the word; (None, []) if there is none."""
-    for word in ref.words:
-        value = parse_date(word.text)
-        if value is not None:
-            return value, [word]
-    return None, []
-
-
 def amount_words(words: list[Word]) -> list[Word]:
     """The words printed as table amounts (two decimals), left to right."""
     return [word for word in words if is_table_amount(word.text)]
 
 
+def titles_on(ref: LineRef, titles: tuple[str, ...]) -> set[str]:
+    """The column titles a line holds (approximately on an OCR line)."""
+    text = normalize_for_match(ref.text)
+    found = set()
+    for title in titles:
+        target = normalize_for_match(title)
+        if target in text or (ref.fuzzy and fuzz.partial_ratio(target, text) >= LABEL_MIN_SCORE):
+            found.add(title)
+    return found
+
+
 def header_index(refs: list[LineRef], titles: tuple[str, ...], min_found: int) -> int | None:
     """Index of the first line holding at least min_found of the column titles (approximately on OCR lines)."""
     for index, ref in enumerate(refs):
-        text = normalize_for_match(ref.text)
-        found = 0
-        for title in titles:
-            target = normalize_for_match(title)
-            if target in text or (ref.fuzzy and fuzz.partial_ratio(target, text) >= LABEL_MIN_SCORE):
-                found += 1
-        if found >= min_found:
+        if len(titles_on(ref, titles)) >= min_found:
             return index
     return None
+
+
+def header_lines(refs: list[LineRef], titles: tuple[str, ...], min_found: int) -> list[int]:
+    """Indexes of the table header: one line holding min_found titles, or else two adjacent lines that hold them
+    together (OCR sometimes splits a header row in two). [] when there is no header."""
+    single = header_index(refs, titles, min_found)
+    if single is not None:
+        return [single]
+    for index in range(len(refs) - 1):
+        if len(titles_on(refs[index], titles) | titles_on(refs[index + 1], titles)) >= min_found:
+            return [index, index + 1]
+    return []
 
 
 def title_box(ref: LineRef, title: str) -> tuple[float, float] | None:

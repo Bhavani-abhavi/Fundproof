@@ -66,9 +66,12 @@ challenger configuration may replace the champion.
   ("a DSCR of 1.18 is below 1.25 [NBC-4.2]"). Those numbers cannot be in a guideline but were not invented, so they
   are listed as `numbers_from_question` and not counted. The cost: a model that presents the user's number as a
   policy value is not caught by this metric (key-fact recall still misses the real value).
-- **"12 consecutive months" is read as 12 months** in the generation eval (a small fold before number extraction).
-  The shared SIG normalizer reads it as a count of 12; changing the normalizer itself would change SIG's frozen
-  mutation set, so the fix stays local and the gap is reported to the SIG owner.
+- **"12 consecutive months" is read as 12 months.** S1b first did this with a small local fold before number
+  extraction, because the shared SIG normalizer read it as a count of 12. On 2026-10-13 the normalizer itself learned
+  a closed list of duration qualifiers (consecutive, most recent, complete, full, policy, tax, fiscal, trailing)
+  between a number and days/months/years, so the local fold was removed and the generation eval uses the shared
+  normalizer directly. That change altered SIG's seeded mutation draws, so `eval/provenance/mutations.jsonl` was
+  regenerated with `scripts/make_mutations.py` (seed 42) and `results/provenance_metrics.json` re-run.
 - **The gate re-scores instead of trusting stored scores**: R1 and R2 run hours apart while other code changes; if
   the scoring code changed in between, the stored scores were computed by different rules. The gate recomputes every
   score from the stored answer and refuses on any difference; re-running the eval from the cache re-scores without

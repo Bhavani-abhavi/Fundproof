@@ -20,7 +20,7 @@ Formats the parsers accept:
 - integers: "48", "10,311";
 - yes/no: Yes / No / Y / N / X (a ticked box) / True / False;
 - FEIN: 9 digits, printed "NN-NNNNNNN";
-- identifiers (policy, claim, ID numbers): spaces and non-alphanumeric edge characters removed;
+- identifiers (policy, claim, ID numbers): only letters, digits and inner hyphens are kept;
 - codes: a printed label back to its code by the generator's rule (casefold, spaces and punctuation to "_"):
   "Line of credit" -> "line_of_credit", "LLC" -> "llc".
 """
@@ -244,18 +244,12 @@ def code_from_label(text: str | None) -> str | None:
 
 
 def parse_identifier(text: str | None) -> str | None:
-    """An identifier (policy, claim, ID or account number): spaces removed and any character that is not a letter
-    or digit stripped from both ends ("BWC-3962642\u00b0" -> "BWC-3962642"); None if nothing is left."""
+    """An identifier (policy, claim, ID or account number) keeps only letters, digits and inner hyphens: OCR marks
+    such as "SPC.'137849984" or "BWC-3962642\u00b0" lose their stray characters. None if nothing is left."""
     if text is None:
         return None
-    cleaned = "".join(text.split())
-    start = 0
-    end = len(cleaned)
-    while start < end and not cleaned[start].isalnum():
-        start += 1
-    while end > start and not cleaned[end - 1].isalnum():
-        end -= 1
-    return cleaned[start:end] or None
+    kept = "".join(character for character in text if character.isalnum() or character == "-")
+    return kept.strip("-") or None
 
 
 def parse_text(text: str | None) -> str | None:

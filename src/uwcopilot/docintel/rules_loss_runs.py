@@ -31,6 +31,7 @@ from uwcopilot.docintel.rules_common import (
     header_index,
     title_box,
     trim_noise,
+    words_text,
 )
 from uwcopilot.docintel.rules_tables import premium_cells
 from uwcopilot.docintel.schemas import Cited, LossRun, LossRunClaim, LossRunSummary, LossRunYear
@@ -188,9 +189,10 @@ def claims(refs: list[LineRef], doc_id: str) -> list[LossRunClaim]:
     """Every claim row of the run, with the money-column order of the nearest header above it."""
     rows = []
     order: list[str] = []
-    for index, ref in enumerate(refs):
-        if header_index([ref], CLAIM_TITLES, 3) is not None:
-            order = money_order(refs[index])
+    for ref in refs:
+        is_row = len(amount_words(ref.words)) >= CLAIM_AMOUNTS
+        if not is_row and header_index([ref], CLAIM_TITLES, 3) is not None:
+            order = money_order(ref)
             continue
         claim = parse_claim(ref, order, doc_id)
         if claim is not None:

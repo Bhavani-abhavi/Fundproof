@@ -32,10 +32,10 @@ HybridUnavailable with an explanation. The rules extractor never needs it.
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import pdfplumber
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from uwcopilot.docintel.check_models import CheckResult
 from uwcopilot.docintel.checks import run_checks
@@ -77,7 +77,7 @@ class PacketResult(BaseModel):
     line: str
     extractor: str
     ocr_mode: str
-    extraction: LoanPacket | InsuranceSubmission
+    extraction: Annotated[LoanPacket | InsuranceSubmission, Field(discriminator="line")]
     checks: list[CheckResult]
     contradictions: ContradictionReport
     injection_hits: list[DocumentInjectionHit]

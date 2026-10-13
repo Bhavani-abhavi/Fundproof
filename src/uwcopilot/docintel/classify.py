@@ -14,7 +14,8 @@ new document when
    i > 1 always continues the open document (and the page takes that document's type, which corrects a
    misclassified continuation page);
 2. without a readable footer: its type differs from the open document's type; or it is a bank statement whose
-   "Statement period" differs from the open statement's; or a loss run whose carrier (the letterhead line) differs;
+   "Statement period" (both dates parsed) differs from the open statement's; or a loss run whose carrier (the
+   letterhead line) differs by more than a small OCR misreading;
    or a type that always has one page per document (photo ID, collateral valuation, inspection report).
 Documents get ids D01, D02, ... in page order, the same rule the generator uses.
 """
@@ -25,6 +26,7 @@ from dataclasses import dataclass, field
 from rapidfuzz import fuzz
 
 from uwcopilot.docintel.layout import PageText
+from uwcopilot.docintel.parsing import parse_date
 from uwcopilot.docintel.schemas import DocumentInfo
 
 CREDIT_KEYWORDS: dict[str, tuple[tuple[str, int], ...]] = {
@@ -252,11 +254,14 @@ def page_counter(page: PageText) -> tuple[int, int] | None:
 
 
 def statement_period(page: PageText) -> str | None:
-    """The "Statement period ... to ..." text of a bank statement page, normalized, or None."""
+    """The statement period of a bank statement page as "YYYY-MM-DD YYYY-MM-DD", or None when it cannot be read."""
     for text_line in page.lines:
         match = PERIOD_PATTERN.search(text_line.text)
-        if match is not None:
-            return f"{match.group(1)} {match.group(2)}"
+        if match is None:
+            continue
+        start, end = parse_date(match.group(1)), parse_date(match.group(2))
+        if start is not None and end is not None:
+            return f"{start.isoformat()} {end.isoformat()}"
     return None
 
 
@@ -277,11 +282,12 @@ def segment_key(page: PageText, doc_type: str) -> str | None:
     return None
 
 
-def same_key(first: str | None, second: str | None) -> bool:
-    """True unless both keys are known and clearly different (a small OCR difference still counts as the same)."""
-    if first is None or second is None:
+def same_key(first: str | None, second: str | None, doc_type: str) -> bool:
+    """True unless both keys are known and different. Statement periods (parsed dates) must be equal; carrier names
+    may differ by a small OCR misreading."""
+    if first is None or second is None or first == second:
         return True
-    return first == second or fuzz.ratio(first, second) >= FUZZY_MIN_SCORE
+    return doc_type == "loss_run" and fuzz.ratio(first, second) >= FUZZY_MIN_SCORE
 
 
 def starts_new_document(current: Segment | None, page_class: PageClass, key: str | None, footer: tuple | None) -> bool:
@@ -292,7 +298,7 @@ def starts_new_document(current: Segment | None, page_class: PageClass, key: str
         return footer[0] == 1
     if page_class.doc_type != current.doc_type or page_class.doc_type in ONE_PAGE_TYPES:
         return True
-    return not same_key(current.key, key)
+    return not same_key(current.key, key, page_class.doc_type)
 
 
 def segment_pages(pages: list[PageText], line: str) -> tuple[list[Segment], list[PageClass]]:
