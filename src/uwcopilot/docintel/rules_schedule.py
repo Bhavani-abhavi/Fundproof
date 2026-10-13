@@ -2,7 +2,8 @@
 
 Each location takes two printed lines: the values row, then "Address: ...". A values row is any line after the
 column header with at least four table amounts (building, contents, business income and TIV are its last four
-amounts); "Total TIV" lines are not rows. In a values row:
+amounts; values are never negative, so a minus sign read by OCR is dropped); "Total TIV" lines are not rows. In a
+values row:
 - location id: the first word when it reads "L<n>". On an OCR line a bare number "<n>" is read as "L<n>" (the
   small "L" is often lost in a scan). A row whose id cannot be read keeps its other values, without an id;
 - the numeric cells between the text and the amounts (year built, roof year, stories, square feet, sprinklered
@@ -178,7 +179,7 @@ def parse_location(ref: LineRef, doc_id: str, centers: dict[str, float] | None =
     amounts = amounts[-len(SCHEDULE_AMOUNTS) :]
     location = ScheduleLocation()
     for name, word in zip(SCHEDULE_AMOUNTS, amounts, strict=True):
-        setattr(location, name, cite_words(ref, [word], parse_amount(word.text), doc_id))
+        setattr(location, name, cite_words(ref, [word], abs(parse_amount(word.text) or 0.0), doc_id))
     before = [word for word in words if word.x1 < amounts[0].x0]
     location_id = location_id_of(before[0], ref.fuzzy) if before else None
     if location_id is not None:

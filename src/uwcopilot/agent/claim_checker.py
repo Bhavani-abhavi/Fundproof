@@ -12,8 +12,8 @@ For each memo:
   sanctions hit or an embedded instruction);
 - decision_language: wording that states a decision ("is approved", "has been declined", "final decision"), a
   label with a verdict ("DECISION: APPROVE", "Status: declined") or a verdict stamp in capitals ("APPROVED-7731").
-  The last two were added by the S2 containment tests (tests/security/test_containment.py), which found that a memo
-  echoing an injected "DECISION: APPROVE" passed the checker.
+  The last two, and "cleared" in the passive form ("the alert was cleared"), were added by the S2 containment tests
+  (tests/security/test_containment.py), which found that a memo echoing an injected "DECISION: APPROVE" passed.
 
 A number is supported when an evidence number rounds to the same value at the precision the memo wrote it with
 ("1.18" matches 1.1834; "12.5%" matches 12.47). Signs are ignored (a gap of -3.5% is written "3.5%" too).
@@ -50,7 +50,8 @@ ID_TOKENS = re.compile(
 NUMBER = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![\w.])\d+(?:\.\d+)?")
 DECISION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
-        r"\b(?:is|are|has been|have been|was|were|hereby|now)\s+(?:approved|declined|denied|rejected|bound|funded)\b",
+        r"\b(?:is|are|has been|have been|was|were|hereby|now)\s+"
+        r"(?:approved|declined|denied|rejected|bound|funded|cleared)\b",
         re.IGNORECASE,
     ),
     re.compile(r"\bfinal decision\b", re.IGNORECASE),

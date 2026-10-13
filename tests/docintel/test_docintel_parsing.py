@@ -40,6 +40,7 @@ from uwcopilot.docintel.parsing import (
         ("$2,806 792.54", 2806792.54),  # thousands comma read as a space
         ("$4,309 ,836.74", 4309836.74),
         ("—14,214.53", -14214.53),  # em dash as a minus sign
+        ("_7,471,139.00", 7471139.0),  # a printed rule read as an underscore
         ("TETAAN", None),
         ("abc", None),
         ("12,34,567.00", None),

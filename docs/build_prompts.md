@@ -456,8 +456,11 @@ Final phase.
       model card aligned to SR 26-2 (the 2026 interagency model-risk guidance)."
    - "Insurance frequency-severity models (freMTPL2): Poisson deviance {dev}, Gini {gini}; expected-loss stress
       tests under frequency and severity shocks."
-   - "Document extraction with page citations: field F1 {f1} [CI], citation accuracy {cite}; 100% of injected
-      prompt-injection attempts blocked in the adversarial suite ({n} cases)."
+   - "Document extraction with page citations: field F1 {f1} [CI], citation accuracy {cite}; prompt-injection
+      attack success measured by defense layer on {n} frozen payloads (L0 {asr_l0} -> L2 {asr_l2}, Wilson 95% CIs,
+      from results/injection_metrics.json) and decision-level impact 0 by construction, enforced by a test."
+      (Innovation S2 replaced the old "100% of injected prompt-injection attempts blocked" template: that is not a
+      claim this project can make.)
    - "Sanctions/KYC screening over OFAC + OpenSanctions: recall {recall} at {alerts} alerts per 1,000 customers."
    - "Traced every LLM/tool call: ${cost} and {p95}s p95 per packet; release gate in CI blocks metric
       regressions; deployed on {cloud} with {iac}."

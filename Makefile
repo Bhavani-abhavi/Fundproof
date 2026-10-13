@@ -194,10 +194,13 @@ studio-test:  ## Studio tests only (offline, recorded fixtures)
 
 # Phase 2: document intelligence
 
-.PHONY: packets
+.PHONY: packets eval-docintel
 
 packets:  ## Make the SYNTHETIC document packets (150 credit + 150 insurance, seed 42) -> data/processed/packets/, eval/packets/manifest.json
 	uv run python scripts/make_packets.py --out data/processed/packets --n-credit 150 --n-insurance 150 --seed 42 --test-credit 30 --test-insurance 30
+
+eval-docintel:  ## Evaluate the document pipeline on the 60 test packets, incl. forced OCR (needs `make packets`; ~40 min) -> results/docintel_metrics.json
+	uv run python scripts/eval_docintel.py
 
 # Innovation SIG: numeric provenance (docs/innovations.md). Offline, no LLM. The reference sentences and the mutations
 # are FROZEN test sets: rebuild them only when a change to provenance/numbers.py changes their generation, and say so.
@@ -290,3 +293,33 @@ studio-siteiq-fixtures:  ## Re-record the OpenRouteService drive-time fixture (n
 
 studio-data-refresh:  ## Like studio-data, but ignore cached answers and fetch every source again (METRO=<id>|all)
 	uv run python -m uwcopilot.studio.data.snapshot --metro $(METRO) --refresh
+
+# Innovation S2: injection containment by layer (docs/innovations.md). eval/injection_payloads.jsonl is frozen
+# (its sha256 is in eval/injection_payloads_manifest.json) and must be committed before the full run.
+
+.PHONY: injection-payloads-check eval-injection eval-injection-smoke injection-detector test-security
+
+injection-payloads-check:  ## Rebuild the payload set from the pinned dataset revision (network) and compare with the frozen file
+	uv run python scripts/fetch_injection_payloads.py --check
+
+eval-injection:  ## R4 on Ollama: 60 payloads x L0/L1/L2 + 30 benign L1/L2 calls (hours) -> results/injection_metrics.json
+	uv run python scripts/eval_injection.py
+
+eval-injection-smoke:  ## 3-call live smoke of the injection eval (Ollama) -> results/injection/smoke/
+	uv run python scripts/eval_injection.py --limit 3
+
+injection-detector:  ## Tripwire recall and false positives only, no model -> results/injection/injection_metrics_detector_only.json
+	uv run python scripts/eval_injection.py --detector-only
+
+test-security:  ## Containment invariants, normalization, applicant block, scorer and payload freeze tests (offline)
+	uv run pytest tests/security -q
+
+# Founder Studio S5: path to approval (seeded SYNTHETIC plans, offline; real metros in their current mode)
+
+.PHONY: studio-paths studio-paths-test
+
+studio-paths:  ## Path-to-approval search on SYNTHETIC plans (6 metros x 6 types x 15) -> results/studio_path_metrics.json
+	uv run python scripts/eval_studio_paths.py
+
+studio-paths-test:  ## Path-to-approval tests only (offline)
+	uv run pytest tests/studio -q -k path

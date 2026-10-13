@@ -91,10 +91,11 @@ def strip_edges(text: str) -> str:
 def clean_number_text(text: str) -> str:
     """Text of a number ready for a pattern.
 
-    Edges are stripped, inner spaces removed, dashes turned into a minus sign, a trailing comma or period dropped
+    Edges are stripped, inner spaces and underscores removed (OCR reads a printed rule as "_"), dashes turned into a
+    minus sign, a trailing comma or period dropped
     ("110,664.71," -> "110,664.71") and OCR look-alike letters fixed.
     """
-    cleaned = strip_edges(text).replace(" ", "")
+    cleaned = strip_edges(text).replace(" ", "").replace("_", "")
     cleaned = cleaned.replace("\u2014", "-").replace("\u2013", "-")
     cleaned = cleaned.rstrip(",.")
     return fix_ocr_digits(cleaned)

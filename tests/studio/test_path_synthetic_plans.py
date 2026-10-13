@@ -1,0 +1,64 @@
+"""synthetic_plans.py: seeded SYNTHETIC plans for the S5 evaluation, anchored on the one-forecast stressed DSCR."""
+
+import pytest
+
+from uwcopilot.studio.data.fabric import get_fabric
+from uwcopilot.studio.feasibility import load_assumptions
+from uwcopilot.studio.feasibility.setup import build_setup
+from uwcopilot.studio.path_to_approval import synthetic_plans
+from uwcopilot.studio.path_to_approval.synthetic_plans import (
+    STRESSED_DSCR_TARGET,
+    band_label,
+    generate_plan,
+    plan_seed,
+    stressed_single_point_dscr,
+)
+from uwcopilot.studio.profiles import load_profile
+
+METRO = "synthetic_metro"
+
+
+def make(profile_id: str, index: int) -> synthetic_plans.SyntheticPlan:
+    fabric = get_fabric(METRO)
+    profile = load_profile(profile_id, metro_id=METRO)
+    seed = plan_seed(42, 0, 0, index)
+    return generate_plan(profile, METRO, fabric.data_label, fabric.metro_inputs(profile), load_assumptions(), seed)
+
+
+def test_same_seed_same_plan() -> None:
+    assert make("car_wash", 3) == make("car_wash", 3)
+    assert make("car_wash", 3).case != make("car_wash", 4).case
+    assert plan_seed(42, 0, 1, 2) != plan_seed(42, 0, 2, 1)
+
+
+@pytest.mark.parametrize("index", range(4))
+def test_demand_anchored_plans_hit_their_stressed_target(index: int) -> None:
+    plan = make("car_wash", index)
+    assert STRESSED_DSCR_TARGET[0] <= plan.target_stressed_dscr <= STRESSED_DSCR_TARGET[1]
+    if plan.anchored_by != "demand":
+        pytest.skip("this seed was anchored by another lever")
+    fabric = get_fabric(METRO)
+    profile = load_profile("car_wash", metro_id=METRO)
+    case = plan.case
+    setup = build_setup(
+        profile, METRO, "SYNTHETIC", fabric.metro_inputs(profile), case.site, case.plan, case.loan, load_assumptions()
+    )
+    assert stressed_single_point_dscr(setup, case.site.mode) == pytest.approx(plan.target_stressed_dscr, abs=1e-6)
+
+
+def test_plans_are_synthetic_with_same_metro_candidates() -> None:
+    plan = make("laundromat", 1)
+    assert plan.case.site.status == "SYNTHETIC" and "SYNTHETIC" in plan.case.site.source
+    assert len(plan.candidates) == synthetic_plans.N_CANDIDATES
+    labels = {plan.case.site_label} | {item.label for item in plan.candidates}
+    assert len(labels) == synthetic_plans.N_CANDIDATES + 1
+    for candidate in plan.candidates:
+        assert candidate.metro_id == METRO and candidate.site.status == "SYNTHETIC"
+        assert candidate.site.unit == plan.case.site.unit
+
+
+def test_band_labels_cover_the_target_range() -> None:
+    assert band_label(STRESSED_DSCR_TARGET[0]) == "[0.6, 1.1)"
+    assert band_label(STRESSED_DSCR_TARGET[1]) == "[2.1, 2.6]"
+    with pytest.raises(ValueError):
+        band_label(3.0)

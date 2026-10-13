@@ -12,8 +12,9 @@ here depends on fixed positions:
   recognised by type: the date is the date of loss; "Property" / "General liability" is the line (as a code); "Open"
   / "Closed" is the status; the remaining word with a digit is the claim number. The three amounts are matched
   to paid / reserve / incurred in the order the claim-table header prints those titles (the header is found again
-  on a continuation page). When no header can be read, the amount equal to the sum of the other two is the
-  incurred amount and the other two are taken as paid then reserve, left to right.
+  on a continuation page); claim amounts are never negative, so a minus sign read by OCR is dropped. When no
+  header can be read, the amount equal to the sum of the other two is the incurred amount and the other two are
+  taken as paid then reserve, left to right.
 """
 
 from rapidfuzz import fuzz
@@ -166,7 +167,7 @@ def parse_claim(ref: LineRef, order: list[str], doc_id: str) -> LossRunClaim | N
     names = order or order_by_arithmetic(amounts)
     claim = LossRunClaim(date_of_loss=cite_words(ref, [dates[0]], parse_date(dates[0].text), doc_id))
     for name, word in zip(names, amounts, strict=True):
-        setattr(claim, name, cite_words(ref, [word], parse_amount(word.text), doc_id))
+        setattr(claim, name, cite_words(ref, [word], abs(parse_amount(word.text) or 0.0), doc_id))
     others = [word for word in ref.words if word not in amounts and word is not dates[0]]
     code, line_words = claim_line(others)
     if code is not None:

@@ -1,0 +1,89 @@
+# Overture Maps places: the ONE release Studio reads and how a metro's extract is made (Founder Studio, S1 data
+# fabric). Read by src/uwcopilot/studio/data/overture_places.py. Facts below were read on 2026-10-13 from the pages
+# listed under `sources` (each with its SHA-256 as downloaded); values marked DESIGN_CHOICE are the project author's
+# settings, not facts about the data.
+release:
+  id: "2026-09-23.1"
+  release_date: "2026-09-23"
+  schema_version: v2.0.0
+  note: >-
+    The current release on the Overture release calendar page on 2026-10-13. 2026-09-23.1 is a patch of 2026-09-23.0;
+    the release notes say the patch fixed GERS ids of the base and building_parts types. The 16 places files carry
+    the same S3 ETags in both release paths (listing compared on 2026-10-13). The release calendar page says
+    releases stay public for at most 60 days, so this pin has to move (and the extracts be re-made) once the release
+    is removed from the bucket; the cached extracts keep working until then and after.
+  s3_https_base: https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com
+  bucket: overturemaps-us-west-2
+  places_prefix: release/2026-09-23.1/theme=places/type=place/
+
+extract:
+  min_confidence:
+    value: 0.5
+    status: DESIGN_CHOICE
+    note: >-
+      Places below this existence confidence are left out. The places guide calls confidence the primary filter for
+      junk records and says it is not calibrated across providers, so 0.5 is a filter setting, not a probability.
+      Rows without a confidence value are left out too. Change it here; the extract is re-made on the next run.
+  exclude_operating_status:
+    values: [permanently_closed]
+    status: DESIGN_CHOICE
+    note: >-
+      The schema says a permanently closed place has confidence 0, but the September 2026 data has permanently
+      closed rows with high confidence (seen on 2026-10-13 in Houston), so they are excluded explicitly.
+  coordinates:
+    note: >-
+      A place's position is read from its bbox struct (xmin = longitude, ymin = latitude; for a point both corners
+      are the point), as the places guide's DuckDB example does, so the WKB geometry column is never downloaded.
+      The bbox values differ from the WKB point by under a meter (example row in the schema reference).
+  stored_fields:
+    note: >-
+      Only category, coordinates, confidence, the source dataset name and its license are stored. Names, ids,
+      addresses, phones, websites and brands are never read or stored.
+
+license:
+  summary: >-
+    Mixed licenses by source. Per the Overture attribution page (retrieved 2026-10-13), places data from Meta,
+    Microsoft, PinMeTo, Krick, RenderSEO, DAC and BrightQuery is available under CDLA Permissive 2.0; data from
+    Foursquare is available under Apache 2.0 ("Copyright 2024 Foursquare Labs, Inc. All rights reserved."; the
+    Foursquare NOTICE.txt is linked from that page; "Foursquare data was transformed to the Overture schema"); data
+    from AllThePlaces is available under CC0 1.0. The places guide says the theme contains no OpenStreetMap data. Each
+    stored place keeps the license string of its first source (sources[0].license in the schema, for example
+    "CDLA-Permissive-2.0", "Apache-2.0", "CC0-1.0").
+  licenses_by_source:
+    CDLA-Permissive-2.0: [meta, Microsoft, PinMeTo, Krick, RenderSEO, DAC, BrightQuery]
+    Apache-2.0: [Foursquare]
+    CC0-1.0: [AllThePlaces]
+  attribution: >-
+    Overture Maps Foundation, overturemaps.org (the citation the attribution page suggests, with the date the data
+    were accessed). Foursquare NOTICE: https://opensource.foursquare.com/places-notice-txt/
+  foursquare_notice_url: https://opensource.foursquare.com/places-notice-txt/
+
+sources:
+  - title: Attribution and Licensing
+    url: https://docs.overturemaps.org/attribution/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: d54e6769adb2b72beac154630131ec98eb2920b777ef31918a14c39f5ab4c074
+  - title: Places Guide (sources, licenses, confidence score, data access)
+    url: https://docs.overturemaps.org/guides/places/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: 92bec24e2107da891901e2730bdb7cf046bd61052368f8bf23b15cb3e8f93442
+  - title: Schema reference, Place (v2.0.0)
+    url: https://docs.overturemaps.org/schema/reference/places/place/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: 4233fffebe0dccb5094ea9870f229e27eabfa7bf88aeda6e40398e48b71224d2
+  - title: Schema reference, Taxonomy (v2.0.0)
+    url: https://docs.overturemaps.org/schema/reference/places/types/taxonomy/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: c126e8a84bfef5e3869fc75b9e8821e7c985fb263f2f4c753de1b213887107d5
+  - title: Places Taxonomy guide
+    url: https://docs.overturemaps.org/guides/places/taxonomy/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: 07eda3f003374e7e3d699c79136cc2f51874576759de9640cf2cf5fa56ec898d
+  - title: Releases (release calendar and data retention policy)
+    url: https://docs.overturemaps.org/release-calendar/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: 3146d378590c01436c4ec1511dec9a852d2e3e8f06bc44ed838c503b00244fbe
+  - title: 2026-09-23 release notes
+    url: https://docs.overturemaps.org/blog/2026/09/23/release-notes/
+    retrieved_at_utc: "2026-10-13T04:01:00+00:00"
+    sha256: a5a3e8ae57f8b2bb9fedff72b7095291cdbb744809185f5dff296605fab00a14
