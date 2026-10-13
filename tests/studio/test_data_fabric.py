@@ -89,11 +89,26 @@ def test_metro_inputs_are_labeled(fabric) -> None:
     assert "NOT a published rate" in inputs["prime_rate"].reason
 
 
+def test_synthetic_rent_and_wages_stay_assumptions(fabric) -> None:
+    """An ASSUMPTION range scaled by a SYNTHETIC index is still an ASSUMPTION (rule D), never SYNTHETIC data."""
+    inputs = fabric.metro_inputs(PROFILES["car_wash"])
+    assert inputs["commercial_rent"].status == "ASSUMPTION" and "rent index" in inputs["commercial_rent"].reason
+    assert inputs["local_wages"].status == "ASSUMPTION" and "wage index" in inputs["local_wages"].reason
+    assert inputs["prime_rate"].status == "SYNTHETIC"
+
+
 def test_coverage_rows_cover_every_required_factor(fabric) -> None:
     for profile in PROFILES.values():
         rows = fabric.coverage(profile)
         assert {row.factor for row in rows} == set(required_factors(profile))
-        assert 0.9 < coverage_share(rows) <= 1.0
+        for row in rows:
+            if row.factor == "commercial_rent":  # the profile's ASSUMPTION range: not data, counts 0
+                assert row.status == "ASSUMPTION" and row.share_of_tracts == 0.0
+            else:
+                assert row.status == "SYNTHETIC"
+        rent_weight = sum(row.weight for row in rows if row.factor == "commercial_rent")
+        assert coverage_share(rows) <= 1.0 - rent_weight + 1e-9
+        assert coverage_share(rows) > 0.85
 
 
 def test_coverage_share_counts_assumption_and_unknown_as_zero() -> None:
@@ -150,8 +165,13 @@ def test_real_metro_reads_its_snapshot(tmp_path) -> None:
     assert features["median_household_income"].status == "UNKNOWN"
     assert features["daytime_workers"].status == "UNKNOWN"
     rows = {row.factor: row for row in fabric.coverage(PROFILES["car_wash"])}
-    assert rows["traffic_aadt"].status == "DATA" and rows["traffic_aadt"].share_of_tracts == 1.0
-    assert rows["competition"].status == "UNKNOWN"
+    # Traffic is only available live for one site: no tract has a value, so it is UNKNOWN for ranking and counts 0.
+    traffic = rows["traffic_aadt"]
+    assert traffic.status == "UNKNOWN" and traffic.share_of_tracts == 0.0 and traffic.share_basis == "tracts"
+    assert traffic.live_per_site and "10 of 10 counties" in traffic.reason
+    assert rows["competition"].status == "UNKNOWN" and not rows["competition"].live_per_site
+    assert rows["households"].status == "DATA" and rows["households"].share_of_tracts == 1.0
+    assert coverage_share(list(rows.values())) == pytest.approx(0.15)  # households only (weight 0.15)
     mode, reason = fabric.mode(PROFILES)
     assert mode == "limited" and "below the threshold" in reason
 

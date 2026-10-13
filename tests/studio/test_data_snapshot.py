@@ -60,13 +60,16 @@ def test_houston_snapshot_with_keyless_sources_only(tmp_path) -> None:
     assert "CENSUS_API_KEY" in failures and "overpass-api.de" in failures
     wage = build.metro_inputs["local_wages"]["restaurant_cafe"]
     assert wage["assumptions"] and "hours per week" in wage["assumptions"][0]
+    # The weekly wage is data; the hourly value and its range come from the hours assumption (rule D).
+    assert wage["status"] == "DATA_X_ASSUMPTION"
+    assert "DATA: BLS QCEW" in wage["reason"] and "x ASSUMPTION" in wage["reason"]
 
     write_snapshot(build, tmp_path / "snapshots")
     fabric = SnapshotFabric(
         metro=load_metro("houston_tx"), snapshot=latest_snapshot("houston_tx", tmp_path / "snapshots")
     )
     assert len(fabric.tract_ids()) == 6
-    assert fabric.metro_inputs(load_all_profiles()["restaurant_cafe"])["local_wages"].status == "DATA"
+    assert fabric.metro_inputs(load_all_profiles()["restaurant_cafe"])["local_wages"].status == "DATA_X_ASSUMPTION"
     assert fabric.mode()[0] == "limited"
 
 

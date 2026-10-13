@@ -30,7 +30,8 @@ import httpx
 FIXTURES = Path(__file__).resolve().parent
 SCRIPT = "tests/studio/fixtures/record_fixtures.py"
 TIMEOUT_S = 60.0
-# A public building (Houston City Hall), not a person's address.
+# A fixed street address used only to place a map point; no name or person is attached to it in this repo.
+# (What stands at this address is not stated here: the Geocoder's answer gives only the matched address.)
 PUBLIC_ADDRESS = "901 Bagby St, Houston, TX 77002"
 GEOCODER = "https://geocoding.geo.census.gov/geocoder/geographies"
 HPMS_TX = "https://geo.dot.gov/server/rest/services/Hosted/HPMS_FULL_TX_2024/FeatureServer/0/query"

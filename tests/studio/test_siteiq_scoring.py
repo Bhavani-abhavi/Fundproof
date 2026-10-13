@@ -125,8 +125,10 @@ def test_coverage_counts_only_data_backed_factors(small) -> None:
     ctx, _ = small
     result = score_site("retail_storefront", "synthetic_metro", *site_of(ctx, 6), context=ctx)
     needed = required_factors(PROFILES["retail_storefront"])
-    unknown = [item.factor for item in result.factors if item.status == "UNKNOWN"]
-    assert (result.coverage_score == 1.0) == (not unknown)
+    not_data = [item for item in result.factors if item.status not in ("SYNTHETIC", "DATA", "FOUNDER_INPUT")]
+    # Without a rent quote, rent is the profile's ASSUMPTION range: it never counts as covered.
+    assert any(item.factor == "commercial_rent" and item.status == "ASSUMPTION" for item in not_data)
+    assert result.coverage_score <= 1.0 - sum(item.weight for item in not_data) + 1e-9
     assert set(needed) >= {item.factor for item in result.factors}
 
 

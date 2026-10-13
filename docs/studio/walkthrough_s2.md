@@ -7,7 +7,7 @@ Adula can explain this phase in their own words.
 this metro?" (`score_site`) and "which parts of the metro look better?" (`suggest_areas`). It reads everything
 through the S1 data fabric, so it works the same way for the SYNTHETIC metro and for every real metro, and it never
 fills a gap: a factor without data is UNKNOWN, is left out of the score and is named in the notes. It also produces
-the demand estimate (low / mode / high) that the S3 simulator samples from.
+the demand estimate (low / mode / high bounds plus percentiles 0-100) that the S3 simulator samples from.
 
 **What was done and what was not.**
 - Done: `score_site` and `suggest_areas` with factor-level provenance, percentile-rank normalization within the metro,
@@ -16,10 +16,12 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
   city-license context for Chicago and NYC; a validation on 10 SYNTHETIC cities against hidden true demand with
   bootstrap intervals and two baselines; a sanity table for the five real metros; tests with fixtures only.
 - Not done: no real metro can be scored yet. In the 2026-10-13 snapshots (made with every key set) the ACS and County
-  Business Patterns steps failed with "api.census.gov answered: answered with an HTML page instead of data (is
-  CENSUS_API_KEY valid?)", the POI step failed (overpass-api.de reset every connection), and the road layer is looked
-  up live per site, so there is no metro-wide reference to rank against. The real-metro table therefore says "not
-  measured" and copies each failed snapshot step (`snapshot_steps_not_ok`).
+  Business Patterns steps failed with "api.census.gov rejected CENSUS_API_KEY (invalid_key)": Census redirects the
+  key to its Invalid Key page (not activated or mistyped). The POI step failed (overpass-api.de reset every
+  connection), and the road layer is looked up live per site, so there is no metro-wide reference to rank against.
+  The real-metro table therefore says "not measured" and copies each failed snapshot step (`snapshot_steps_not_ok`).
+  Even with ACS data, traffic and POI factors would stay unrankable in a real metro until a snapshot step stores
+  per-tract nearest-road AADT and POI counts (not built yet).
 - OpenRouteService with a key: one answer was recorded on 2026-10-13 as a test fixture
   (`tests/studio/fixtures/ors/isochrones_houston_recorded.json`, around the Census Geocoder's point for Houston City
   Hall, a public building). Its shape matched the parser, so the drive-time code is now tested against a real answer
@@ -45,7 +47,7 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
 | `factors.py` | Measures the raw value of every factor the profile needs at one location, with status, plain reason, sources and details (count, nearest distance, saturation, median nightly price, road name). | Kept separate from scoring so the same code measures the founder's site and every reference tract: the comparison is like for like. |
 | `reference.py` | Measures the profile's site factors at every tract centroid of the metro and computes mid-rank percentiles. Needs at least 20 values (`MIN_REFERENCE_VALUES`, a design choice) to rank. | "Normalized within the metro" means a score of 80 is "better than most locations here", in any metro. |
 | `scoring.py` | `score_site`: normalize each weighted factor, combine the data-backed ones into the overall score, compute coverage, build notes. | Plain weighted mean, so every overall score can be recomputed by hand from the factor table. |
-| `demand.py` | The demand estimate: each profile formula written as a sum of terms (data x rates x constant), low / mode / high from the rate ranges, every input listed with its status and profile path. | S3 samples from these inputs; S4's ledger can cite each one. |
+| `demand.py` | The demand estimate: each profile formula written as a sum of terms (data x rates x constant), low / mode / high from the rate ranges (all rates at one end at once: hard bounds), percentiles 0-100 and P10 / P50 / P90 from a seeded Monte Carlo that draws each rate independently, every input listed with its status and profile path. | S3 samples from these inputs; S4's ledger can cite each one. |
 | `enhancements.py` | The drive-time demand area (with the fallback reason recorded) and city-license context (shown, not scored). | Things that exist only for some sites or metros must not change how sites are ranked against each other. |
 | `suggest.py` | `suggest_areas`: score every tract from the reference, exclude tracts missing required data, rank, explain the top ones with `score_site`, check the budget, build the GeoJSON layer. | The same scoring as `score_site`, so a suggested tract and a pin dropped on its centroid get the same score (a test checks it). |
 | `validation.py` | Spearman correlation, top-k hits, the two-level bootstrap, the per-city evaluation against the hidden truth, the baselines and the real-metro sanity table. | Validation code is the only Studio code that reads `city.true_demand`. |
@@ -61,7 +63,7 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
 | `tests/studio/test_siteiq_suggest.py` | Ranking, exclusion counts, consistency with `score_site`, GeoJSON, budget notes, a real metro with no snapshot. |
 | `tests/studio/test_siteiq_validation.py` | Metric helpers, bootstrap determinism, a small SYNTHETIC city end to end, the real-metro table (including failed snapshot steps copied from the manifest), the script's output and provenance. |
 | `tests/studio/fixtures/ors/isochrones_handwritten.json` | Hand-written OpenRouteService answer (SYNTHETIC squares in open ocean), labeled "hand-written from documentation, NOT recorded". Kept because the scoring tests need polygons around the SYNTHETIC metro. |
-| `tests/studio/fixtures/ors/isochrones_houston_recorded.json` | One live answer recorded on 2026-10-13 (5, 10 and 15 minutes around the Census Geocoder's point for Houston City Hall), with its SHA-256; the key is not in it. |
+| `tests/studio/fixtures/ors/isochrones_houston_recorded.json` | One live answer recorded on 2026-10-13 (5, 10 and 15 minutes around the Census Geocoder's point for the street address 901 Bagby St, Houston, TX 77002), with its SHA-256; the key is not in it. |
 | `tests/studio/fixtures/ors/record_isochrones.py` | Re-records that fixture by hand (`ORS_API_KEY` set; never in CI). Reads the point from the recorded geocoder fixture and builds the body with the project's own `isochrone_payload`. |
 | `Makefile` | `studio-siteiq` (the validation), `studio-siteiq-test` (SiteIQ tests only) and `studio-siteiq-fixtures` (re-records the OpenRouteService fixture; needs `ORS_API_KEY`, never run in CI). |
 
@@ -84,8 +86,12 @@ the demand estimate (low / mode / high) that the S3 simulator samples from.
 5. **Coverage.** The weighted share of the profile's required factors that have data at this site, with the S1 rule:
    demand-only inputs count with the average weight; ASSUMPTION and UNKNOWN count zero.
 6. **Demand** (demand.py). For a car wash, `cars/day = AADT x capture_rate`; low uses the low end of the capture-rate
-   ASSUMPTION range, mode the mode, high the high end. Motel and short-term rental formulas have no data term, so
-   their estimate is "ASSUMPTION rates only" and does not change from site to site.
+   ASSUMPTION range, mode the mode, high the high end. With several rates (restaurant: visits x capture share) low
+   and high need every rate at its extreme at once, which almost never happens, so they are hard bounds only. The
+   distribution in between comes from a Monte Carlo (20,000 draws, seed 42): each rate drawn independently from its
+   own triangle, percentiles 0-100 kept (the 0th and 100th are the bounds). The simulator samples those percentiles;
+   it used to sample a triangle over the bounds, whose median sat far above the mode. Motel and short-term rental
+   formulas have no data term, so their estimate is "ASSUMPTION rates only" and does not change from site to site.
 7. **Notes.** One note per UNKNOWN factor, per factor that has a value but no score (rent without a quote; a value
    with too few metro reference values, such as a live road lookup in a real metro), for limited mode, for a missing
    overall score, for an incomplete demand estimate, plus the SYNTHETIC label where it applies. The factor's own
@@ -176,15 +182,17 @@ Diagnostic (`diagnostics` in the file): in all 10 cities the share of tract cent
 generator's own local street is 1.0.
 
 Real metros (`real_metro_sanity`, snapshots dated 2026-10-13): all five are in limited mode ("data coverage 0.00 is
-below the threshold 0.80"). For every business type the status is "not measured": for car wash and motel every tract
-is excluded with "required data UNKNOWN: traffic_aadt", for retail with "required data UNKNOWN: resident_population",
-and restaurant/cafe, laundromat and short-term rental have coverage 0.0 (no ACS estimate; OpenStreetMap unreachable).
+below the threshold 0.80"). For every business type the status is "not measured: no real tract data for this
+business type in the snapshot", with coverage 0.0 (no ACS estimate because Census refused the key; OpenStreetMap
+unreachable; traffic has no per-tract value, only a live per-site lookup, so it no longer counts as covered).
 In every metro `snapshot_steps_not_ok` lists `acs_tracts`, `business_patterns` and `osm_pois` as failed, plus the
 enhancements that are not available yet.
 
-The synthetic part took 108.6 s of wall-clock time on a shared 4-CPU machine with other agents running (from
+The synthetic part took 106.6 s of wall-clock time on a shared 4-CPU machine with other agents running (from
 `method.elapsed_seconds_synthetic_part`); it is not a benchmark. Re-running the script on 2026-10-13 gave the same
-`by_business_type` block value for value as the 2026-10-12 run (fixed seeds).
+`by_business_type` block value for value as the 2026-10-12 run (fixed seeds), including the rerun after the
+verify-and-fix pass. The results now pin each real-metro snapshot by the SHA-256 of its files
+(`snapshot_fingerprint`), matching `results/studio_metro_coverage.json`.
 
 ## 6. What the results say
 
@@ -253,8 +261,10 @@ The synthetic part took 108.6 s of wall-clock time on a shared 4-CPU machine wit
    validation look better without telling us anything about real places. Weights should be calibrated on real
    outcomes collected after funding (S9).
 9. **How is the demand estimate built and why is the range so wide?** Each formula is data times the profile's rates;
-   low, mode and high use the rate ranges' low, mode and high ends. The rates are wide ASSUMPTION ranges, so the range
-   is a bound for the S3 simulator to sample within, not a confidence interval.
+   low, mode and high use the rate ranges' low, mode and high ends. The rates are wide ASSUMPTION ranges, so low and
+   high are hard bounds, not a confidence interval. What the simulator samples is the Monte Carlo distribution of the
+   formula with each rate drawn independently (percentiles 0-100, P10 / P50 / P90 shown), because a triangle over the
+   bounds would treat "every rate at its extreme at once" as a likely outcome.
 10. **Why are drive-time areas used only for demand and not for the score?** The score compares the site with every
     tract location measured the same way; drive-time areas for thousands of reference tracts are not practical. The
     demand estimate is about one site, so a drive-time area improves it, and the method used is recorded.

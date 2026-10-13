@@ -2,9 +2,10 @@
 
     uv run python tests/studio/fixtures/ors/record_isochrones.py
 
-The point is the Census Geocoder's answer for a public building (Houston City Hall), read from the recorded fixture
-tests/studio/fixtures/geocoder/coordinates.json rather than typed in. The request body is built by the project's own
-studio.siteiq.isochrones.isochrone_payload, so the fixture checks the real request and the real answer shape.
+The point is the Census Geocoder's answer for a fixed street address (record_fixtures.PUBLIC_ADDRESS), read from the
+recorded fixture tests/studio/fixtures/geocoder/coordinates.json rather than typed in. The request body is built by
+the project's own studio.siteiq.isochrones.isochrone_payload, so the fixture checks the real request and the real
+answer shape.
 
 The key travels only in the Authorization header. It is never written to the fixture: the stored url has no query
 string, params holds the JSON body, and the script refuses to save a body that contains the key.
@@ -51,8 +52,8 @@ def main() -> int:
         "fixture_origin": f"recorded from the live API on {now.date().isoformat()} by {SCRIPT}",
         "note": (
             "One POST to the openrouteservice v2 isochrones endpoint (driving-car) around the Census Geocoder's "
-            "answer for Houston City Hall (a public building), ranges 5, 10 and 15 minutes. The key was sent in "
-            "the Authorization header only and is not stored."
+            "point for the street address 901 Bagby St, Houston, TX 77002, ranges 5, 10 and 15 minutes. The key was "
+            "sent in the Authorization header only and is not stored."
         ),
         "url": ISOCHRONES_URL,
         "params": {"json": payload},

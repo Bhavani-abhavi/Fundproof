@@ -270,3 +270,8 @@ studio-siteiq-test:  ## SiteIQ tests only (offline, fixtures)
 
 studio-siteiq-fixtures:  ## Re-record the OpenRouteService drive-time fixture (needs ORS_API_KEY; one request; never in CI)
 	uv run python tests/studio/fixtures/ors/record_isochrones.py
+
+.PHONY: studio-data-refresh
+
+studio-data-refresh:  ## Like studio-data, but ignore cached answers and fetch every source again (METRO=<id>|all)
+	uv run python -m uwcopilot.studio.data.snapshot --metro $(METRO) --refresh

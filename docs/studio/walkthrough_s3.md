@@ -1,11 +1,15 @@
 # Walkthrough: Studio S3, site-level Monte Carlo feasibility
 
-Written on 2026-10-13 so that both Rahul Vajja and Bhavani Adula can explain this phase in their own words.
+Written on 2026-10-13 (and updated the same day after a verify-and-fix pass: SiteIQ's demand is sampled from its
+percentiles, an incomplete demand estimate is flagged, years without 12 loan payments get no DSCR probability, and
+derived or scaled metro values keep their ASSUMPTION labels) so that both Rahul Vajja and Bhavani Adula can explain
+this phase in their own words.
 
 **What S3 is.** The feasibility simulator answers "if I open this business at this site with this plan and this loan,
 how likely is it that I can pay the loan, and what could go wrong?" Instead of one spreadsheet forecast it runs many
 possible futures (1,000 paths of 36 months by default, seeded), each with its own draw of every uncertain input, and
-reports shares of those futures: P(DSCR >= target) in years 1 and 2, P(cash < 0 within 24 months), the break-even
+reports shares of those futures: P(DSCR >= target) in every year with 12 scheduled loan payments (years 1 and 2
+always, since the loan term is at least 24 months), P(cash < 0 within 24 months), the break-even
 month distribution, P10 / P50 / P90 bands of monthly revenue, net income and cash, a tornado of the assumptions that
 matter most, and the lender's stress tests. Every probability is labeled **"simulated, based on stated
 assumptions"** and every result carries the Studio disclaimer: "Educational planning tool. Not financial, legal or
@@ -18,8 +22,9 @@ lending advice. Lenders make their own decisions."
   constants; a handoff to the lender's projection schema; a validation on SYNTHETIC worlds with a known true future
   under two conditions (well specified and misspecified), with bootstrap intervals and two baselines; timing.
 - The site input depends only on a small interface, `SiteDemand` (low / mode / high demand in the profile's unit plus
-  its provenance). SiteIQ's `SiteScore` (S2) is accepted directly; a contract test scores a real SiteIQ site on the
-  SYNTHETIC metro and feeds it to the simulator.
+  its provenance; from SiteIQ also the demand's percentiles 0-100 and whether the estimate is complete). SiteIQ's
+  `SiteScore` (S2) is accepted directly; a contract test scores a real SiteIQ site on the SYNTHETIC metro and feeds
+  it to the simulator.
 - Not done: no real-world accuracy can be measured. No metro has outcome data (which plans succeeded), so the results
   file says "not measured" for real metros. The simulator runs on real metros (the prime rate from FRED, QCEW wages
   where the snapshot has them), but those metros are in limited mode and most inputs there are ASSUMPTION ranges.
@@ -33,9 +38,9 @@ lending advice. Lenders make their own decisions."
 | File | What it does | Why it is built this way |
 |---|---|---|
 | `__init__.py` | Exports `simulate`, `run_simulation`, `SiteDemand`, `Plan`, `Loan`, `RangeOverride`, `FeasibilityResult`, the DSCR target helpers and `LENDER_STRESS`. | One import line for the web app and the S6 package. |
-| `inputs.py` | `SiteDemand` (the only contract with SiteIQ), `as_site_demand()` (accepts a `SiteDemand`, a dict, or anything with `low/mode/high/unit`, directly or under `demand` / `demand_estimate`), `Plan`, `Loan`, `RangeOverride`. | S3 was built in parallel with S2. A small interface means a change inside SiteIQ cannot break the simulator, and a founder can type a demand range when SiteIQ has no data. A SiteIQ estimate that is UNKNOWN is refused with a message asking for a typed range. |
+| `inputs.py` | `SiteDemand` (the only contract with SiteIQ: low / mode / high, optional percentiles 0-100, `complete` and `missing`), `as_site_demand()` (accepts a `SiteDemand`, a dict, or anything with `low/mode/high/unit`, directly or under `demand` / `demand_estimate`), `Plan`, `Loan`, `RangeOverride`. | S3 was built in parallel with S2. A small interface means a change inside SiteIQ cannot break the simulator, and a founder can type a demand range when SiteIQ has no data. A SiteIQ estimate that is UNKNOWN is refused with a message asking for a typed range; an incomplete one (a term left out because its data is UNKNOWN) is used with a note in the result saying demand is understated. |
 | `assumptions.py` | Loads `config/studio/feasibility/assumptions.yaml` (12 simulator assumptions that are not part of any profile) with the profiles' own `Quantity` model; `DscrTarget`, `default_dscr_target()` (imports `DSCR_MINIMUM["term_loan"]` from `agent/policy_credit.py`), `custom_dscr_target()`. | Same provenance rules as the profiles: every number is SOURCED with a source or an ASSUMPTION range with a note. The target is imported, never retyped, so the founder side and the lender side cannot drift apart. |
-| `distributions.py` | `Distribution` (triangular or fixed, with unit, status and source), inverse-CDF sampling, `from_quantity` (profile field), `from_factor_value` (data-fabric value, including the assumptions used to derive it), `with_mode`, `annual_to_monthly_hazard`, `event_month`. | Inverse-CDF sampling lets the tornado hold every other draw fixed while one input moves, and makes P10 / P90 of each input exact. |
+| `distributions.py` | `Distribution` (triangular, fixed, or empirical = SiteIQ's percentiles 0-100 interpolated linearly; with unit, status and source), inverse-CDF sampling, `from_quantity` (profile field), `from_factor_value` (data-fabric value, including the assumptions used to derive it), `with_mode`, `annual_to_monthly_hazard`, `event_month`. | Inverse-CDF sampling lets the tornado hold every other draw fixed while one input moves, and makes P10 / P90 of each input exact. |
 | `setup.py` | `build_setup()` collects every input in a fixed order and decides where each comes from (founder > user-edited range > metro data > profile or simulator ASSUMPTION). Applies user edits (`Plan.assumption_overrides`, unknown names rejected with `risk/scenario.py`'s `OverrideError`), checks bounds, sets the note rate (quoted, or prime + a stated spread) and checks the plan (equity + loan must cover capex). | Every input is decided in one place, so the result can list them all. An UNKNOWN metro value is never filled silently: the profile range is used and a note says so. |
 | `loan.py` | Monthly payment and annual debt service through `agent/credit_calculations.py` (`amortizing_monthly_payment`, `proposed_annual_debt_service`); remaining balance; the payment schedule re-amortized after a rate rise. | The founder and the lender compute debt service with the same function. |
 | `model.py` | `draw()` (every random number once, in a fixed order), `input_values()`, `run_paths()` (monthly demand, volume, revenue, NOI, debt service, net income, cash per path; vectorized NumPy), `StressLevers`, `single_point_run()` (the one-forecast case). | One function turns draws into paths; the base run, the tornado, the stress tests and the validation truths all call it, so they cannot use different formulas. |
@@ -88,8 +93,8 @@ The inputs and where each comes from (first match wins):
 |---|---|---|
 | A value the founder typed in the plan or loan | USER_STATED, fixed | price, rent quote, capex, wage, quoted rate |
 | A range the founder edited (`assumption_overrides`) | USER_STATED, triangle | any distribution by name |
-| The site's demand range | MODEL_ESTIMATE (SiteIQ), ASSUMPTION (SiteIQ with rates only), SYNTHETIC or USER_STATED | `mature_demand` |
-| Metro data from the data fabric | DATA (real snapshot) or SYNTHETIC (generated city) | `hourly_wage` (QCEW), `monthly_rent`, the prime rate |
+| The site's demand range | MODEL_ESTIMATE (SiteIQ), ASSUMPTION (SiteIQ with rates only), SYNTHETIC or USER_STATED | `mature_demand` (SiteIQ's percentiles when given, otherwise a triangle) |
+| Metro data from the data fabric | DATA_X_ASSUMPTION (QCEW weekly wage / assumed weekly hours), DATA (FRED prime rate), SYNTHETIC (the generated city's prime rate), or ASSUMPTION (rent ranges; the generated city's rent and wage, which are profile ranges scaled by a SYNTHETIC index) | `hourly_wage`, `monthly_rent`, the prime rate |
 | The business-type profile (S1) or `assumptions.yaml` | ASSUMPTION (SOURCED once a source is cited) | capacity, cost ratios, ramp, shocks, elasticity |
 
 The note rate is the founder's quote, or the metro's prime rate plus a spread (the founder's, or the ASSUMPTION mode
@@ -98,7 +103,9 @@ rate"; on a real snapshot it is FRED DPRIME with its observation date.
 
 **Outputs.**
 - **P(DSCR >= target) in year y**: the share of paths whose year-y NOI / year-y debt service, rounded to two decimals
-  like the lender rounds it, is at least the target.
+  like the lender rounds it, is at least the target. Reported only for years with 12 scheduled loan payments: with a
+  30-month loan, year 3 has 6 payments (a half-year of debt service would make the ratio look twice as good) and with
+  a 24-month loan none; such a year gets no DSCR and no probability, and a note says why.
 - **P(cash < 0 within 24 months)**: the share of paths whose cash balance goes below zero in months 1-24.
 - **Break-even month**: the first month that starts three months in a row with net income >= 0 (one good month in a
   noisy series is not break-even); P10 / P50 / P90 across paths, and the share that never breaks even in the horizon.
@@ -118,6 +125,11 @@ rate"; on a real snapshot it is FRED DPRIME with its observation date.
 - **Triangular distributions.** The profiles already state every uncertain number as low / mode / high, so a
   triangle uses exactly what was written down, without inventing a standard deviation. It is bounded (no negative
   rents) and easy to explain.
+- **Except for SiteIQ's demand.** SiteIQ's low and high put every rate at the same end at once (hard bounds). A
+  triangle over them would treat that extreme as likely, and its median sat far above the most likely demand, which
+  pushed every probability up. So SiteIQ hands over the percentiles of its formula with each rate drawn
+  independently (a seeded Monte Carlo), and the simulator samples those ("empirical", linear between percentiles).
+  The one-forecast case still uses SiteIQ's mode.
 - **Inverse-CDF sampling with one uniform per input and path.** Each input's value is `quantile(u)`. The tornado can
   then set one input to its exact P10 or P90 while every other draw stays the same.
 - **Tornado = one-at-a-time swings, holding the seed.** For every ranged input: set it to its P10 on every path and
@@ -135,7 +147,8 @@ rate"; on a real snapshot it is FRED DPRIME with its observation date.
   stressed DSCR use the startup program's half-up decimal rounding; the projection is built with the lender's own
   pydantic models.
 - **No silent filling.** A metro value that is UNKNOWN falls back to the profile's ASSUMPTION range with a note in the
-  result; a site whose demand is UNKNOWN is refused.
+  result; a site whose demand is UNKNOWN is refused; a site whose demand estimate left a term out (for example
+  daytime workers, which have no real source yet) gets a note that demand is understated.
 
 ## 4. An example run (copied from `example_run` in `results/studio_feasibility_metrics.json`)
 
@@ -267,15 +280,15 @@ Per business type, the misspecified Brier scores and gaps are in `conditions.mis
 
 | Business type | Inputs swung in the tornado | 1,000 paths, path model only: median ms | simulate() with tornado and lender stress, 1,000 paths: median ms |
 |---|---|---|---|
-| car_wash | 25 | 4.71 | 232.28 |
-| laundromat | 24 | 2.87 | 195.69 |
-| motel | 27 | 4.39 | 281.65 |
-| restaurant_cafe | 24 | 2.46 | 209.67 |
-| retail_storefront | 28 | 4.0 | 300.64 |
-| short_term_rental | 24 | 3.88 | 320.92 |
+| car_wash | 25 | 4.75 | 232.15 |
+| laundromat | 24 | 2.97 | 169.53 |
+| motel | 27 | 3.99 | 269.08 |
+| restaurant_cafe | 24 | 2.48 | 154.28 |
+| retail_storefront | 28 | 3.77 | 251.99 |
+| short_term_rental | 24 | 3.82 | 219.12 |
 
-Median of 15 repeats after a warm-up, on a shared 4-CPU machine with other agents running (load average 7.0 at the
-start of the run and 7.86 at the end, from `provenance.environment`). It is not a benchmark.
+Median of 15 repeats after a warm-up, on a shared 4-CPU machine with other agents running (load average 0.94 at the
+start of the run and 1.38 at the end, from `provenance.environment`). It is not a benchmark.
 
 Real metros: "not measured: no real outcome data exists for any metro, so no real-world accuracy can be computed".
 
@@ -361,7 +374,9 @@ Real metros: "not measured: no real outcome data exists for any metro, so no rea
    range with a note in the result.
 9. **Why triangular distributions?** The profiles state every uncertain number as low / most likely / high. A triangle
    uses exactly those three numbers without inventing a standard deviation, cannot go below the low end, and is easy
-   to explain to a founder. Its P10 and P90 are exact, which the tornado uses.
+   to explain to a founder. Its P10 and P90 are exact, which the tornado uses. The site's demand is the exception: it
+   is a product of several ranges, so SiteIQ passes its percentiles instead of a triangle over "all low" and "all
+   high", which would overweight the extremes.
 10. **What would make the probabilities trustworthy for real decisions?** Sourced ranges (BLS wages, Census data,
     lender term sheets, equipment quotes) instead of assumptions, and outcome data from funded businesses (S9) to
     check calibration the same way the synthetic validation does, with the misspecified results as a warning that

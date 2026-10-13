@@ -150,7 +150,7 @@
       }
     },
     {
-      "timing_paths_only_1000_median_ms_across_types": 3.94
+      "timing_paths_only_1000_median_ms_across_types": 3.79
     }
   ],
   "conditions": {
@@ -2626,90 +2626,90 @@
     "per_business_type": {
       "car_wash": {
         "paths_only_1000": {
-          "median_ms": 4.71,
-          "min_ms": 3.66,
-          "max_ms": 11.06,
+          "median_ms": 4.75,
+          "min_ms": 3.04,
+          "max_ms": 5.61,
           "repeats": 15
         },
         "simulate_with_tornado_and_stress_1000": {
-          "median_ms": 232.28,
-          "min_ms": 200.84,
-          "max_ms": 319.25,
+          "median_ms": 232.15,
+          "min_ms": 196.03,
+          "max_ms": 293.92,
           "repeats": 15
         },
         "tornado_inputs": 25
       },
       "laundromat": {
         "paths_only_1000": {
-          "median_ms": 2.87,
-          "min_ms": 2.67,
-          "max_ms": 6.82,
+          "median_ms": 2.97,
+          "min_ms": 2.72,
+          "max_ms": 4.38,
           "repeats": 15
         },
         "simulate_with_tornado_and_stress_1000": {
-          "median_ms": 195.69,
-          "min_ms": 156.82,
-          "max_ms": 285.68,
+          "median_ms": 169.53,
+          "min_ms": 148.92,
+          "max_ms": 189.06,
           "repeats": 15
         },
         "tornado_inputs": 24
       },
       "motel": {
         "paths_only_1000": {
-          "median_ms": 4.39,
-          "min_ms": 3.65,
-          "max_ms": 8.38,
+          "median_ms": 3.99,
+          "min_ms": 3.63,
+          "max_ms": 5.73,
           "repeats": 15
         },
         "simulate_with_tornado_and_stress_1000": {
-          "median_ms": 281.65,
-          "min_ms": 247.74,
-          "max_ms": 356.78,
+          "median_ms": 269.08,
+          "min_ms": 214.07,
+          "max_ms": 309.14,
           "repeats": 15
         },
         "tornado_inputs": 27
       },
       "restaurant_cafe": {
         "paths_only_1000": {
-          "median_ms": 2.46,
-          "min_ms": 2.21,
-          "max_ms": 6.03,
+          "median_ms": 2.48,
+          "min_ms": 2.25,
+          "max_ms": 2.62,
           "repeats": 15
         },
         "simulate_with_tornado_and_stress_1000": {
-          "median_ms": 209.67,
-          "min_ms": 132.06,
-          "max_ms": 282.91,
+          "median_ms": 154.28,
+          "min_ms": 136.74,
+          "max_ms": 181.95,
           "repeats": 15
         },
         "tornado_inputs": 24
       },
       "retail_storefront": {
         "paths_only_1000": {
-          "median_ms": 4.0,
-          "min_ms": 3.6,
-          "max_ms": 7.88,
+          "median_ms": 3.77,
+          "min_ms": 3.3,
+          "max_ms": 5.57,
           "repeats": 15
         },
         "simulate_with_tornado_and_stress_1000": {
-          "median_ms": 300.64,
-          "min_ms": 222.42,
-          "max_ms": 411.41,
+          "median_ms": 251.99,
+          "min_ms": 208.66,
+          "max_ms": 301.73,
           "repeats": 15
         },
         "tornado_inputs": 28
       },
       "short_term_rental": {
         "paths_only_1000": {
-          "median_ms": 3.88,
-          "min_ms": 3.64,
-          "max_ms": 8.07,
+          "median_ms": 3.82,
+          "min_ms": 3.59,
+          "max_ms": 4.18,
           "repeats": 15
         },
         "simulate_with_tornado_and_stress_1000": {
-          "median_ms": 320.92,
-          "min_ms": 240.95,
-          "max_ms": 497.53,
+          "median_ms": 219.12,
+          "min_ms": 201.13,
+          "max_ms": 306.8,
           "repeats": 15
         },
         "tornado_inputs": 24
@@ -2730,7 +2730,10 @@
       "status": "SYNTHETIC",
       "source": "SYNTHETIC validation world (src/uwcopilot/studio/feasibility/worlds.py), world 0",
       "coverage_score": null,
-      "competition_percentile": 0.88543316664022
+      "competition_percentile": 0.88543316664022,
+      "percentiles": null,
+      "complete": true,
+      "missing": []
     },
     "plan": {
       "opening_date": "2027-06-01",
@@ -2856,7 +2859,7 @@
         "name": "hourly_wage",
         "description": "Hourly wage",
         "unit": "USD/hour",
-        "status": "SYNTHETIC",
+        "status": "ASSUMPTION",
         "input_p10": 16.716868690964343,
         "input_p90": 24.62210049453413,
         "metric_at_p10": 311055.5937225012,
@@ -2926,9 +2929,9 @@
   },
   "real_metros": "not measured: no real outcome data exists for any metro, so no real-world accuracy can be computed",
   "provenance": {
-    "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
+    "git_sha": "1df0e0aab3f9d8135c328361f7abea280a7090b3",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-13T03:05:32+00:00",
+    "generated_at_utc": "2026-10-13T03:51:28+00:00",
     "generated_by": "scripts/eval_studio_feasibility.py",
     "prompts": {},
     "corpus_checksum": "not applicable (no retrieval corpus is used)",
@@ -2969,14 +2972,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        7.0,
-        4.96,
-        3.33
+        0.94,
+        1.62,
+        2.26
       ],
       "load_average_end": [
-        7.86,
-        5.81,
-        3.81
+        1.38,
+        1.58,
+        2.18
       ]
     }
   }

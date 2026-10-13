@@ -54,9 +54,9 @@ class YearBand(Frozen):
     net_income_p50: float
     net_income_p90: float
     debt_service_p50: float
-    dscr_p10: float
-    dscr_p50: float
-    dscr_p90: float
+    dscr_p10: float | None = Field(description="None for a year without 12 scheduled loan payments")
+    dscr_p50: float | None
+    dscr_p90: float | None
 
 
 class BreakEven(Frozen):
@@ -152,7 +152,9 @@ class FeasibilityResult(Frozen):
     owner_equity: float
     planned_starting_cash: float
     dscr_target: DscrTarget
-    p_dscr_at_least_target: dict[str, float] = Field(description="{'year_1': p, 'year_2': p}")
+    p_dscr_at_least_target: dict[str, float] = Field(
+        description="{'year_1': p, 'year_2': p, ...} for every simulated year with 12 scheduled loan payments"
+    )
     p_cash_negative_within_24_months: float
     break_even: BreakEven
     monthly: list[MonthBand]

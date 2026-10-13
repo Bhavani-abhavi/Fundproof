@@ -82,7 +82,8 @@ def test_inputs_come_from_profile_metro_or_founder() -> None:
     items = setup.distributions
     assert items["price"].status == "USER_STATED" and items["price"].kind == "fixed"
     assert items["monthly_rent"].mode == 8000.0
-    assert items["hourly_wage"].status == "SYNTHETIC"  # the SYNTHETIC metro's wage index on the profile range
+    # The profile's ASSUMPTION wage range scaled by the SYNTHETIC city's index stays an ASSUMPTION (rule D).
+    assert items["hourly_wage"].status == "ASSUMPTION" and "wage index" in items["hourly_wage"].source
     assert items["capacity"].status == "ASSUMPTION"
     assert items["mature_demand"].status == "SYNTHETIC" and items["mature_demand"].mode == 250.0
     assert {f"cost_ratio_{name}" for name in load_profile("car_wash").cost_ratios} <= set(items)

@@ -1,5 +1,5 @@
 {
-  "description": "Data coverage per metro x business type x factor (Studio S1). status: DATA = public dataset value; SYNTHETIC = generated city; ASSUMPTION = the project author's labeled range; UNKNOWN = no data. coverage_share = weighted share of a business type's required factors backed by data (DATA or SYNTHETIC) times the share of tracts covered; ASSUMPTION and UNKNOWN count as 0.",
+  "description": "Data coverage per metro x business type x factor (Studio S1). status: DATA = public dataset value; SYNTHETIC = generated city; ASSUMPTION = the project author's labeled range; DATA_X_ASSUMPTION = a public value converted with a labeled assumption (QCEW weekly wage / assumed hours); UNKNOWN = no data. coverage_share = weighted share of a business type's required factors backed by data (DATA or SYNTHETIC) times the share of tracts covered; everything else counts as 0. live_per_site = the layer has no per-tract values but can be looked up live for one site (UNKNOWN for ranking tracts).",
   "disclaimer": "Educational planning tool. Not financial, legal or lending advice. Lenders make their own decisions.",
   "metro_level_inputs": [
     "commercial_rent",
@@ -7,11 +7,11 @@
     "prime_rate"
   ],
   "api_keys_present": {
-    "CENSUS_API_KEY": false,
-    "BLS_API_KEY": false,
-    "FRED_API_KEY": false,
-    "HUD_USER_TOKEN": false,
-    "ORS_API_KEY": false
+    "CENSUS_API_KEY": true,
+    "BLS_API_KEY": true,
+    "FRED_API_KEY": true,
+    "HUD_USER_TOKEN": true,
+    "ORS_API_KEY": true
   },
   "summary": [
     {
@@ -19,7 +19,7 @@
       "data_label": "PUBLIC",
       "mode": "limited",
       "min_coverage_share": 0.0,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
       "tracts": 2292
     },
     {
@@ -27,7 +27,7 @@
       "data_label": "PUBLIC",
       "mode": "limited",
       "min_coverage_share": 0.0,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
       "tracts": 1704
     },
     {
@@ -35,7 +35,7 @@
       "data_label": "PUBLIC",
       "mode": "limited",
       "min_coverage_share": 0.0,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
       "tracts": 1615
     },
     {
@@ -43,7 +43,7 @@
       "data_label": "PUBLIC",
       "mode": "limited",
       "min_coverage_share": 0.0,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
       "tracts": 3112
     },
     {
@@ -51,14 +51,14 @@
       "data_label": "PUBLIC",
       "mode": "limited",
       "min_coverage_share": 0.0,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
       "tracts": 4928
     },
     {
       "metro_id": "synthetic_metro",
       "data_label": "SYNTHETIC",
       "mode": "synthetic",
-      "min_coverage_share": 0.996,
+      "min_coverage_share": 0.896,
       "snapshot_date": null,
       "tracts": 300
     }
@@ -71,7 +71,12 @@
       "cbsa_code": "16980",
       "counties": 13,
       "tracts": 2292,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "7a8baba2d44ad94a9de61e29e9e0fa71d40e3e39e7692d978f5b07c145c7f52a",
+        "tracts_sha256": "95886e4490e145727f8dc6cfdb9fdeafc377f5d759721acd278b8b7d1f316759"
+      },
       "snapshot_steps": [
         {
           "name": "tract_geography",
@@ -81,12 +86,12 @@
         {
           "name": "acs_tracts",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "business_patterns",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "qcew_wages",
@@ -135,20 +140,21 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.35,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.35 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 13 of 13 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
             },
             {
               "factor": "households",
@@ -157,8 +163,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -168,8 +175,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -178,9 +186,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -189,9 +198,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -201,8 +211,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -259,8 +270,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -270,8 +282,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -280,9 +293,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -291,9 +305,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -303,8 +318,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -350,20 +366,21 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.25,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.25 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 13 of 13 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
             },
             {
               "factor": "tourism",
@@ -371,9 +388,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -382,9 +400,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -393,9 +412,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -405,8 +425,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -463,8 +484,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -474,8 +496,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
@@ -485,8 +508,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -495,9 +519,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -506,9 +531,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -518,8 +544,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -540,14 +567,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 16.4,
               "low": 14.35,
               "high": 22.96,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 574 USD for NAICS 72251 (requested 722511) in C1698, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 574 USD for NAICS 72251 (requested 722511) in C1698; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -567,9 +594,9 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.2,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.20 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
@@ -578,8 +605,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -589,20 +617,22 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 13 of 13 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
             },
             {
               "factor": "median_household_income",
@@ -611,8 +641,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -621,9 +652,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -632,9 +664,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -644,8 +677,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -701,9 +735,10 @@
               "weight": 0.35,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -712,9 +747,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
             },
             {
@@ -724,8 +760,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -734,9 +771,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -745,9 +783,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             }
           ],
@@ -801,7 +840,12 @@
       "cbsa_code": "19100",
       "counties": 11,
       "tracts": 1704,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "2f75d8a325d366c41140aaff1c997d07cf6b5a354fc3c9eca0b9327675afcb33",
+        "tracts_sha256": "7086054816bac9cc1fbc7ff2fc6aa3917a31ac83b8b379e51844db4ce5e8b0cf"
+      },
       "snapshot_steps": [
         {
           "name": "tract_geography",
@@ -811,12 +855,12 @@
         {
           "name": "acs_tracts",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "business_patterns",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "qcew_wages",
@@ -860,20 +904,21 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.35,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.35 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 11 of 11 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
             },
             {
               "factor": "households",
@@ -882,8 +927,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -893,8 +939,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -903,9 +950,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -914,9 +962,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -926,8 +975,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -948,14 +998,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 21.09,
               "low": 18.45,
               "high": 29.52,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 738 USD for NAICS 81119 (requested 811192) in C1910, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 738 USD for NAICS 81119 (requested 811192) in C1910; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -986,8 +1036,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -997,8 +1048,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1007,9 +1059,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1018,9 +1071,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1030,8 +1084,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1077,20 +1132,21 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.25,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.25 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 11 of 11 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
             },
             {
               "factor": "tourism",
@@ -1098,9 +1154,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1109,9 +1166,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1120,9 +1178,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1132,8 +1191,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1190,8 +1250,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1201,8 +1262,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
@@ -1212,8 +1274,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1222,9 +1285,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1233,9 +1297,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1245,8 +1310,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1267,14 +1333,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 17.23,
               "low": 15.07,
               "high": 24.12,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 603 USD for NAICS 722511 (requested 722511) in C1910, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 603 USD for NAICS 722511 (requested 722511) in C1910; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -1294,9 +1360,9 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.2,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.20 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
@@ -1305,8 +1371,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1316,20 +1383,22 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 11 of 11 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
             },
             {
               "factor": "median_household_income",
@@ -1338,8 +1407,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1348,9 +1418,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1359,9 +1430,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1371,8 +1443,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1393,14 +1466,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 18.29,
               "low": 16.0,
               "high": 25.6,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 640 USD for NAICS 44513 (requested 445131) in C1910, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 640 USD for NAICS 44513 (requested 445131) in C1910; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -1430,9 +1503,10 @@
               "weight": 0.35,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1441,9 +1515,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
             },
             {
@@ -1453,8 +1528,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1463,9 +1539,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1474,9 +1551,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             }
           ],
@@ -1530,7 +1608,12 @@
       "cbsa_code": "26420",
       "counties": 10,
       "tracts": 1615,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "352ccb0bdc10cfc5d0c77b547385514fe6184a5947aa61a6094372ee5ea389f6",
+        "tracts_sha256": "669bf5d74ddfb66933871211cfa1599f7e4dbc166d27ba1340fad0da5c19c0e7"
+      },
       "snapshot_steps": [
         {
           "name": "tract_geography",
@@ -1540,12 +1623,12 @@
         {
           "name": "acs_tracts",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "business_patterns",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "qcew_wages",
@@ -1589,20 +1672,21 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.35,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.35 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 10 of 10 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
             },
             {
               "factor": "households",
@@ -1611,8 +1695,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1622,8 +1707,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1632,9 +1718,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1643,9 +1730,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1655,8 +1743,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1713,8 +1802,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1724,8 +1814,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1734,9 +1825,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1745,9 +1837,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1757,8 +1850,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1804,20 +1898,21 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.25,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.25 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 10 of 10 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
             },
             {
               "factor": "tourism",
@@ -1825,9 +1920,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1836,9 +1932,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1847,9 +1944,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1859,8 +1957,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1917,8 +2016,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1928,8 +2028,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
@@ -1939,8 +2040,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -1949,9 +2051,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1960,9 +2063,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -1972,8 +2076,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -1994,14 +2099,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 16.34,
               "low": 14.3,
               "high": 22.88,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 572 USD for NAICS 722511 (requested 722511) in C2642, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 572 USD for NAICS 722511 (requested 722511) in C2642; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2021,9 +2126,9 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.2,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.20 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
@@ -2032,8 +2137,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2043,20 +2149,22 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 10 of 10 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
             },
             {
               "factor": "median_household_income",
@@ -2065,8 +2173,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2075,9 +2184,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2086,9 +2196,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2098,8 +2209,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -2120,14 +2232,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 16.06,
               "low": 14.05,
               "high": 22.48,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2024 Q3",
-              "reason": "BLS QCEW 2024 Q3 private average weekly wage 562 USD for NAICS 44513 (requested 445131) in C2642, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2024 Q3 private average weekly wage 562 USD for NAICS 44513 (requested 445131) in C2642; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2157,9 +2269,10 @@
               "weight": 0.35,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2168,9 +2281,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
             },
             {
@@ -2180,8 +2294,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2190,9 +2305,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2201,9 +2317,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             }
           ],
@@ -2257,7 +2374,12 @@
       "cbsa_code": "31080",
       "counties": 2,
       "tracts": 3112,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "50801da1d11c60af6d3d4319cb53508d5034361908378ec7d224b1c01b65fa0b",
+        "tracts_sha256": "6f4f29d466efcdaa59afa623bf14602a78d77643a9325cbf885fe31600ae47d5"
+      },
       "snapshot_steps": [
         {
           "name": "tract_geography",
@@ -2267,12 +2389,12 @@
         {
           "name": "acs_tracts",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "business_patterns",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "qcew_wages",
@@ -2316,20 +2438,21 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.35,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.35 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 2 of 2 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
             },
             {
               "factor": "households",
@@ -2338,8 +2461,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2349,8 +2473,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2359,9 +2484,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2370,9 +2496,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2382,8 +2509,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -2404,14 +2532,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 20.09,
               "low": 17.57,
               "high": 28.12,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 703 USD for NAICS 811192 (requested 811192) in C3108, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 703 USD for NAICS 811192 (requested 811192) in C3108; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2442,8 +2570,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2453,8 +2582,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2463,9 +2593,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2474,9 +2605,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2486,8 +2618,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -2508,14 +2641,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 17.23,
               "low": 15.07,
               "high": 24.12,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 603 USD for NAICS 812310 (requested 812310) in C3108, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 603 USD for NAICS 812310 (requested 812310) in C3108; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2535,20 +2668,21 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.25,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.25 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 2 of 2 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
             },
             {
               "factor": "tourism",
@@ -2556,9 +2690,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2567,9 +2702,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2578,9 +2714,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2590,8 +2727,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -2612,14 +2750,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 30.89,
               "low": 27.02,
               "high": 43.24,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 1081 USD for NAICS 721110 (requested 721110) in C3108, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 1081 USD for NAICS 721110 (requested 721110) in C3108; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2650,8 +2788,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2661,8 +2800,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
@@ -2672,8 +2812,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2682,9 +2823,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2693,9 +2835,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2705,8 +2848,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -2727,14 +2871,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 20.83,
               "low": 18.23,
               "high": 29.16,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 729 USD for NAICS 722511 (requested 722511) in C3108, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 729 USD for NAICS 722511 (requested 722511) in C3108; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2754,9 +2898,9 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.2,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.20 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
@@ -2765,8 +2909,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2776,20 +2921,22 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 2 of 2 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
             },
             {
               "factor": "median_household_income",
@@ -2798,8 +2945,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2808,9 +2956,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2819,9 +2968,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2831,8 +2981,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -2853,14 +3004,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 18.86,
               "low": 16.5,
               "high": 26.4,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 660 USD for NAICS 445131 (requested 445131) in C3108, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 660 USD for NAICS 445131 (requested 445131) in C3108; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2890,9 +3041,10 @@
               "weight": 0.35,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2901,9 +3053,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
             },
             {
@@ -2913,8 +3066,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -2923,9 +3077,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -2934,9 +3089,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             }
           ],
@@ -2957,14 +3113,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 26.89,
               "low": 23.52,
               "high": 37.64,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2024 Q4",
-              "reason": "BLS QCEW 2024 Q4 private average weekly wage 941 USD for NAICS 721199 (requested 721199) in C3108, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2024 Q4 private average weekly wage 941 USD for NAICS 721199 (requested 721199) in C3108; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -2992,7 +3148,12 @@
       "cbsa_code": "35620",
       "counties": 22,
       "tracts": 4928,
-      "snapshot_date": "2026-10-12",
+      "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "1a44378a4ce3d9a655b6a46a2586c97aff387078c2844ffe0a1cace7af8c87d8",
+        "tracts_sha256": "25649ed7ed0c26c2a4299199fe6f2e84202250beab2d55b43bf1fe1bda28d54a"
+      },
       "snapshot_steps": [
         {
           "name": "tract_geography",
@@ -3002,12 +3163,12 @@
         {
           "name": "acs_tracts",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "business_patterns",
           "status": "failed",
-          "detail": "CENSUS_API_KEY is not set; it is needed for the Census Data API (ACS 5-year tract tables and County Business Patterns). Register a free key, put it in .env (see .env.example) and start a new shell or session so the variable is loaded."
+          "detail": "api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`)."
         },
         {
           "name": "qcew_wages",
@@ -3056,20 +3217,21 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.35,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.35 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.35,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 22 of 22 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
             },
             {
               "factor": "households",
@@ -3078,8 +3240,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3089,8 +3252,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3099,9 +3263,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3110,9 +3275,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3122,8 +3288,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -3144,14 +3311,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 20.51,
               "low": 17.95,
               "high": 28.72,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 718 USD for NAICS 81119 (requested 811192) in C3562, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 718 USD for NAICS 81119 (requested 811192) in C3562; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -3182,8 +3349,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3193,8 +3361,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3203,9 +3372,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3214,9 +3384,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3226,8 +3397,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -3273,20 +3445,21 @@
           ]
         },
         "motel": {
-          "coverage_share": 0.25,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.25 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.25,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 22 of 22 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
             },
             {
               "factor": "tourism",
@@ -3294,9 +3467,10 @@
               "weight": 0.3,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3305,9 +3479,10 @@
               "weight": 0.25,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3316,9 +3491,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3328,8 +3504,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -3386,8 +3563,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3397,8 +3575,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
@@ -3408,8 +3587,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3418,9 +3598,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3429,9 +3610,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3441,8 +3623,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -3463,14 +3646,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 22.63,
               "low": 19.8,
               "high": 31.68,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2025 Q2",
-              "reason": "BLS QCEW 2025 Q2 private average weekly wage 792 USD for NAICS 722511 (requested 722511) in C3562, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2025 Q2 private average weekly wage 792 USD for NAICS 722511 (requested 722511) in C3562; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -3490,9 +3673,9 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.2,
+          "coverage_share": 0.0,
           "mode": "limited",
-          "mode_reason": "data coverage 0.20 is below the threshold 0.80",
+          "mode_reason": "data coverage 0.00 is below the threshold 0.80",
           "factors": [
             {
               "factor": "resident_population",
@@ -3501,8 +3684,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3512,20 +3696,22 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "daytime population source not built yet"
             },
             {
               "factor": "traffic_aadt",
               "scope": "road_layer",
               "weight": 0.2,
-              "status": "DATA",
-              "share_of_tracts": 1.0,
-              "share_basis": "counties",
+              "status": "UNKNOWN",
+              "share_of_tracts": 0.0,
+              "share_basis": "tracts",
+              "live_per_site": true,
               "source": "fhwa_hpms",
-              "freshness": "2026-10-12",
-              "reason": "HPMS segments with AADT in 22 of 22 counties (live per site)"
+              "freshness": "2026-10-13",
+              "reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
             },
             {
               "factor": "median_household_income",
@@ -3534,8 +3720,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3544,9 +3731,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3555,9 +3743,10 @@
               "weight": 0.1,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3567,8 +3756,9 @@
               "status": "ASSUMPTION",
               "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "no free commercial-rent source; the founder's quote replaces this range"
             }
           ],
@@ -3589,14 +3779,14 @@
             },
             {
               "factor": "local_wages",
-              "status": "DATA",
+              "status": "DATA_X_ASSUMPTION",
               "value": 17.31,
               "low": 15.15,
               "high": 24.24,
               "unit": "USD/hour",
               "source": "bls_qcew",
               "freshness": "2024 Q4",
-              "reason": "BLS QCEW 2024 Q4 private average weekly wage 606 USD for NAICS 44513 (requested 445131) in C3562, divided by assumed weekly hours",
+              "reason": "DATA: BLS QCEW 2024 Q4 private average weekly wage 606 USD for NAICS 44513 (requested 445131) in C3562; x ASSUMPTION: divided by 25-40 paid hours per week (mode 35), which sets the hourly value and its whole range",
               "assumptions": [
                 "hours per week 25-40 (mode 35): ASSUMPTION; QCEW reports weekly wages without hours; replace with BLS OEWS hourly mean wages for the occupation."
               ]
@@ -3626,9 +3816,10 @@
               "weight": 0.35,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3637,9 +3828,10 @@
               "weight": 0.2,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "Inside Airbnb coverage not verified for this metro"
             },
             {
@@ -3649,8 +3841,9 @@
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "census_acs5",
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "0% of tracts have an ACS estimate"
             },
             {
@@ -3659,9 +3852,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             },
             {
@@ -3670,9 +3864,10 @@
               "weight": 0.15,
               "status": "UNKNOWN",
               "share_of_tracts": 0.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": null,
-              "freshness": "2026-10-12",
+              "freshness": "2026-10-13",
               "reason": "OpenStreetMap layer unavailable (failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts))"
             }
           ],
@@ -3727,14 +3922,15 @@
       "counties": 0,
       "tracts": 300,
       "snapshot_date": null,
+      "snapshot_fingerprint": null,
       "snapshot_steps": [],
       "coverage_threshold": 0.8,
-      "min_coverage_share": 0.996,
+      "min_coverage_share": 0.896,
       "mode": "synthetic",
       "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
       "by_business_type": {
         "car_wash": {
-          "coverage_share": 0.9973,
+          "coverage_share": 0.9473,
           "mode": "synthetic",
           "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
           "factors": [
@@ -3745,6 +3941,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tract centroids have a road with AADT within 0.5 mi"
@@ -3756,6 +3953,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -3767,6 +3965,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -3777,7 +3976,8 @@
               "weight": 0.25,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3788,7 +3988,8 @@
               "weight": 0.1,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3797,39 +3998,40 @@
               "factor": "commercial_rent",
               "scope": "metro",
               "weight": 0.05,
-              "status": "SYNTHETIC",
-              "share_of_tracts": 1.0,
+              "status": "ASSUMPTION",
+              "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
-              "reason": "SYNTHETIC layer generated for the whole metro"
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
             }
           ],
           "metro_inputs": [
             {
               "factor": "commercial_rent",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 9738.0,
               "low": 3246.0,
               "high": 27050.000000000004,
               "unit": "USD/month (building or ground lease)",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (rent index 1.082); a founder's quote replaces it",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it",
               "assumptions": [
                 "profile rent.monthly_rent is an ASSUMPTION: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found."
               ]
             },
             {
               "factor": "local_wages",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 18.848,
               "low": 14.136,
               "high": 28.272,
               "unit": "USD/hour",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (wage index 1.178)",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (wage index 1.178)",
               "assumptions": [
                 "profile labor.hourly_wage is an ASSUMPTION: Replace with BLS QCEW average weekly wage for NAICS 811192 in the metro (hours conversion stated) or BLS OEWS for the metro."
               ]
@@ -3849,7 +4051,7 @@
           ]
         },
         "laundromat": {
-          "coverage_share": 0.996,
+          "coverage_share": 0.896,
           "mode": "synthetic",
           "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
           "factors": [
@@ -3860,6 +4062,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -3871,6 +4074,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -3881,7 +4085,8 @@
               "weight": 0.3,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3892,7 +4097,8 @@
               "weight": 0.1,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3901,39 +4107,40 @@
               "factor": "commercial_rent",
               "scope": "metro",
               "weight": 0.1,
-              "status": "SYNTHETIC",
-              "share_of_tracts": 1.0,
+              "status": "ASSUMPTION",
+              "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
-              "reason": "SYNTHETIC layer generated for the whole metro"
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
             }
           ],
           "metro_inputs": [
             {
               "factor": "commercial_rent",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 5410.0,
               "low": 2164.0,
               "high": 12984.0,
               "unit": "USD/month",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (rent index 1.082); a founder's quote replaces it",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it",
               "assumptions": [
                 "profile rent.monthly_rent is an ASSUMPTION: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found."
               ]
             },
             {
               "factor": "local_wages",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 18.848,
               "low": 14.136,
               "high": 25.915999999999997,
               "unit": "USD/hour",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (wage index 1.178)",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (wage index 1.178)",
               "assumptions": [
                 "profile labor.hourly_wage is an ASSUMPTION: Replace with BLS QCEW average weekly wage for NAICS 812310 in the metro (hours conversion stated) or BLS OEWS laundry workers for the metro."
               ]
@@ -3953,7 +4160,7 @@
           ]
         },
         "motel": {
-          "coverage_share": 1.0,
+          "coverage_share": 0.9,
           "mode": "synthetic",
           "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
           "factors": [
@@ -3964,6 +4171,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tract centroids have a road with AADT within 0.5 mi"
@@ -3974,7 +4182,8 @@
               "weight": 0.3,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3985,7 +4194,8 @@
               "weight": 0.25,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -3996,7 +4206,8 @@
               "weight": 0.1,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4005,39 +4216,40 @@
               "factor": "commercial_rent",
               "scope": "metro",
               "weight": 0.1,
-              "status": "SYNTHETIC",
-              "share_of_tracts": 1.0,
+              "status": "ASSUMPTION",
+              "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
-              "reason": "SYNTHETIC layer generated for the whole metro"
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
             }
           ],
           "metro_inputs": [
             {
               "factor": "commercial_rent",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 12984.0,
               "low": 4328.0,
               "high": 37870.0,
               "unit": "USD/month (lease, or the owner's occupancy cost)",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (rent index 1.082); a founder's quote replaces it",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it",
               "assumptions": [
                 "profile rent.monthly_rent is an ASSUMPTION: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited source if one is found."
               ]
             },
             {
               "factor": "local_wages",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 18.848,
               "low": 14.136,
               "high": 28.272,
               "unit": "USD/hour",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (wage index 1.178)",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (wage index 1.178)",
               "assumptions": [
                 "profile labor.hourly_wage is an ASSUMPTION: Replace with BLS QCEW average weekly wage for NAICS 721110 in the metro (hours conversion stated) or BLS OEWS for the metro."
               ]
@@ -4057,7 +4269,7 @@
           ]
         },
         "restaurant_cafe": {
-          "coverage_share": 0.9973,
+          "coverage_share": 0.8973,
           "mode": "synthetic",
           "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
           "factors": [
@@ -4068,6 +4280,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4079,6 +4292,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4090,6 +4304,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4100,7 +4315,8 @@
               "weight": 0.2,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4111,7 +4327,8 @@
               "weight": 0.15,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4120,39 +4337,40 @@
               "factor": "commercial_rent",
               "scope": "metro",
               "weight": 0.1,
-              "status": "SYNTHETIC",
-              "share_of_tracts": 1.0,
+              "status": "ASSUMPTION",
+              "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
-              "reason": "SYNTHETIC layer generated for the whole metro"
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
             }
           ],
           "metro_inputs": [
             {
               "factor": "commercial_rent",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 6492.0,
               "low": 2705.0,
               "high": 16230.000000000002,
               "unit": "USD/month",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (rent index 1.082); a founder's quote replaces it",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it",
               "assumptions": [
                 "profile rent.monthly_rent is an ASSUMPTION: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found."
               ]
             },
             {
               "factor": "local_wages",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 20.026,
               "low": 15.314,
               "high": 30.628,
               "unit": "USD/hour",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (wage index 1.178)",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (wage index 1.178)",
               "assumptions": [
                 "profile labor.hourly_wage is an ASSUMPTION: Replace with BLS QCEW average weekly wage for NAICS 722513/722515 in the metro (hours conversion stated), or BLS OEWS food preparation and serving occupations for the metro."
               ]
@@ -4172,7 +4390,7 @@
           ]
         },
         "retail_storefront": {
-          "coverage_share": 0.9973,
+          "coverage_share": 0.9473,
           "mode": "synthetic",
           "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
           "factors": [
@@ -4183,6 +4401,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4194,6 +4413,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tracts have a value"
@@ -4205,6 +4425,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "100% of SYNTHETIC tract centroids have a road with AADT within 0.5 mi"
@@ -4216,6 +4437,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4226,7 +4448,8 @@
               "weight": 0.2,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4237,7 +4460,8 @@
               "weight": 0.1,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4246,39 +4470,40 @@
               "factor": "commercial_rent",
               "scope": "metro",
               "weight": 0.05,
-              "status": "SYNTHETIC",
-              "share_of_tracts": 1.0,
+              "status": "ASSUMPTION",
+              "share_of_tracts": 0.0,
               "share_basis": "whole metro",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
-              "reason": "SYNTHETIC layer generated for the whole metro"
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it"
             }
           ],
           "metro_inputs": [
             {
               "factor": "commercial_rent",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 5410.0,
               "low": 2164.0,
               "high": 15148.000000000002,
               "unit": "USD/month",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (rent index 1.082); a founder's quote replaces it",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it",
               "assumptions": [
                 "profile rent.monthly_rent is an ASSUMPTION: No free commercial-rent source. The founder's quote comes first; otherwise a metro range with a cited listing survey if one is found."
               ]
             },
             {
               "factor": "local_wages",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 18.848,
               "low": 14.136,
               "high": 25.915999999999997,
               "unit": "USD/hour",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (wage index 1.178)",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (wage index 1.178)",
               "assumptions": [
                 "profile labor.hourly_wage is an ASSUMPTION: Replace with BLS QCEW average weekly wage for the store's NAICS code in the metro (hours conversion stated) or BLS OEWS retail salespersons and cashiers for the metro."
               ]
@@ -4308,7 +4533,8 @@
               "weight": 0.35,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4319,7 +4545,8 @@
               "weight": 0.2,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4331,6 +4558,7 @@
               "status": "SYNTHETIC",
               "share_of_tracts": 0.9733,
               "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "97% of SYNTHETIC tracts have a value"
@@ -4341,7 +4569,8 @@
               "weight": 0.15,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4352,7 +4581,8 @@
               "weight": 0.15,
               "status": "SYNTHETIC",
               "share_of_tracts": 1.0,
-              "share_basis": "whole metro",
+              "share_basis": "tracts",
+              "live_per_site": false,
               "source": "synthetic_city (seed 20261012)",
               "freshness": "generated from seed 20261012",
               "reason": "SYNTHETIC layer generated for the whole metro"
@@ -4361,28 +4591,28 @@
           "metro_inputs": [
             {
               "factor": "commercial_rent",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 2705.0,
               "low": 1298.4,
               "high": 6492.0,
               "unit": "USD/month (lease, or mortgage and carrying cost)",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (rent index 1.082); a founder's quote replaces it",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (rent index 1.082); a founder's quote replaces it",
               "assumptions": [
                 "profile rent.monthly_rent is an ASSUMPTION: Founder's lease or mortgage first. HUD Fair Market Rents are a residential reference only and are never used as this value."
               ]
             },
             {
               "factor": "local_wages",
-              "status": "SYNTHETIC",
+              "status": "ASSUMPTION",
               "value": 23.56,
               "low": 17.669999999999998,
               "high": 37.696,
               "unit": "USD/hour",
               "source": "synthetic_city",
               "freshness": "seed 20261012",
-              "reason": "SYNTHETIC metro index applied to the profile's ASSUMPTION range (wage index 1.178)",
+              "reason": "the profile's ASSUMPTION range scaled by the SYNTHETIC city's index (wage index 1.178)",
               "assumptions": [
                 "profile labor.hourly_wage is an ASSUMPTION: Replace with BLS OEWS maids and housekeeping cleaners for the metro, or a cleaning-service quote."
               ]
@@ -4405,9 +4635,9 @@
     }
   },
   "provenance": {
-    "git_sha": "b76803d69bc5d537d0d382f897707890baa34eaf",
+    "git_sha": "1df0e0aab3f9d8135c328361f7abea280a7090b3",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-12T19:48:14+00:00",
+    "generated_at_utc": "2026-10-13T03:52:39+00:00",
     "generated_by": "scripts/studio_metro_coverage.py",
     "prompts": {},
     "corpus_checksum": "not applicable (no retrieval corpus is used)",
@@ -4415,11 +4645,31 @@
     "models": [],
     "data_snapshots": {
       "studio_snapshots": {
-        "chicago_il_in": "2026-10-12",
-        "dallas_fort_worth_tx": "2026-10-12",
-        "houston_tx": "2026-10-12",
-        "los_angeles_ca": "2026-10-12",
-        "new_york_ny_nj_pa": "2026-10-12"
+        "chicago_il_in": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "7a8baba2d44ad94a9de61e29e9e0fa71d40e3e39e7692d978f5b07c145c7f52a",
+          "tracts_sha256": "95886e4490e145727f8dc6cfdb9fdeafc377f5d759721acd278b8b7d1f316759"
+        },
+        "dallas_fort_worth_tx": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "2f75d8a325d366c41140aaff1c997d07cf6b5a354fc3c9eca0b9327675afcb33",
+          "tracts_sha256": "7086054816bac9cc1fbc7ff2fc6aa3917a31ac83b8b379e51844db4ce5e8b0cf"
+        },
+        "houston_tx": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "352ccb0bdc10cfc5d0c77b547385514fe6184a5947aa61a6094372ee5ea389f6",
+          "tracts_sha256": "669bf5d74ddfb66933871211cfa1599f7e4dbc166d27ba1340fad0da5c19c0e7"
+        },
+        "los_angeles_ca": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "50801da1d11c60af6d3d4319cb53508d5034361908378ec7d224b1c01b65fa0b",
+          "tracts_sha256": "6f4f29d466efcdaa59afa623bf14602a78d77643a9325cbf885fe31600ae47d5"
+        },
+        "new_york_ny_nj_pa": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "1a44378a4ce3d9a655b6a46a2586c97aff387078c2844ffe0a1cace7af8c87d8",
+          "tracts_sha256": "25649ed7ed0c26c2a4299199fe6f2e84202250beab2d55b43bf1fe1bda28d54a"
+        }
       }
     },
     "packages": {
@@ -4440,14 +4690,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        1.89,
-        2.46,
-        2.21
+        1.6,
+        1.6,
+        2.15
       ],
       "load_average_end": [
-        1.89,
-        2.46,
-        2.21
+        1.55,
+        1.59,
+        2.14
       ]
     }
   }

@@ -1,9 +1,10 @@
 """What the founder and SiteIQ hand to the simulator: the site's demand range, the plan and the loan.
 
 SiteDemand is the ONLY contract between SiteIQ (S2) and the simulator (S3): a low / mode / high demand in the
-profile's demand unit plus its provenance. as_site_demand() accepts a SiteDemand, a plain dict, or any object that
-exposes low, mode, high and unit (directly, or under a `demand` / `demand_estimate` attribute), so the simulator
-does not depend on SiteIQ's internal classes.
+profile's demand unit plus its provenance, and (from SiteIQ) the demand's percentiles 0-100, which the simulator
+samples instead of a triangle, and whether the estimate is complete. as_site_demand() accepts a SiteDemand, a plain
+dict, or any object that exposes low, mode, high and unit (directly, or under a `demand` / `demand_estimate`
+attribute), so the simulator does not depend on SiteIQ's internal classes.
 
 Plan inputs the founder typed are USER_STATED and fixed. A plan input left empty falls back to the profile's
 ASSUMPTION range (or the metro's data) and is sampled; the result lists which one was used.
@@ -15,8 +16,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from uwcopilot.studio.feasibility.distributions import check_points
+
 SiteDemandStatus = Literal["DATA", "SYNTHETIC", "ASSUMPTION", "MODEL_ESTIMATE", "USER_STATED"]
-OPTIONAL_SITE_FIELDS: tuple[str, ...] = ("status", "source", "coverage_score", "competition_percentile")
+OPTIONAL_SITE_FIELDS: tuple[str, ...] = (
+    "status",
+    "source",
+    "coverage_score",
+    "competition_percentile",
+    "percentiles",
+    "complete",
+    "missing",
+)
 
 
 class Strict(BaseModel):
@@ -41,14 +52,23 @@ class SiteDemand(Strict):
     source: str = Field(default="SiteIQ demand estimate (S2)", min_length=1)
     coverage_score: float | None = Field(default=None, ge=0, le=1)
     competition_percentile: float | None = Field(default=None, ge=0, le=1)
+    percentiles: list[float] | None = Field(
+        default=None,
+        description="Demand at the percentiles 0%, 1%, ..., 100% (SiteIQ's Monte Carlo over its rate ranges). When "
+        "present the simulator samples these; otherwise a triangle over low / mode / high",
+    )
+    complete: bool = Field(default=True, description="False when SiteIQ left a formula term out (its data UNKNOWN)")
+    missing: list[str] = Field(default_factory=list, description="The terms left out and why")
 
     @model_validator(mode="after")
     def ordered(self) -> "SiteDemand":
-        """low <= mode <= high and a positive mode (a site with no demand cannot be simulated)."""
+        """low <= mode <= high, a positive mode, and percentiles (when given) that run from low to high."""
         if not self.low <= self.mode <= self.high:
             raise ValueError(f"site demand needs low <= mode <= high (got {self.low}, {self.mode}, {self.high})")
         if self.mode <= 0:
             raise ValueError("site demand mode must be positive")
+        if self.percentiles is not None:
+            check_points("site demand", self.percentiles, self.low, self.high)
         return self
 
 

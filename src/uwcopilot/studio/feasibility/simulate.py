@@ -104,12 +104,33 @@ def month_bands(setup: SimulationSetup, paths: PathResults) -> list[MonthBand]:
     ]
 
 
-def year_band(paths: PathResults, year: int) -> YearBand:
-    """P10/P50/P90 of one year's totals across paths (percentiles of the per-path totals)."""
+def has_full_debt_year(loan_term_months: int, year: int) -> bool:
+    """True when all 12 months of the year have a scheduled loan payment (the term reaches the year's end).
+
+    A DSCR is only comparable with the target for such a year: after the loan is repaid there is no debt service,
+    and in a partial year the debt service covers only some months.
+    """
+    return loan_term_months >= MONTHS_PER_YEAR * year
+
+
+def partial_year_note(loan_term_months: int, year: int) -> str:
+    """Why year `year` has no DSCR and no P(DSCR >= target)."""
+    paid = min(max(loan_term_months - MONTHS_PER_YEAR * (year - 1), 0), MONTHS_PER_YEAR)
+    return (
+        f"year {year}: no DSCR and no P(DSCR >= target): the {loan_term_months}-month loan has scheduled payments "
+        f"in {paid} of its 12 months (a partial or debt-free year is not comparable with the target)"
+    )
+
+
+def year_band(paths: PathResults, year: int, full_debt_year: bool = True) -> YearBand:
+    """P10/P50/P90 of one year's totals across paths (percentiles of the per-path totals).
+
+    The DSCR percentiles are None for a year without 12 scheduled loan payments (has_full_debt_year).
+    """
     revenue = percentiles_of(annual_total(paths.revenue, year))
     noi = percentiles_of(annual_total(paths.noi, year))
     net = percentiles_of(annual_total(paths.net_income, year))
-    dscr = percentiles_of(dscr_by_year(paths, year))
+    dscr = percentiles_of(dscr_by_year(paths, year)) if full_debt_year else (None, None, None)
     return YearBand(
         year=year,
         revenue_p10=money(revenue[0]),
@@ -122,9 +143,9 @@ def year_band(paths: PathResults, year: int) -> YearBand:
         net_income_p50=money(net[1]),
         net_income_p90=money(net[2]),
         debt_service_p50=money(np.median(annual_total(paths.debt_service, year))),
-        dscr_p10=two_decimals(dscr[0]),
-        dscr_p50=two_decimals(dscr[1]),
-        dscr_p90=two_decimals(dscr[2]),
+        dscr_p10=None if dscr[0] is None else two_decimals(dscr[0]),
+        dscr_p50=None if dscr[1] is None else two_decimals(dscr[1]),
+        dscr_p90=None if dscr[2] is None else two_decimals(dscr[2]),
     )
 
 
@@ -205,7 +226,10 @@ def run_simulation(
         months,
     )
     draws, values, paths = simulate_paths(setup, n, seed)
-    years = [year_band(paths, year) for year in range(1, months // MONTHS_PER_YEAR + 1)]
+    term = setup.loan.term_months
+    years = [year_band(paths, year, has_full_debt_year(term, year)) for year in range(1, months // MONTHS_PER_YEAR + 1)]
+    full_years = [year.year for year in years if has_full_debt_year(term, year.year)]
+    year_notes = [partial_year_note(term, year.year) for year in years if year.year not in full_years]
     mode, mode_reason = fabric.mode()
     result = FeasibilityResult(
         data_label=setup.data_label,
@@ -225,7 +249,7 @@ def run_simulation(
         owner_equity=money(setup.owner_equity),
         planned_starting_cash=money(setup.planned_starting_cash),
         dscr_target=target,
-        p_dscr_at_least_target={f"year_{year.year}": p_dscr_at_least(paths, year.year, target.value) for year in years},
+        p_dscr_at_least_target={f"year_{year}": p_dscr_at_least(paths, year, target.value) for year in full_years},
         p_cash_negative_within_24_months=p_cash_negative(paths),
         break_even=break_even_summary(paths),
         monthly=month_bands(setup, paths),
@@ -237,7 +261,7 @@ def run_simulation(
         projected_dscr_base_case=projected_dscr(setup, years[1]),
         tornado=tornado(setup, values, draws, target.value, paths) if with_tornado else None,
         stress=lender_stress(setup, values, draws, years[1]) if with_stress else [],
-        notes=list(setup.notes),
+        notes=list(setup.notes) + year_notes,
     )
     return SimulationRun(result=result, setup=setup, draws=draws, values=values, paths=paths)
 

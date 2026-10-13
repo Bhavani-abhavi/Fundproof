@@ -1,6 +1,8 @@
 # Walkthrough: Studio S1, profiles, metros and the data fabric
 
-Written on 2026-10-12 so that both Rahul Vajja and Bhavani Adula can explain this phase in their own words.
+Written on 2026-10-12 and updated on 2026-10-13 (verify-and-fix pass: rejected answers are no longer cached, the
+Census key problem is named, coverage no longer counts live-only layers, derived wages are labeled) so that both
+Rahul Vajja and Bhavani Adula can explain this phase in their own words.
 
 **What S1 is.** S1 builds the data foundation of Founder Studio: one config file per business type (what drives its
 demand, its costs, its risks), one config file per metro (which counties it covers), the connectors that fetch public
@@ -14,11 +16,14 @@ factors are backed by data and which are not.
   the Census population estimates file; 12 connectors (9 national, 3 metro enhancements) with a shared polite client, cache and provenance record; the
   SYNTHETIC city with hidden true demand; the data fabric; `make studio-data` snapshots for the five real metros using
   the keyless sources; the coverage report; tests with recorded and labeled hand-written fixtures.
-- Not done: ACS tract data and County Business Patterns (they need `CENSUS_API_KEY`, which this session could not
-  see), OpenStreetMap places (overpass-api.de reset every connection from this environment), BLS API v2 and HUD (keys
-  not visible), state DOT traffic adapters (no documented dataset recorded yet), Inside Airbnb coverage (the site
-  answered 403). The owners added a FRED key, but environment variables load only when a session starts, so this
-  session used FRED's keyless CSV download instead. All five real metros therefore run in **limited mode**.
+- Not done: ACS tract data and County Business Patterns. All five keys (`CENSUS_API_KEY`, `BLS_API_KEY`,
+  `FRED_API_KEY`, `HUD_USER_TOKEN`, `ORS_API_KEY`) are now set in the environment, but on 2026-10-13 api.census.gov
+  answered the Census key with a redirect to `invalid_key.html` (without a key it redirects to `missing_key.html`
+  instead), so Census refuses this key: most likely it has not been activated through the link Census emails after
+  sign-up, or it was copied wrong. The snapshot step now says exactly that (`InvalidApiKey`). Also not done:
+  OpenStreetMap places (overpass-api.de reset every connection from this environment), state DOT traffic adapters
+  (no documented dataset recorded yet), Inside Airbnb coverage (the site answered 403). The prime rate now comes from
+  the FRED API (key set). All five real metros therefore run in **limited mode**.
 - No profile number is SOURCED. Every rate, price, cost ratio and curve is the project author's labeled ASSUMPTION with
   a wide range and a note naming the source that should replace it.
 
@@ -49,18 +54,18 @@ factors are backed by data and which are not.
 | File | What it does |
 |---|---|
 | `fabric.py` | The entry point: `get_fabric(metro_id)` and the method list every S2/S3 caller uses. |
-| `fabric_base.py` | The `DataFabric` interface and its value types: `FactorValue` (value or None, status DATA/SYNTHETIC/ASSUMPTION/UNKNOWN, reason, assumptions, SourceRecord), `TractRecord`, `PoiSearch`, `RoadResult`, `ListingSearch`, `FactorCoverage`, and `coverage_share()`. |
+| `fabric_base.py` | The `DataFabric` interface and its value types: `FactorValue` (value or None, status DATA/SYNTHETIC/ASSUMPTION/DATA_X_ASSUMPTION/UNKNOWN, reason, assumptions, SourceRecord), `TractRecord`, `PoiSearch`, `RoadResult`, `ListingSearch`, `FactorCoverage` (with `live_per_site`), and `coverage_share()`. |
 | `fabric_synthetic.py` | `SyntheticFabric`: the interface over the generated city. Every value is SYNTHETIC with a SourceRecord that fingerprints the generated tract table. The hidden truth is not reachable through it. |
-| `fabric_snapshot.py` | `SnapshotFabric`: the interface over a real metro's newest snapshot. Missing layers are UNKNOWN with the reason. Road and POI lookups go live per site only when a client is passed in. |
+| `fabric_snapshot.py` | `SnapshotFabric`: the interface over a real metro's newest snapshot. Missing layers are UNKNOWN with the reason. Road and POI lookups go live per site only when a client is passed in; in the coverage report those layers are UNKNOWN with `live_per_site: true` (no tract has a value, so tracts cannot be ranked on them). `Snapshot.fingerprint()` gives the SHA-256 of `manifest.json` and `tracts.json`, which results files record. |
 | `synthetic_city.py` | The seeded SYNTHETIC city (section 3). |
-| `snapshot.py` | `make studio-data METRO=<id>|all`: one step per source; a failed step never stops the others; the command exits 1 and names every unreachable host and missing key variable. |
-| `http.py` | `PoliteClient`: per-host minimum interval, retries with backoff on network errors and 429/5xx (Retry-After honored), explicit timeouts, `trust_env=True` for the proxy, an offline mode. Secret parameters, JSON fields and headers are kept out of the cache key, the stored request, logs and error messages. |
-| `cache.py` | On-disk cache under `data/studio/cache/` keyed by the SHA-256 of the public request; stores the body's SHA-256 and the request date, and refuses a body that no longer matches its checksum. |
+| `snapshot.py` | `make studio-data METRO=<id>|all`: one step per source; a failed step never stops the others; the command exits 1 and names every unreachable host, missing key variable and refused key. `--refresh` (`make studio-data-refresh`) ignores cached answers. A same-day rerun replaces that day's folder. |
+| `http.py` | `PoliteClient`: per-host minimum interval, retries with backoff on network errors and 429/5xx (Retry-After honored), explicit timeouts, `trust_env=True` for the proxy, an offline mode and a refresh mode. A connector passes an `accept` check (for example "JSON, not an Invalid Key page"; "BLS status REQUEST_SUCCEEDED"; "no ArcGIS error"): a rejected answer is never cached, and a rejected cached answer is deleted and fetched again. Secret parameters, JSON fields and headers are kept out of the cache key, the stored request, logs and error messages; a filter on the `httpx` logger replaces secret query values with `***`, because httpx logs every request URL at INFO level. |
+| `cache.py` | On-disk cache under `data/studio/cache/` keyed by the SHA-256 of the public request; stores the body's SHA-256, the request date and the URL that answered after redirects, and refuses a body that no longer matches its checksum. |
 | `provenance.py` | `SourceRecord` (publisher, dataset, URL, public params, retrieved_at, SHA-256, license note, data label, origin, vintage, geography) and `SourceInfo.record(...)`. Refuses secret parameter names. |
-| `keys.py`, `errors.py` | The five key variables and what each is for; `MissingApiKey` names the variable, never a value. `NotAvailable`, `HostUnreachable`, `UpstreamError`, `CacheCorrupted`. |
+| `keys.py`, `errors.py` | The five key variables and what each is for; `MissingApiKey` names the variable, never a value; `InvalidApiKey` names the variable and the host's reason when a key is set but refused. `NotAvailable`, `HostUnreachable`, `UpstreamError`, `CacheCorrupted`. |
 | `geo.py`, `paths.py` | Haversine distances in miles and point-to-polyline distance; the data folders. |
 | `geocode.py` | Census Geocoder: address or pin to coordinates and tract GEOID (keyless). |
-| `census_acs.py` | ACS 5-year tract tables (key). Variable labels are checked against the keyless metadata endpoint; negative "not available" codes become None. |
+| `census_acs.py` | ACS 5-year tract tables (key). Variable labels are checked against the keyless metadata endpoint; negative "not available" codes become None. `check_census_answer` reads Census's redirect (`invalid_key.html` / `missing_key.html`) and raises `InvalidApiKey`. |
 | `census_geography.py` | Census Gazetteer tract file: the tract list and internal points of a metro's counties, and each state's postal code (keyless). |
 | `business_patterns.py` | County Business Patterns establishments by NAICS (key). A missing county is UNKNOWN, not zero. |
 | `wages.py` | BLS QCEW open-data wages by metro and industry (keyless) and BLS API v2 series (key). |
@@ -100,14 +105,25 @@ factors are backed by data and which are not.
    6-digit NAICS code and its 5-digit parent only; a 3-digit group (for example "repair and maintenance" for a car
    wash) would misstate wages, so the wage stays UNKNOWN and the profile's ASSUMPTION range is used. QCEW reports
    weekly wages without hours, so the hourly range divides by an hours-per-week ASSUMPTION that is listed next to the
-   value.
+   value. Because the hourly value and its whole range come from that assumption, its status is `DATA_X_ASSUMPTION`,
+   never plain DATA (rule D). In the SYNTHETIC city, rent and wages are the profile's ASSUMPTION ranges scaled by a
+   SYNTHETIC index, so they stay ASSUMPTION too.
 6. **Secrets cannot leak by construction.** Keys are read only by name, kept out of cache keys, stored requests,
    SourceRecords, logs, error messages and fixtures; `SourceRecord` refuses secret parameter names.
 7. **Coverage is a weighted share, and it says what it measured.** `coverage_share` weights each required factor by
    the profile's weight (demand-only inputs get the average weight) and counts ASSUMPTION and UNKNOWN as zero.
-   `share_basis` says whether a share is over tracts, over counties (real road layer: HPMS is queried per site) or
-   over the whole metro (a layer exists or not). A real metro runs in full mode only when every business type meets
-   its threshold (0.8, a design choice).
+   `share_basis` says whether a share is over tracts or over the whole metro (a metro-level value exists or not). A
+   layer that can only be looked up live for one site (a real metro's HPMS roads or OpenStreetMap places) has no
+   per-tract values, so it is UNKNOWN with share 0 and the flag `live_per_site: true`; counting "HPMS has segments in
+   every county" as tract coverage would overstate it (rule G). A real metro runs in full mode only when every
+   business type meets its threshold (0.8, a design choice).
+9. **A bad answer is never replayed.** The cache key leaves the API key out on purpose (the key must never reach the
+   disk), so an answer must be checked before it is cached: otherwise an "Invalid Key" page saved under the keyless
+   cache key would be served again after the key is fixed (this happened on 2026-10-13 and was fixed). Each
+   connector's `accept` check runs before `cache.put`; old bad entries are deleted on the next read; `--refresh`
+   ignores the cache altogether.
+10. **Results pin the exact snapshot.** A same-day rerun of `make studio-data` replaces that day's folder, so the
+   coverage and SiteIQ results record the SHA-256 of each snapshot's `manifest.json` and `tracts.json`.
 8. **The fabric is split in small files.** One interface (`fabric_base.py`), two implementations, one entry point.
    S2 and S3 code against `DataFabric`, so a real snapshot can replace the SYNTHETIC city without changing them.
 
@@ -141,7 +157,7 @@ From `results/studio_metro_ranking.json` (PEP file `cbsa-est2025-alldata.csv`, c
 | 4 | 19100 | Dallas-Fort Worth-Arlington, TX | 8477157 |
 | 5 | 26420 | Houston-Pasadena-The Woodlands, TX | 7904627 |
 
-From `results/studio_metro_coverage.json` (snapshots of 2026-10-12, built with keyless sources only):
+From `results/studio_metro_coverage.json` (snapshots of 2026-10-13; Census refused the key, so no ACS or CBP data):
 
 | Metro | Counties | Tracts | Mode | Lowest coverage share (any business type) |
 |---|---|---|---|---|
@@ -150,18 +166,25 @@ From `results/studio_metro_coverage.json` (snapshots of 2026-10-12, built with k
 | chicago_il_in | 13 | 2292 | limited | 0.0 |
 | dallas_fort_worth_tx | 11 | 1704 | limited | 0.0 |
 | houston_tx | 10 | 1615 | limited | 0.0 |
-| synthetic_metro | - | 300 | synthetic | 0.996 |
+| synthetic_metro | - | 300 | synthetic | 0.896 |
 
-In every real metro the per-type shares are 0.35 (car wash), 0.25 (motel), 0.2 (retail storefront) and 0.0
-(restaurant/cafe, laundromat, short-term rental): only the traffic factor has data (HPMS, in every county), because
-ACS needs the Census key and OpenStreetMap was unreachable. QCEW disclosed a wage for 1 (Chicago), 2 (Houston),
-3 (Dallas-Fort Worth, New York) and 6 (Los Angeles) of the six business types; the others stay UNKNOWN. The prime
-rate is DATA (FRED DPRIME) in every snapshot.
+In every real metro every business type has coverage 0.0: ACS failed (Census refused the key), OpenStreetMap was
+unreachable, and traffic is no longer counted as tract coverage (it is flagged `live_per_site`, since HPMS has
+segments with traffic counts in every county but no tract has a value in the snapshot). The earlier report (0.35 for
+car wash, 0.25 for motel, 0.2 for retail) counted "some segment somewhere in each county" as covering every tract,
+which overstated coverage. QCEW disclosed a wage for 1 (Chicago), 2 (Houston), 3 (Dallas-Fort Worth, New York) and 6
+(Los Angeles) of the six business types, each labeled DATA_X_ASSUMPTION; the others stay UNKNOWN. The prime rate is
+DATA (FRED DPRIME, observation of 2026-10-02, value 7.0) in every snapshot. The SYNTHETIC metro's lowest share is
+0.896 (laundromat) because rent is an ASSUMPTION range and counts 0.
 
 ## 5. Limitations
 
-- Real metros cannot leave limited mode until `CENSUS_API_KEY` is visible to a session and OpenStreetMap is
-  reachable; then `make studio-data METRO=all && make studio-coverage` refreshes everything.
+- Real metros cannot leave limited mode until Census accepts `CENSUS_API_KEY` (activate it from the Census email or
+  re-check it) and OpenStreetMap places are reachable; then `make studio-data METRO=all && make studio-coverage`
+  refreshes them (refused answers are never cached; `make studio-data-refresh METRO=all` refetches everything).
+- Even with ACS data, traffic and POI factors have no per-tract values in a snapshot (they are looked up live for one
+  site), so car wash, motel and retail cannot reach the threshold, and SiteIQ cannot rank tracts on those factors,
+  until a snapshot step stores per-tract nearest-road AADT and POI counts. Not built yet.
 - Daytime workers have no real source yet (ACS tract tables count residents); restaurant and retail coverage stays
   below the threshold until a source such as the Census LEHD origin-destination files is added and cited.
 - License and terms of every source are still "to verify" in each SourceRecord's `license_note`.
@@ -184,7 +207,10 @@ rate is DATA (FRED DPRIME) in every snapshot.
    before a source has been opened and cited.
 4. **What happens when a data source is down or a key is missing?** The step fails, the run continues, the snapshot
    keeps what succeeded, the command exits 1 naming the host or variable, and the fabric reports UNKNOWN with the
-   reason. The metro then runs in limited mode and the app says so.
+   reason. The metro then runs in limited mode and the app says so. A key that is set but refused is subtler: Census
+   answers it with a redirect to an HTML page, not an error status. The connector reads where the redirect went
+   (`invalid_key.html`: not activated or mistyped; `missing_key.html`: no key arrived), names the variable and the
+   reason (never the value), and does not cache the page, so the next run after the fix just works.
 5. **Why validate on a synthetic city?** Real outcome data (which sites did well) does not exist for this project. A
    synthetic world with a known true demand lets S2 measure whether its ranking recovers the truth. Because the same
    author wrote both, the truth formula is deliberately different from SiteIQ's (gravity, saturation, interactions,
@@ -192,9 +218,12 @@ rate is DATA (FRED DPRIME) in every snapshot.
 6. **How do you keep API keys out of logs and fixtures?** Keys are read by name only when needed; the client removes
    them from the cache key, stored request, logs and errors; `SourceRecord` refuses secret parameter names; a test
    scans every fixture for key-like parameters.
-7. **What does "coverage 0.35" mean for a car wash in Houston?** The car-wash profile weights traffic 0.35; only
-   traffic has data there (HPMS segments with AADT in every county). Households, income, competition and anchors are
-   UNKNOWN and rent is an ASSUMPTION, so they count zero. 0.35 is below the 0.8 threshold, so the metro is limited.
+7. **Why is a car wash in Houston at coverage 0.0 when HPMS has traffic counts in every county?** Coverage measures
+   the share of tracts with a value. The snapshot stores no traffic value per tract (a site's nearest road is looked
+   up live), so tracts cannot be ranked on traffic: it is UNKNOWN with `live_per_site: true`. Households and income
+   are UNKNOWN because Census refused the key, competition and anchors because OpenStreetMap was unreachable, and rent
+   is an ASSUMPTION. An earlier version reported 0.35 by counting "some segment in each county" as full coverage; that
+   overstated it and was fixed.
 8. **Why does New York have no Pennsylvania county?** The July 2023 Census delineation lists CBSA 35620 with New York
    and New Jersey counties only; the config follows the file. We kept the id `new_york_ny_nj_pa` to avoid breaking
    references, and the PA adapter is disabled with a note.
@@ -202,5 +231,6 @@ rate is DATA (FRED DPRIME) in every snapshot.
    industries and would misstate the wage. UNKNOWN plus the labeled assumption range is more honest than a precise
    wrong number.
 10. **What is cached, and how do you know a cached file was not changed?** Every response body is stored with its
-    SHA-256 and the original request date; reading it recomputes the checksum and refuses a mismatch. Snapshots and
-    results record those checksums, so a number can be traced to the exact response.
+    SHA-256 and the original request date; reading it recomputes the checksum and refuses a mismatch. Snapshots record
+    those checksums, and results record the SHA-256 of the snapshot files they used, so a number can be traced to the
+    exact response.

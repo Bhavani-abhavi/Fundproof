@@ -128,9 +128,11 @@ def build_report(metros_dir: Path = METROS_DIR, snapshots_dir: Path = SNAPSHOTS_
     return {
         "description": (
             "Data coverage per metro x business type x factor (Studio S1). status: DATA = public dataset value; "
-            "SYNTHETIC = generated city; ASSUMPTION = the project author's labeled range; UNKNOWN = no data. "
+            "SYNTHETIC = generated city; ASSUMPTION = the project author's labeled range; DATA_X_ASSUMPTION = a "
+            "public value converted with a labeled assumption (QCEW weekly wage / assumed hours); UNKNOWN = no data. "
             "coverage_share = weighted share of a business type's required factors backed by data (DATA or "
-            "SYNTHETIC) times the share of tracts covered; ASSUMPTION and UNKNOWN count as 0."
+            "SYNTHETIC) times the share of tracts covered; everything else counts as 0. live_per_site = the layer "
+            "has no per-tract values but can be looked up live for one site (UNKNOWN for ranking tracts)."
         ),
         "disclaimer": DISCLAIMER,
         "metro_level_inputs": list(METRO_LEVEL_INPUTS),

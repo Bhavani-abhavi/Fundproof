@@ -30,7 +30,7 @@
       "seed": 42,
       "ci": "95% percentile"
     },
-    "elapsed_seconds_synthetic_part": 108.6,
+    "elapsed_seconds_synthetic_part": 106.6,
     "elapsed_note": "wall-clock time on a shared machine (several agents run at once); not a benchmark"
   },
   "by_business_type": {
@@ -1204,9 +1204,14 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 2292,
       "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "7a8baba2d44ad94a9de61e29e9e0fa71d40e3e39e7692d978f5b07c145c7f52a",
+        "tracts_sha256": "95886e4490e145727f8dc6cfdb9fdeafc377f5d759721acd278b8b7d1f316759"
+      },
       "snapshot_steps_not_ok": {
-        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
-        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "acs_tracts": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
+        "business_patterns": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
         "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
         "enhancement:traffic_state:IL": "not_available: no documented IL DOT traffic-count dataset recorded yet",
         "enhancement:traffic_state:IN": "not_available: no documented IN DOT traffic-count dataset recorded yet",
@@ -1214,13 +1219,9 @@
       },
       "by_business_type": {
         "car_wash": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.35,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 2292
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
         },
         "laundromat": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1228,13 +1229,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "motel": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.25,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 2292
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 13 of 13 counties)"
         },
         "restaurant_cafe": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1242,13 +1239,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "retail_storefront": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.2,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: resident_population": 2292
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "short_term_rental": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1264,9 +1257,14 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 1704,
       "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "2f75d8a325d366c41140aaff1c997d07cf6b5a354fc3c9eca0b9327675afcb33",
+        "tracts_sha256": "7086054816bac9cc1fbc7ff2fc6aa3917a31ac83b8b379e51844db4ce5e8b0cf"
+      },
       "snapshot_steps_not_ok": {
-        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
-        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "acs_tracts": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
+        "business_patterns": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
         "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
         "enhancement:traffic_state:TX": "not_available: no documented TX DOT traffic-count dataset recorded yet",
         "enhancement:city_open_data:dallas": "not_available: no documented open-data license dataset recorded for 'dallas'",
@@ -1274,13 +1272,9 @@
       },
       "by_business_type": {
         "car_wash": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.35,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 1704
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
         },
         "laundromat": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1288,13 +1282,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "motel": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.25,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 1704
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 11 of 11 counties)"
         },
         "restaurant_cafe": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1302,13 +1292,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "retail_storefront": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.2,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: resident_population": 1704
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "short_term_rental": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1324,9 +1310,14 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 1615,
       "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "352ccb0bdc10cfc5d0c77b547385514fe6184a5947aa61a6094372ee5ea389f6",
+        "tracts_sha256": "669bf5d74ddfb66933871211cfa1599f7e4dbc166d27ba1340fad0da5c19c0e7"
+      },
       "snapshot_steps_not_ok": {
-        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
-        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "acs_tracts": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
+        "business_patterns": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
         "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
         "enhancement:traffic_state:TX": "not_available: no documented TX DOT traffic-count dataset recorded yet",
         "enhancement:city_open_data:houston": "not_available: no documented open-data license dataset recorded for 'houston'",
@@ -1334,13 +1325,9 @@
       },
       "by_business_type": {
         "car_wash": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.35,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 1615
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
         },
         "laundromat": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1348,13 +1335,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "motel": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.25,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 1615
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 10 of 10 counties)"
         },
         "restaurant_cafe": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1362,13 +1345,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "retail_storefront": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.2,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: resident_population": 1615
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "short_term_rental": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1384,9 +1363,14 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 3112,
       "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "50801da1d11c60af6d3d4319cb53508d5034361908378ec7d224b1c01b65fa0b",
+        "tracts_sha256": "6f4f29d466efcdaa59afa623bf14602a78d77643a9325cbf885fe31600ae47d5"
+      },
       "snapshot_steps_not_ok": {
-        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
-        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "acs_tracts": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
+        "business_patterns": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
         "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
         "enhancement:traffic_state:CA": "not_available: no documented CA DOT traffic-count dataset recorded yet",
         "enhancement:city_open_data:los_angeles": "not_available: no documented open-data license dataset recorded for 'los_angeles'",
@@ -1394,13 +1378,9 @@
       },
       "by_business_type": {
         "car_wash": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.35,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 3112
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
         },
         "laundromat": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1408,13 +1388,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "motel": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.25,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 3112
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 2 of 2 counties)"
         },
         "restaurant_cafe": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1422,13 +1398,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "retail_storefront": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.2,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: resident_population": 3112
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "short_term_rental": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1444,9 +1416,14 @@
       "mode_reason": "data coverage 0.00 is below the threshold 0.80",
       "tracts_in_snapshot": 4928,
       "snapshot_date": "2026-10-13",
+      "snapshot_fingerprint": {
+        "snapshot_date": "2026-10-13",
+        "manifest_sha256": "1a44378a4ce3d9a655b6a46a2586c97aff387078c2844ffe0a1cace7af8c87d8",
+        "tracts_sha256": "25649ed7ed0c26c2a4299199fe6f2e84202250beab2d55b43bf1fe1bda28d54a"
+      },
       "snapshot_steps_not_ok": {
-        "acs_tracts": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
-        "business_patterns": "failed: api.census.gov answered: answered with an HTML page instead of data (is CENSUS_API_KEY valid?)",
+        "acs_tracts": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
+        "business_patterns": "failed: api.census.gov rejected CENSUS_API_KEY (invalid_key): the key is set but the host says it is not valid. Check that the key was activated (Census sends an activation link by email after sign-up) and copied exactly, then rerun with --refresh (`make studio-data-refresh METRO=...`).",
         "osm_pois": "failed: Cannot reach overpass-api.de: ConnectError: [Errno 104] Connection reset by peer (after 2 attempts)",
         "enhancement:traffic_state:NY": "not_available: no documented NY DOT traffic-count dataset recorded yet",
         "enhancement:traffic_state:NJ": "not_available: no documented NJ DOT traffic-count dataset recorded yet",
@@ -1454,13 +1431,9 @@
       },
       "by_business_type": {
         "car_wash": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.35,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 4928
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
         },
         "laundromat": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1468,13 +1441,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "motel": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.25,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: traffic_aadt": 4928
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "no per-tract traffic values in the snapshot, so tracts cannot be ranked on traffic (UNKNOWN); available for one site through a live HPMS lookup (segments with AADT in 22 of 22 counties)"
         },
         "restaurant_cafe": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1482,13 +1451,9 @@
           "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "retail_storefront": {
-          "status": "not measured: no tract could be ranked (required data UNKNOWN)",
-          "coverage_share": 0.2,
-          "tracts_ranked": 0,
-          "excluded": {
-            "required data UNKNOWN: resident_population": 4928
-          },
-          "score_p10_p50_p90": null
+          "status": "not measured: no real tract data for this business type in the snapshot",
+          "coverage_share": 0.0,
+          "first_missing_reason": "0% of tracts have an ACS estimate"
         },
         "short_term_rental": {
           "status": "not measured: no real tract data for this business type in the snapshot",
@@ -1499,9 +1464,9 @@
     }
   },
   "provenance": {
-    "git_sha": "191e996f55b090a1356c9e937ac6d349e8a34993",
+    "git_sha": "1df0e0aab3f9d8135c328361f7abea280a7090b3",
     "git_dirty": true,
-    "generated_at_utc": "2026-10-13T03:03:41+00:00",
+    "generated_at_utc": "2026-10-13T03:49:40+00:00",
     "generated_by": "scripts/eval_studio_siteiq.py",
     "prompts": {},
     "corpus_checksum": "not applicable (no retrieval corpus is used)",
@@ -1529,11 +1494,31 @@
         20261022
       ],
       "studio_snapshots": {
-        "chicago_il_in": "2026-10-13",
-        "dallas_fort_worth_tx": "2026-10-13",
-        "houston_tx": "2026-10-13",
-        "los_angeles_ca": "2026-10-13",
-        "new_york_ny_nj_pa": "2026-10-13"
+        "chicago_il_in": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "7a8baba2d44ad94a9de61e29e9e0fa71d40e3e39e7692d978f5b07c145c7f52a",
+          "tracts_sha256": "95886e4490e145727f8dc6cfdb9fdeafc377f5d759721acd278b8b7d1f316759"
+        },
+        "dallas_fort_worth_tx": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "2f75d8a325d366c41140aaff1c997d07cf6b5a354fc3c9eca0b9327675afcb33",
+          "tracts_sha256": "7086054816bac9cc1fbc7ff2fc6aa3917a31ac83b8b379e51844db4ce5e8b0cf"
+        },
+        "houston_tx": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "352ccb0bdc10cfc5d0c77b547385514fe6184a5947aa61a6094372ee5ea389f6",
+          "tracts_sha256": "669bf5d74ddfb66933871211cfa1599f7e4dbc166d27ba1340fad0da5c19c0e7"
+        },
+        "los_angeles_ca": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "50801da1d11c60af6d3d4319cb53508d5034361908378ec7d224b1c01b65fa0b",
+          "tracts_sha256": "6f4f29d466efcdaa59afa623bf14602a78d77643a9325cbf885fe31600ae47d5"
+        },
+        "new_york_ny_nj_pa": {
+          "snapshot_date": "2026-10-13",
+          "manifest_sha256": "1a44378a4ce3d9a655b6a46a2586c97aff387078c2844ffe0a1cace7af8c87d8",
+          "tracts_sha256": "25649ed7ed0c26c2a4299199fe6f2e84202250beab2d55b43bf1fe1bda28d54a"
+        }
       }
     },
     "packages": {
@@ -1554,14 +1539,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        3.8,
-        4.22,
-        2.9
+        1.68,
+        1.98,
+        2.45
       ],
       "load_average_end": [
-        6.46,
-        4.79,
-        3.26
+        1.31,
+        1.74,
+        2.31
       ]
     }
   }

@@ -19,6 +19,7 @@ from uwcopilot.studio.feasibility.assumptions import FeasibilityAssumptions
 from uwcopilot.studio.feasibility.distributions import (
     Distribution,
     InputStatus,
+    empirical,
     fixed,
     from_factor_value,
     from_quantity,
@@ -95,20 +96,31 @@ def metro_or_profile(
     return from_quantity(name, description, quantity, where)
 
 
+def mature_demand(site: SiteDemand) -> Distribution:
+    """The site's demand: SiteIQ's percentiles when given (sampled as they are), otherwise a triangle."""
+    description = "Demand at the site once ramp-up is over (before seasonality)"
+    if site.percentiles is not None:
+        source = f"{site.source}; sampled from its percentiles 0-100 (rates drawn independently, not all at one end)"
+        return empirical("mature_demand", description, site.unit, site.percentiles, site.mode, site.status, source)
+    return triangular("mature_demand", description, site.unit, site.low, site.mode, site.high, site.status, site.source)
+
+
+def demand_notes(site: SiteDemand) -> list[str]:
+    """A note when SiteIQ's estimate is incomplete: a left-out term counts as zero, so demand is understated."""
+    if site.complete:
+        return []
+    missing = "; ".join(site.missing) or "a term was left out"
+    return [
+        f"site demand is INCOMPLETE ({missing}): the left-out part counts as zero, so demand and every probability "
+        "below are understated; enter your own expected demand range to replace it"
+    ]
+
+
 def demand_inputs(profile: Profile, site: SiteDemand, plan: Plan) -> list[Distribution]:
     """Mature demand, capacity, open days, price and its elasticity reference."""
     where = f"profile {profile.id}"
     items = [
-        triangular(
-            "mature_demand",
-            "Demand at the site once ramp-up is over (before seasonality)",
-            site.unit,
-            site.low,
-            site.mode,
-            site.high,
-            site.status,
-            site.source,
-        ),
+        mature_demand(site),
         profile_input(
             "capacity",
             "Most demand the business can serve",
@@ -350,7 +362,7 @@ def build_setup(
         raise ValueError(f"simulate at least {MIN_MONTHS} months (year-2 DSCR and the 24-month cash check)")
     if site.unit != profile.demand_unit:
         raise ValueError(f"site demand is in {site.unit!r} but {profile.id} uses {profile.demand_unit!r}")
-    notes: list[str] = []
+    notes: list[str] = demand_notes(site)
     items = demand_inputs(profile, site, plan)
     items += operating_inputs(profile, plan, metro_inputs, notes)
     items += risk_inputs(assumptions, site, loan, notes)

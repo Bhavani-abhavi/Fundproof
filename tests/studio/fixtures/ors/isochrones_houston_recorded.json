@@ -1,6 +1,6 @@
 {
   "fixture_origin": "recorded from the live API on 2026-10-13 by tests/studio/fixtures/ors/record_isochrones.py",
-  "note": "One POST to the openrouteservice v2 isochrones endpoint (driving-car) around the Census Geocoder's answer for Houston City Hall (a public building), ranges 5, 10 and 15 minutes. The key was sent in the Authorization header only and is not stored.",
+  "note": "One POST to the openrouteservice v2 isochrones endpoint (driving-car) around the Census Geocoder's point for the street address 901 Bagby St, Houston, TX 77002, ranges 5, 10 and 15 minutes. The key was sent in the Authorization header only and is not stored.",
   "url": "https://api.openrouteservice.org/v2/isochrones/driving-car",
   "params": {
     "json": {
