@@ -64,6 +64,11 @@ def repo_relative(path: Path, repo_root: Path) -> str | None:
         return None
 
 
+def iso_date(git_date: str) -> str:
+    """One spelling for a git ISO 8601 date: newer git prints UTC as "Z", older git as "+00:00"."""
+    return datetime.fromisoformat(git_date).isoformat()
+
+
 def commits_touching(relative_path: str, repo_root: Path) -> list[CommitInfo]:
     """Every commit that changed the file, oldest first ([] when git is unavailable)."""
     output = run_git(["log", "--reverse", "--format=%H%x09%aI%x09%cI", "--", relative_path], repo_root)
@@ -73,7 +78,7 @@ def commits_touching(relative_path: str, repo_root: Path) -> list[CommitInfo]:
     for line in output.decode("utf-8").splitlines():
         parts = line.split("\t")
         if len(parts) == 3:
-            commits.append(CommitInfo(sha=parts[0], author_date=parts[1], committer_date=parts[2]))
+            commits.append(CommitInfo(sha=parts[0], author_date=iso_date(parts[1]), committer_date=iso_date(parts[2])))
     return commits
 
 

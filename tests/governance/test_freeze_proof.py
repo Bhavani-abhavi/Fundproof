@@ -13,6 +13,7 @@ import pytest
 from uwcopilot.governance.freeze_proof import (
     committed_before,
     freeze_record,
+    iso_date,
     migration_section_sha256,
 )
 
@@ -89,3 +90,10 @@ def test_uncommitted_and_outside_files_have_no_freeze_commit(
     outside.write_text("{}\n", encoding="utf-8")
     elsewhere = freeze_record(outside, "key_facts", "file", repo)
     assert elsewhere["first_committed"] is None and "outside the repository" in elsewhere["note"]
+
+
+def test_git_dates_have_one_spelling_whatever_the_git_version() -> None:
+    # git 2.43 prints "+00:00" for UTC and git 2.55 (the CI runner) prints "Z"; both must compare equal.
+    assert iso_date("2026-10-12T19:39:16Z") == "2026-10-12T19:39:16+00:00"
+    assert iso_date("2026-10-12T19:39:16+00:00") == "2026-10-12T19:39:16+00:00"
+    assert iso_date("2026-10-12T21:39:16+02:00") == "2026-10-12T21:39:16+02:00"
