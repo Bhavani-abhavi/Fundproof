@@ -14,8 +14,12 @@ debt-payment checks in checks_revenue.py.
   values["stale_documents"] and does not count); debt_schedule; principal_photo_ids <- a photo ID for every
   principal (NBC-1.2: a person with 20% or more, or the control person) that is not expired on the application
   date (NBC-6.2; an ID whose expiry date was not read still counts, an expired one does not and is listed in
-  values["expired_photo_ids"]). NBC-6.2's name and date-of-birth match with the credit report is NOT checked: the
-  application and credit report schemas carry no date of birth. formation_documents and
+  values["expired_photo_ids"]). For this presence test an ID name matches a principal when the canonical names are
+  equal, nearly equal (rapidfuzz ratio of at least ID_NAME_MIN_RATIO: one OCR-misread letter, "Paimer" for
+  "Palmer") or equal but for words added at the end (an OCR speck read as "7"); whether the names on the ID and the
+  application agree is the identity reviewer's question, not the checklist's. NBC-6.2's name and date-of-birth
+  match with the credit report is NOT checked: the application and credit report schemas carry no date of birth.
+  formation_documents and
   beneficial_ownership_certification <- the formation document (the second one needs its members table);
   collateral_documents <- collateral valuation. The evidence also cites the application values that make a
   conditional document required (the requested amount, the purpose).
@@ -30,6 +34,8 @@ debt-payment checks in checks_revenue.py.
   month P&L ending mid-year, so on the generated packets this check is never evaluated and its detection is NOT
   measured (the evaluation's check_status_counts shows it); only the hand-built tests exercise it.
 """
+
+from rapidfuzz import fuzz
 
 from uwcopilot.agent.credit_calculations import round_pct
 from uwcopilot.agent.policy_credit import (
@@ -59,6 +65,9 @@ FINANCIALS_MAX_AGE_DAYS = 90  # NBC-3.1 item 4: P&L and balance sheet dated no m
 NO_PACKET_DOCUMENT_TYPE = ("cpa_reviewed_financials", "payoff_letters")
 # NBC-6.1: every member of the formation document must be on the application, whatever their share.
 FORMATION_LISTS_EVERY_OWNER_PCT = 0.0
+
+
+ID_NAME_MIN_RATIO = 90.0  # rapidfuzz ratio of a canonical ID name read with one OCR-misread letter
 
 
 def principals(packet: LoanPacket) -> list[tuple[int, str]]:
@@ -100,6 +109,19 @@ def stale_financials(packet: LoanPacket) -> list[Evidence]:
     return stale
 
 
+def id_names_match(principal: str, id_name: str) -> bool:
+    """True when a canonical ID name stands for the canonical principal name (module docstring: presence only)."""
+    if principal == id_name or fuzz.ratio(principal, id_name) >= ID_NAME_MIN_RATIO:
+        return True
+    shorter, longer = sorted((principal.split(), id_name.split()), key=len)
+    return len(shorter) >= 2 and longer[: len(shorter)] == shorter
+
+
+def has_photo_id(principal: str, id_names: set[str]) -> bool:
+    """True when one of the ID names matches the principal (id_names_match)."""
+    return any(id_names_match(principal, id_name) for id_name in id_names)
+
+
 def expired_photo_id(photo_id: PhotoId, packet: LoanPacket) -> bool:
     """True when the ID's expiry date is before the application date (NBC-6.2); False when either date is unknown."""
     application = packet.application
@@ -134,7 +156,8 @@ def documents_provided(packet: LoanPacket) -> dict[str, list[Evidence]]:
     current_ids = [item for item in packet.photo_ids if not expired_photo_id(item, packet)]
     id_names = {canonical_name(item.name.value) for item in current_ids if item.name.found}
     needed = {name for _, name in principals(packet)}
-    if (needed and needed <= id_names) or (not needed and current_ids):
+    every_principal = bool(needed) and all(has_photo_id(name, id_names) for name in needed)
+    if every_principal or (not needed and current_ids):
         provided["principal_photo_ids"] = [document_evidence(item, "document", "photo_id") for item in current_ids]
     if packet.formation is not None:
         provided["formation_documents"] = [document_evidence(packet.formation, "document", "formation_document")]

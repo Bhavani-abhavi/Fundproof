@@ -24,6 +24,8 @@ valuation age are in checks_loss_run_coverage.py.
 from dataclasses import dataclass, field
 from datetime import date
 
+from rapidfuzz import fuzz
+
 from uwcopilot.agent.applications import Claim
 from uwcopilot.agent.insurance_calculations import (
     RECONCILIATION_TOLERANCE_USD,
@@ -60,16 +62,23 @@ def loss_run_carriers(submission: InsuranceSubmission) -> set[str]:
     return {canonical_name(item.carrier.value) for item in submission.loss_runs if item.carrier.found}
 
 
+CARRIER_NAME_MIN_RATIO = 90.0  # rapidfuzz ratio of two canonical carrier names that differ by an OCR misread
+
+
 def has_loss_run(carrier: str, carriers: set[str]) -> bool:
     """True when a loss run in the packet is from this carrier (canonical names).
 
-    The names match when they are equal, or when one name's words contain the other's, so "Example Mutual" and
-    "Example Mutual Insurance Co" match.
+    The names match when they are equal, when one name's words contain the other's ("Example Mutual" and "Example
+    Mutual Insurance Co"; an OCR word added at the end), or when they are nearly equal (rapidfuzz ratio of at least
+    CARRIER_NAME_MIN_RATIO: "quilifeather mutual" read for "quillfeather mutual"). The fictional carriers' names
+    have no words in common, so a carrier that is really missing does not match another one.
     """
     words = set(carrier.split())
     for other in carriers:
         other_words = set(other.split())
         if carrier == other or (words and other_words and (words <= other_words or other_words <= words)):
+            return True
+        if carrier and other and fuzz.ratio(carrier, other) >= CARRIER_NAME_MIN_RATIO:
             return True
     return False
 

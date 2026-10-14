@@ -318,3 +318,35 @@ def test_an_expired_photo_id_does_not_count_for_principal_photo_ids() -> None:
     check = results_by_id(run_checks(extraction))["required_documents"]
     assert "principal_photo_ids" in check.values["missing"]
     assert check.values["expired_photo_ids"] == [item.doc_id for item in extraction.photo_ids]
+
+
+def test_an_owner_name_with_an_ocr_word_added_is_a_possible_misread_not_a_missing_owner() -> None:
+    data = credit_packet_data()
+    for info in data["documents"]:
+        info["ocr_used"] = info["doc_id"] == data["application"]["doc_id"]
+    first = data["application"]["owners"][0]["name"]
+    set_value(first, f"{first['value']} Ros")  # a speck read as a word at the end of the name
+    extraction = loan(data)
+    report = build_contradictions(extraction, run_checks(extraction))
+    owners = [item for item in report.contradictions if item.type == "owner_mismatch"]
+    assert owners and all(item.explanation_code == "possible_ocr_misread" for item in owners)
+    # The same names on text-layer documents are a real disagreement.
+    for info in data["documents"]:
+        info["ocr_used"] = False
+    plain = loan(data)
+    owners = [
+        item for item in build_contradictions(plain, run_checks(plain)).contradictions if item.type == "owner_mismatch"
+    ]
+    assert owners and not any(item.explanation_code == "possible_ocr_misread" for item in owners)
+
+
+def test_ocr_misread_names_still_find_their_loss_run_and_photo_id() -> None:
+    from uwcopilot.docintel.checks_credit import id_names_match
+    from uwcopilot.docintel.checks_loss_runs import has_loss_run
+
+    runs = {"quillfeather mutual insurance co", "ostrander bay assurance"}
+    assert has_loss_run("quilifeather mutual insurance co", runs)  # one misread letter
+    assert has_loss_run("ostrander bay assurance sis", runs)  # an OCR word at the end
+    assert not has_loss_run("thistlecombe fire and casualty", runs)  # a carrier really missing
+    assert id_names_match("melissa palmer", "melissa paimer") and id_names_match("connor hall", "connor hall 7")
+    assert not id_names_match("melissa palmer", "steven terry")

@@ -14,7 +14,11 @@ review() applies these rules to every contradiction except embedded instructions
    missing_from_other), where that table was read by OCR and its percentages do not add up to 100% (within 0.5
    points) or one was not read: OCR has most likely lost a row of that table. A percentage difference
    (a transposed 34% / 43%) is not covered: it says nothing about a lost row. The Harborline ownership statement
-   lists only owners of 25% or more, so its total is not tested.
+   lists only owners of 25% or more, so its total is not tested;
+4. owner_name_noise: an owner_mismatch about a missing owner or a different control person, where one of the two
+   documents was read by OCR and the owner's counterpart is there under a name that differs only by whole words at
+   the end ("John Cox" vs "John Cox Ros": OCR read a speck as a word) with the same percentage: the owners would
+   pair up but for the OCR word.
 
 When a rule matches, the contradiction's explanation becomes "unknown" with explanation_code
 "possible_ocr_misread", its severity drops one level (high -> medium -> low), and the detail names the value or
@@ -22,11 +26,16 @@ document and then says what the explanation rule alone would have concluded. The
 changed: the documents disagree as read, and a human confirms against the page image. Like every explanation,
 this is a candidate for the reviewer, never a decision.
 
-LOW_CONFIDENCE was chosen on the DEV split only (scripts/eval_docintel.py --split dev); see the module constant.
+LOW_CONFIDENCE (0.80) was chosen on the DEV split only, never the test split: for the contradictions of dev packets
+with scanned pages, the lowest OCR confidence of their side values was compared with whether they match an injected
+problem. Most contradictions that match no problem had a side value below 0.80 and few matching ones did; at 0.85
+noticeably more matching ones would have been downgraded. The per-contradiction explanation codes are in the
+evaluation's per-packet records, so the trade-off can be re-checked.
 """
 
 from uwcopilot.docintel.check_models import CheckIssue, Evidence, Severity
 from uwcopilot.docintel.contradiction_rules import Verdict
+from uwcopilot.docintel.normalize import canonical_name
 from uwcopilot.docintel.schemas import ExtractedOwner, InsuranceSubmission, LoanPacket, PacketExtraction
 
 LOW_CONFIDENCE = 0.80  # OCR line confidence below which a cited value may be misread
@@ -93,8 +102,53 @@ def incomplete_ocr_owner_table(issue: CheckIssue, extraction: PacketExtraction) 
     return None
 
 
+def every_owner_table(extraction: PacketExtraction) -> dict[str, list[ExtractedOwner]]:
+    """doc_id -> owners of every owners table in the packet (application, formation, ownership statement)."""
+    tables = dict(owner_tables(extraction))
+    if isinstance(extraction, InsuranceSubmission) and extraction.ownership_statement is not None:
+        tables[extraction.ownership_statement.doc_id] = extraction.ownership_statement.owners
+    return tables
+
+
+def words_extend(first: str, second: str) -> bool:
+    """True when two different names agree word for word except for extra words at the end of one of them."""
+    a, b = canonical_name(first).split(), canonical_name(second).split()
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return len(shorter) >= 2 and shorter != longer and longer[: len(shorter)] == shorter
+
+
+def issue_owners(issue: CheckIssue) -> list[tuple[str, str, float]]:
+    """(doc_id, name, percentage) of each owner the issue's evidence names (rows joined by their key "O<n>")."""
+    rows: dict[tuple[str | None, str | None], dict[str, object]] = {}
+    for item in issue.side_a + issue.side_b:
+        rows.setdefault((item.doc_id, item.key), {})[item.field.rsplit(".", 1)[-1]] = item.value
+    owners = []
+    for (doc_id, _), row in rows.items():
+        name, pct = row.get("name"), row.get("ownership_pct")
+        if doc_id is not None and isinstance(name, str) and isinstance(pct, int | float):
+            owners.append((doc_id, name, float(pct)))
+    return owners
+
+
+def noisy_owner_name(issue: CheckIssue, extraction: PacketExtraction) -> str | None:
+    """Rule 4: the counterpart of an issue owner, on the other document, differs only by OCR words (or None)."""
+    if issue.issue not in ("missing_from_application", "missing_from_other", "control_person_difference"):
+        return None
+    scanned = ocr_documents(extraction)
+    tables = every_owner_table(extraction)
+    for doc_id, name, pct in issue_owners(issue):
+        for other_doc, owners in tables.items():
+            if other_doc == doc_id or not ({doc_id, other_doc} & scanned):
+                continue
+            for owner in owners:
+                same_pct = owner.ownership_pct.found and abs(float(owner.ownership_pct.value) - pct) <= 0.5
+                if same_pct and owner.name.found and words_extend(name, str(owner.name.value)):
+                    return f"'{name}' on {doc_id} and '{owner.name.value}' on {other_doc}"
+    return None
+
+
 def ocr_reason(check_id: str, issue: CheckIssue, verdict: Verdict, extraction: PacketExtraction) -> str | None:
-    """The sentence that says why OCR may explain the contradiction (rules 1-3), or None."""
+    """The sentence that says why OCR may explain the contradiction (rules 1-4), or None."""
     low = least_confident(issue.side_a + issue.side_b, ocr_documents(extraction))
     if low is not None:
         return (
@@ -114,6 +168,12 @@ def ocr_reason(check_id: str, issue: CheckIssue, verdict: Verdict, extraction: P
             return (
                 f"The owners table on {table} was read by OCR and its percentages do not add up to 100%, so a row "
                 "was most likely lost or misread."
+            )
+        names = noisy_owner_name(issue, extraction)
+        if names is not None:
+            return (
+                f"The owner names {names} have the same percentage and differ only by words OCR may have added or "
+                "lost, so they are most likely the same owner."
             )
     return None
 
