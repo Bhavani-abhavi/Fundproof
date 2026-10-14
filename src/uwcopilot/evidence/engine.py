@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from uwcopilot.agent.applications import canonical_json
+from uwcopilot.agent.applications import canonical_json, inputs_sha256
 from uwcopilot.agent.decision_record import DecisionLog
 from uwcopilot.agent.policy import PolicyResult
 from uwcopilot.docintel.checks import run_checks
@@ -124,9 +124,13 @@ def resolve_source(
 
 
 def inputs_hash(state: CaseState) -> str:
-    """SHA-256 of the canonical application inputs (as agent.applications.inputs_sha256 for a valid one)."""
-    inputs = {key: value for key, value in state.application.items() if key != "ground_truth"}
-    return sha256_text(canonical_json(inputs))
+    """agent.applications.inputs_sha256 of the validated application (the hash the agent's records use); for an
+    application that does not validate, SHA-256 of its canonical JSON as read."""
+    try:
+        return inputs_sha256(application_of(state))
+    except IncompleteApplicationError:
+        inputs = {key: value for key, value in state.application.items() if key != "ground_truth"}
+        return sha256_text(canonical_json(inputs))
 
 
 def record_for(

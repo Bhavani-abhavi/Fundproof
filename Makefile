@@ -436,6 +436,23 @@ PACKET ?= PKT-C-024
 run-evidence:  ## Run the Evidence-to-Action Engine on one packet (PACKET=PKT-C-024) and write its decision record
 	uv run python scripts/run_evidence.py --packet $(PACKET)
 
+# Innovation S5: the evidence-request simulator (voi / checklist / random / oracle) on 300 SYNTHETIC JSON-only cases
+# per line (seed 4242; 100 development / 200 test; held-out family claims_history_mismatch). Builds the cases in
+# memory (no PDFs, no `make packets` needed) and writes section "simulator" of results/evidence_metrics.json plus
+# results/evidence_metrics_simulator.json, and every run to data/processed/evidence/simulator_runs.jsonl (gitignored).
+.PHONY: simulate-requests
+
+simulate-requests:  ## Simulate evidence-request policies (innovation S5) and write the "simulator" results section
+	uv run python scripts/simulate_requests.py
+
+# Phase 4 F: the Evidence-to-Action Engine on the 60 SYNTHETIC test packets in oracle-extraction and pipeline (PDF +
+# OCR) modes, with packet-level bootstrap intervals. Writes section "packets" of results/evidence_metrics.json (the
+# "simulator" section is left alone) and results/evidence_per_packet.jsonl. Needs `make packets`.
+.PHONY: eval-evidence
+
+eval-evidence:  ## Evaluate the Evidence-to-Action Engine on the test packets -> results/evidence_metrics.json ("packets")
+	uv run python scripts/eval_evidence.py
+
 # Website v0.1.1 verify-and-fix: docker-build-bundle never reuses a cached "studio-snapshots" step. BuildKit leaves
 # secrets out of its cache key and this target always stamps HEAD, so without this a STUDIO_BUILD_SECRETS=1 build
 # after a plain one of the same commit reused the "skipped" step (no snapshots, no "build secret" line in the log),
