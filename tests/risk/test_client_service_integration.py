@@ -12,18 +12,26 @@ refuses them and the agent records no score.
 """
 
 import typing
+from pathlib import Path
 from typing import Any
 
+import httpx
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel, ValidationError
 from risk_service_helpers import AppTransport, applicant_features, policy_features
 
 from uwcopilot.agent.applications import AnyApplication, CreditApplication, InsuranceApplication, load_application
+from uwcopilot.agent.decision_record import DecisionLog
+from uwcopilot.agent.fake_memo import template_memo_responder
+from uwcopilot.agent.graph import AgentDeps
+from uwcopilot.agent.runner import compile_agent, start_run
 from uwcopilot.agent.tool_plan import ToolRequest, plan_tool_calls
 from uwcopilot.agent.tool_runner import execute_call, vet_requests
 from uwcopilot.common.paths import REPO_ROOT
+from uwcopilot.llm.fake_client import FakeLLM
 from uwcopilot.risk import credit, insurance
 from uwcopilot.risk import service as risk_service
 from uwcopilot.risk.client import (
@@ -37,6 +45,7 @@ from uwcopilot.risk.client import (
     service_body,
 )
 from uwcopilot.risk.data.fremtpl2 import RATING_FEATURES
+from uwcopilot.tools.registry import ToolUnavailable
 from uwcopilot.tools.schemas import RiskProduct, RiskScoreRequest, RiskScoreResponse
 
 BASE_URL = "http://testserver"
@@ -99,8 +108,21 @@ def test_the_tool_request_sent_as_is_is_refused_by_the_service(
 def test_the_service_answer_is_not_a_tool_response(client: TestClient, insurance_data: dict[str, pd.DataFrame]) -> None:
     """What the old client expected: a RiskScoreResponse. The real 200 body never is one, so it must be translated."""
     body = direct_score(client, {"product": "insurance_frequency", "features": policy_features(insurance_data)})
-    with pytest.raises(ValidationError):
+    assert body["reason_codes"], "this SYNTHETIC policy has reason codes, so their mismatch shows too"
+    with pytest.raises(ValidationError) as raised:
         RiskScoreResponse.model_validate(body)
+    # Six errors at the top level and three per reason code, so the count depends on the policy; the kinds do not.
+    assert raised.value.error_count() == 6 + 3 * len(body["reason_codes"])
+    assert {(error["type"], error["loc"][0]) for error in raised.value.errors()} == {
+        ("extra_forbidden", "prediction_name"),
+        ("extra_forbidden", "prediction_unit"),
+        ("extra_forbidden", "model"),
+        ("extra_forbidden", "risk_band_definition"),
+        ("extra_forbidden", "note"),
+        ("extra_forbidden", "reason_codes"),  # each code's "value" and "reason"
+        ("missing", "reason_codes"),  # each code's "description"
+        ("string_type", "scenario"),  # the service's scenario block (null here), not the tool's label
+    }
     ServiceScore.model_validate(body)  # the client's copy of the service response accepts it as is
 
 
@@ -188,6 +210,7 @@ def test_scenario_round_trip_returns_the_scenario_with_its_label(
     assert scored.prediction == pytest.approx(expected)
     assert scored.prediction == pytest.approx(direct["scenario"]["scenario"]["prediction"])
     assert scored.risk_band == direct["scenario"]["scenario"]["risk_band"]
+    assert scored.model_version == direct["model_version"]
     assert scored.scenario == "bonus_malus_max"
     assert [reason.description for reason in scored.reason_codes] == [
         reason["reason"] for reason in direct["scenario"]["scenario"]["reason_codes"]
@@ -270,6 +293,18 @@ def test_refusals_are_rejected_request_errors(
     assert service_error in info.message
 
 
+def test_an_answer_for_another_product_is_refused(client: TestClient, insurance_data: dict[str, pd.DataFrame]) -> None:
+    """A real 200 answer for insurance_severity must not come back labelled as the insurance_frequency asked for
+    (tool_response copies the product from the request, so only the client's product check stops it)."""
+    policy = policy_features(insurance_data)
+    severity_answer = direct_score(client, {"product": "insurance_severity", "features": policy})
+    replay = RiskApiClient(BASE_URL, transport=httpx.MockTransport(lambda _: httpx.Response(200, json=severity_answer)))
+    with pytest.raises(RiskApiError) as raised:
+        replay.score(RiskScoreRequest(product="insurance_frequency", features=policy))
+    assert raised.value.info.code == "risk_api_invalid_response"
+    assert replay.score(RiskScoreRequest(product="insurance_severity", features=policy)).product == "insurance_severity"
+
+
 def test_a_product_without_a_model_is_a_server_error(
     api_without_credit: RiskApiClient, credit_loans: pd.DataFrame
 ) -> None:
@@ -338,3 +373,38 @@ def test_the_agent_records_the_refusal_without_a_score(api: RiskApiClient) -> No
     assert result.status == "error"
     assert result.output is None
     assert "HTTP 422" in (result.error or "") and "invalid_features" in (result.error or "")
+
+
+def not_used_here(request: Any) -> Any:
+    """Stand-in for search_guidelines and screen_entity: this test needs no Qdrant index and no sanctions lists."""
+    raise ToolUnavailable("not used in this test")
+
+
+@pytest.mark.parametrize("application_id", ["APP-C-001", "APP-I-001"])
+def test_a_full_agent_run_reaches_a_human_without_a_model_score(
+    client: TestClient, tmp_path: Path, application_id: str
+) -> None:
+    """The real graph with score_risk wired to the real app: the service refuses, no score reaches the policy, and
+    the run still stops at the human checkpoint with nothing decided (ground rule 8)."""
+    transport = AppTransport(client)
+    handlers = {
+        "search_guidelines": not_used_here,
+        "screen_entity": not_used_here,
+        "score_risk": RiskApiClient(BASE_URL, transport=transport).score,
+    }
+    log = DecisionLog(tmp_path / "decision_records.jsonl")
+    deps = AgentDeps(llm=FakeLLM(template_memo_responder), tool_handlers=handlers, decision_log=log)
+    application = application_by_id(application_id)
+    outcome = start_run(compile_agent(deps, InMemorySaver()), application.model_dump(mode="json"), "risk-gap")
+
+    assert outcome.status == "awaiting_review"
+    assert log.records() == []
+    assert transport.sent == 1  # the service was really asked, once
+    [risk] = [result for result in outcome.state["tool_results"] if result["tool"] == "score_risk"]
+    assert risk["status"] == "error" and risk["output"] is None
+    assert "HTTP 422" in risk["error"] and "invalid_features" in risk["error"]
+    if isinstance(application, CreditApplication):
+        not_evaluated = outcome.state["policy_result"]["not_evaluated"]
+        [skipped] = [item for item in not_evaluated if item["rule"] == "risk_model_pd"]
+        assert skipped["section_ids"] == ["NBC-8.1"]
+        assert skipped["reason"].startswith("Model PD not available: the score_risk tool was error")

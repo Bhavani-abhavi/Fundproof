@@ -44,9 +44,11 @@ Until commit `548afa3` the client posted `RiskScoreRequest.model_dump()` as-is a
 from `548afa3^`:
 
 - the request was refused with HTTP 422, `extra_forbidden` at `body.scenario`;
-- a correct 200 answer from the service failed `RiskScoreResponse` validation with 15 errors (extra fields
-  `prediction_name`, `prediction_unit`, `model`, `risk_band_definition`, `note`; `reason_codes[].description`
-  missing; `scenario` not a string).
+- a correct 200 answer from the service failed `RiskScoreResponse` validation: five extra top-level fields
+  (`prediction_name`, `prediction_unit`, `model`, `risk_band_definition`, `note`), an extra `value` and `reason` and
+  a missing `description` in every reason code, and a `scenario` that is the service's scenario block (null without
+  overrides) instead of a label. That is six errors plus three per reason code, so the count depends on the policy;
+  the test pins the kinds of error and that formula.
 
 So no score could ever succeed. The unit tests did not notice because they mocked the transport with the tool
 contract on both sides. Commit `548afa3` made the client translate, as described above. Phase 5 adds the tests that
@@ -60,7 +62,7 @@ nothing touches the network). The models are tiny SYNTHETIC ones trained once pe
 `tests/risk/conftest.py` (builders in `tests/risk/risk_service_helpers.py`); their predictions mean nothing.
 
 - **The mismatch, reproduced:** the tool request sent as-is gets 422 at `body.scenario`; a real 200 body is not a
-  `RiskScoreResponse`.
+  `RiskScoreResponse`, with exactly the error kinds listed above.
 - **Drift guards (no HTTP):** the client's copies (`ServiceScore`, `ServiceAssessment`, `ServiceScenario`,
   `ServiceReason`) have exactly the service models' fields; the tool request has the service request's fields plus
   `scenario` only; both product lists are the same; the body on the wire validates as a service `ScoreRequest`.
@@ -68,11 +70,20 @@ nothing touches the network). The models are tiny SYNTHETIC ones trained once pe
   credit with a missing value (listed as unknown), and a credit scenario. Each is compared with a direct call to the app.
 - **Refusals:** `invalid_features`, `invalid_override` and `leakage_guard` become `risk_api_rejected_request`
   (HTTP 422); a product without a model becomes `risk_api_server_error` (HTTP 503).
-- **The domain gap:** see the next section.
+- **An answer for another product:** a real 200 body for `insurance_severity`, replayed through an
+  `httpx.MockTransport` for an `insurance_frequency` request, is refused as `risk_api_invalid_response` instead of
+  being relabelled (`tool_response` copies the product from the request, so only the client's product check stops
+  it). Removing that check makes this test fail.
+- **The domain gap:** see the next section. It is checked at three levels: the planner's feature names against the
+  models' features, the planned request against the service, and a full agent run (the real LangGraph graph, a
+  committed credit file and a committed insurance file, `score_risk` wired to the real app, search and screening
+  stubbed as unavailable). The full run reaches the human checkpoint with no decision record, the one `score_risk`
+  call is recorded as an `error` with no output, and for credit the policy lists NBC-8.1 as not evaluated.
 
-With the pre-fix `post`/`score` methods patched in, 14 of the file's 23 tests fail (every round trip and every
-refusal test). The 9 that still pass are the reproduction, the drift guards and the feature-name check, none of
-which goes through the client's send/receive path.
+A one-off check (not a committed test) patched the pre-fix `post`/`score` methods back into the client: 16 of the
+25 tests the file had then fail (before the product test above was added) (every round trip, every refusal test and both full agent runs). The 9 that still pass are
+the reproduction, the drift guards and the feature-name check, none of which goes through the client's send/receive
+path.
 
 ## The domain gap: why the agent still records no model score
 
@@ -120,6 +131,14 @@ Then the record would say *not applicable* in every configuration. Closing the g
 and validated on commercial small-business loan and commercial property data. No such public dataset is used in this
 repository.
 
+**Also not done (a small client hardening, held back because it changes an MCP test owned elsewhere):** when a
+request has overrides, the client should refuse an answer that has no `scenario` block, or one whose
+`scenario.overrides` differ from what was sent. Today `tool_response` falls back to the baseline in that case and
+labels it with the caller's scenario name. The real service always returns the block for non-empty overrides, so
+this cannot happen against it, but a different or broken service could make an unstressed number look like a stress
+result. `tests/mcp/test_mcp_server_tools.py::test_score_success_passes_the_service_answer_through` mocks exactly such
+an answer (overrides sent, `scenario: null`), so its mock must return a scenario block when the check is added.
+
 ## Files
 
 | File | What it does |
@@ -129,7 +148,7 @@ repository.
 | `tests/risk/risk_service_helpers.py` | SYNTHETIC tiny-model builders, JSON-ready feature rows, and `AppTransport`. |
 | `tests/risk/conftest.py` | Session fixtures: the models (trained once), their folders, and the app with and without a credit model. |
 | `tests/risk/test_service.py` | The API's own rules. It now uses the shared fixtures; its single client round-trip test moved to the integration file. |
-| `tests/risk/test_client_service_integration.py` | The client against the real app: reproduction, drift guards, round trips, refusals, domain gap. |
+| `tests/risk/test_client_service_integration.py` | The client against the real app: reproduction, drift guards, round trips, refusals, domain gap (down to a full agent run). |
 
 ## Questions you may be asked
 

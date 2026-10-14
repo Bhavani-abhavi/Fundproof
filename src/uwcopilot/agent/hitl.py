@@ -5,7 +5,8 @@ code path that approves or declines without one: not a clean file, not a "pre-ap
 
 validate_decision() refuses, with reasons, a decision that the guidelines do not allow:
 - role: a model_validator or an admin may never decide a file, whatever the action (security/rbac.py); this is
-  checked first, with the reason from security.rbac.authorize. Roles are CLAIMED in this demo (no identity provider);
+  checked first, with the reason from security.rbac.authorize. Roles are CLAIMED in this demo (no identity provider),
+  so this refuses a claimed role; it does not prove who the reviewer is;
 - schema: action, reviewer_id, role and a rationale of at least 10 characters are required; unknown fields are
   rejected;
 - only a senior_underwriter may decline (NBC-7.2, HM-9.2), and a decline-for-review file must be reviewed by a

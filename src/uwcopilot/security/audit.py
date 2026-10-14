@@ -20,12 +20,22 @@ of the event before it (64 zeros for the first); seq counts from 0. After every 
 - REORDERED events (seq and prev_hash mismatch);
 - a TRUNCATED tail (fewer events, or another last hash, than the head anchor says; or a cut-off last line).
 Limit: someone who can rewrite BOTH the log and its head file can rebuild a consistent chain. Copy the head
-(count + hash, printed by scripts/verify_audit.py) somewhere they cannot write, and pass it back with
---expect-count / --expect-head. A signed or write-once anchor (Cloud KMS, object lock) is Phase 7, not built.
+(count + hash, printed by scripts/verify_audit.py) somewhere they cannot write, and pass it back later with
+--expect-count / --expect-head. That copy is checked as a PREFIX: the log may have grown since, but it must still
+hold at least that many events and the event at that position must still have that record_hash, so history up to
+the copy cannot be rewritten unseen. Events appended after the copy are protected only by the stored head (refresh
+the copy regularly). A signed or write-once anchor (Cloud KMS, object lock) is Phase 7, not built.
+
+Lines. Each event is written as ASCII-only JSON (non-ASCII characters escaped) and the file is split on "\n" only
+(security.fileio.jsonl_lines), so a reviewer-typed U+2028 or U+0085 can never split one event into two lines.
 
 Privacy. Every reason and every details value goes through observability.redaction (a PiiRedactor: names you give
 it, FEINs, SSNs, e-mails, phones, account numbers, and whole values under keys such as rationale, notes, excerpt).
-The actor id and the resource id are kept: an audit trail must say who did what to which file. Use opaque ids.
+Build the AuditLog (or pass a redactor per call) with redactor_for_application(...) to mask the applicant's names.
+The actor id and the resource id are kept: an audit trail must say who did what to which file. Use opaque ids
+(reviewer ids are staff identifiers; applicant data never goes into an id). The same holds for two details keys,
+decision_record_id and event_key (KEPT_ID_PATTERNS): they are kept as written when they have their id shape,
+because a record id's 24 hex characters can hold a digit run the redactor would mask as an account number.
 
 Roles are CLAIMED in this demo: actor.role_source says so on every event ("claimed" unless the caller knows better).
 """
@@ -36,6 +46,7 @@ import json
 import os
 import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -46,7 +57,7 @@ from uwcopilot.agent.applications import canonical_json
 from uwcopilot.agent.vocab import ACCESS_ROLES, SYNTHETIC_LABEL
 from uwcopilot.observability.redaction import PiiRedactor
 from uwcopilot.security.config import PRINCIPAL_ID_PATTERN
-from uwcopilot.security.fileio import write_private_file
+from uwcopilot.security.fileio import jsonl_lines, write_private_file
 from uwcopilot.security.rbac import AGENT_PRINCIPAL, UNKNOWN_ROLE, Decision, Principal, Resource
 
 GENESIS_HASH = "0" * 64
@@ -87,6 +98,10 @@ DECISION_EVENT_TYPES: dict[str, str] = {
     "refer": "referral",
     "request_more_information": "information_request",
 }
+# Details keys kept out of the PII redactor when the value has this id shape (see "Privacy" above).
+RECORD_ID_PATTERN = r"^(DR|EV)-[0-9a-f]{1,64}$"  # DR-<24 hex> (agent), EV-<24 hex> (evidence records)
+EVENT_KEY_PATTERN = r"^[a-z_]{1,40}(:[0-9]{1,6})?$"  # tool_call:0, recommendation, decision, override, ...
+KEPT_ID_PATTERNS: dict[str, str] = {"decision_record_id": RECORD_ID_PATTERN, "event_key": EVENT_KEY_PATTERN}
 REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
     "seq",
@@ -124,6 +139,26 @@ def event_hash(event: Mapping[str, Any]) -> str:
     """SHA-256 of the event's canonical JSON, without its own record_hash field."""
     body = {key: value for key, value in event.items() if key != "record_hash"}
     return hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
+
+
+def event_line(event: Mapping[str, Any]) -> str:
+    """The stored line of one event: ASCII-only JSON with sorted keys (non-ASCII characters are escaped).
+
+    record_hash is computed with canonical_json over the parsed event, which gives the same text for this line and
+    for the line read back, so escaping changes nothing in the chain.
+    """
+    return json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def redact_details(redactor: PiiRedactor, details: Mapping[str, Any] | None) -> dict[str, Any]:
+    """details through the PII redactor, except the KEPT_ID_PATTERNS keys whose values have their id shape."""
+    original = dict(details or {})
+    cleaned = redactor.redact(original)
+    for key, pattern in KEPT_ID_PATTERNS.items():
+        value = original.get(key)
+        if isinstance(value, str) and re.fullmatch(pattern, value) is not None:
+            cleaned[key] = value
+    return cleaned
 
 
 def head_path_for(log_path: Path) -> Path:
@@ -172,7 +207,7 @@ class AuditLog:
         if not self.path.exists():
             return []
         events = []
-        for number, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
+        for number, line in enumerate(jsonl_lines(self.path.read_text(encoding="utf-8")), start=1):
             try:
                 events.append(json.loads(line))
             except json.JSONDecodeError as error:
@@ -195,7 +230,10 @@ class AuditLog:
         redactor: PiiRedactor | None = None,
         data_label: str = SYNTHETIC_LABEL,
     ) -> dict[str, Any]:
-        """Chain and append one event (reason and details are PII-redacted first); return the stored event."""
+        """Chain and append one event (reason and details are PII-redacted first); return the stored event.
+
+        redactor overrides the log's redactor for this event only.
+        """
         if event_type not in EVENT_TYPES:
             raise ValueError(f"unknown event type {event_type!r}; known types are {list(EVENT_TYPES)}")
         if outcome not in OUTCOMES:
@@ -220,12 +258,12 @@ class AuditLog:
                     "resource": resource_of(resource),
                     "outcome": outcome,
                     "reason": scrub.redact_text(reason) if reason else None,
-                    "details": scrub.redact(dict(details or {})),
+                    "details": redact_details(scrub, details),
                     "data_label": data_label,
                     "prev_hash": previous,
                 }
                 event["record_hash"] = event_hash(event)
-                handle.write((canonical_json(event) + "\n").encode("utf-8"))
+                handle.write((event_line(event) + "\n").encode("ascii"))
                 handle.flush()
                 os.fsync(handle.fileno())
                 head = AuditHead(count=seq + 1, head_hash=event["record_hash"], updated_at=event["occurred_at"])
@@ -235,11 +273,13 @@ class AuditLog:
         return event
 
     def verify(self, expected_head: AuditHead | None = None) -> list[str]:
-        """Problems found in the chain and against the head anchor; an empty list means the log is intact.
+        """Problems found in the chain, against the stored head and against an anchor kept elsewhere ([] = intact).
 
-        expected_head (an anchor kept elsewhere) wins over the stored head file.
+        The stored head file must match the log exactly (it is rewritten on every append). expected_head is a copy
+        of an earlier head kept where the log's writer cannot change it; the log may have grown since, so it is
+        checked as a prefix (anchor_problems).
         """
-        return verify_audit_file(self.path, expected_head if expected_head is not None else self.head())
+        return verify_audit_file(self.path, self.head(), expected_head)
 
 
 def next_position(existing: bytes) -> tuple[int, str]:
@@ -283,34 +323,61 @@ def verify_lines(lines: list[str]) -> list[str]:
     return problems
 
 
-def verify_audit_file(path: Path, head: AuditHead | None) -> list[str]:
-    """Chain problems plus head-anchor problems for one audit log file."""
+def verify_audit_file(path: Path, head: AuditHead | None, anchor: AuditHead | None = None) -> list[str]:
+    """Chain problems, stored-head problems and (when given) problems against an anchor kept elsewhere."""
     if not path.is_file():
         return [f"no audit log at {path}"]
     text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    lines = jsonl_lines(text)
     problems = []
     if text and not text.endswith("\n"):
         problems.append(f"line {len(lines)}: the last line is cut off (truncated while or after writing)")
     problems.extend(verify_lines(lines))
+    problems.extend(head_problems(lines, head))
+    if anchor is not None:
+        problems.extend(anchor_problems(lines, anchor))
+    return problems
+
+
+def head_problems(lines: list[str], head: AuditHead | None) -> list[str]:
+    """The stored head file must match the log EXACTLY: the same count and the same last record_hash."""
     if head is None:
-        if lines:
-            problems.append("no head anchor: a truncated tail cannot be ruled out")
-        return problems
+        return ["no head anchor: a truncated tail cannot be ruled out"] if lines else []
+    problems = []
     if head.count != len(lines):
         problems.append(f"the log holds {len(lines)} events but the head anchor says {head.count} (truncated?)")
-    last_hash = last_record_hash(lines)
-    if head.count and last_hash != head.head_hash:
+    if head.count and record_hash_at(lines, len(lines) - 1) != head.head_hash:
         problems.append("the last event's record_hash does not match the head anchor (truncated or rewritten)")
     return problems
 
 
-def last_record_hash(lines: list[str]) -> str | None:
-    """The record_hash of the last line, or None when it cannot be read."""
-    if not lines:
+def anchor_problems(lines: list[str], anchor: AuditHead) -> list[str]:
+    """An anchor kept elsewhere is a PREFIX check: the log may have grown since the copy was taken.
+
+    The log must still hold at least anchor.count events, and event number anchor.count must still have the
+    anchor's record_hash. Because every record_hash covers the prev_hash before it, that pins every event up to the
+    anchor; verify_lines checks the events appended after it.
+    """
+    if anchor.count < 0:
+        return ["the anchor kept elsewhere has a negative event count"]
+    if anchor.count > len(lines):
+        return [
+            f"the log holds {len(lines)} events but the anchor kept elsewhere says at least {anchor.count} (truncated?)"
+        ]
+    if anchor.count and record_hash_at(lines, anchor.count - 1) != anchor.head_hash:
+        return [
+            f"line {anchor.count}: record_hash does not match the anchor kept elsewhere "
+            "(the history up to the anchor was rewritten)"
+        ]
+    return []
+
+
+def record_hash_at(lines: list[str], index: int) -> str | None:
+    """The record_hash of lines[index], or None when there is no such line or it cannot be read."""
+    if not 0 <= index < len(lines):
         return None
     try:
-        value = json.loads(lines[-1]).get("record_hash")
+        value = json.loads(lines[index]).get("record_hash")
     except (json.JSONDecodeError, AttributeError):
         return None
     return value if isinstance(value, str) else None
@@ -346,68 +413,135 @@ def claimed_principal(raw: Mapping[str, Any]) -> Principal:
     return Principal(principal_id, known_role, "claimed")
 
 
-def already_audited(log: AuditLog, record_id: str) -> bool:
-    """True when events for this decision record are already in the log (so a replay adds nothing)."""
-    return any((event.get("details") or {}).get("decision_record_id") == record_id for event in log.events())
+@dataclass(frozen=True)
+class PlannedEvent:
+    """One event that a decision record holds, before it is chained. event_key is stable for the record."""
+
+    event_key: str
+    event_type: str
+    actor: Principal
+    action: str
+    outcome: str
+    reason: str | None
+    details: dict[str, Any]
 
 
-def audit_decision_record(
-    log: AuditLog, record: Mapping[str, Any], redactor: PiiRedactor | None = None
-) -> list[dict[str, Any]]:
-    """Log the events a stored agent decision record holds; idempotent by record_id. Returns the new events.
+def audited_event_keys(log: AuditLog, record_id: str) -> set[str]:
+    """The event_key of every event already in the log for this decision record."""
+    keys = set()
+    for event in log.events():
+        details = event.get("details") or {}
+        if details.get("decision_record_id") == record_id and isinstance(details.get("event_key"), str):
+            keys.add(details["event_key"])
+    return keys
 
-    In order: one tool_call per tool call (actor: the agent), the recommendation (the agent), each refused decision
-    attempt (the claimed reviewer), the accepted decision (the claimed reviewer), and an override when the decision
-    differs from the recommendation. The record itself is not copied: events hold ids, statuses and redacted text.
-    """
-    record_id = str(record["record_id"])
-    if already_audited(log, record_id):
-        return []
-    resource = Resource("file", str(record.get("application_id") or "unknown"))
-    base = {"decision_record_id": record_id}
-    written = []
-    for call in record.get("tool_calls") or []:
-        details = {**base, **{key: call.get(key) for key in ("result_id", "tool", "purpose", "status")}}
+
+def tool_call_events(record: Mapping[str, Any]) -> list[PlannedEvent]:
+    """One tool_call event per tool call (actor: the agent)."""
+    events = []
+    for index, call in enumerate(record.get("tool_calls") or []):
+        details = {key: call.get(key) for key in ("result_id", "tool", "purpose", "status")}
         outcome = "ok" if call.get("status") == "ok" else "error"
-        written.append(
-            log.append("tool_call", AGENT_PRINCIPAL, str(call.get("tool")), resource, outcome, None, details, redactor)
-        )
+        key = f"tool_call:{index}"
+        events.append(PlannedEvent(key, "tool_call", AGENT_PRINCIPAL, str(call.get("tool")), outcome, None, details))
+    return events
+
+
+def recommendation_event(record: Mapping[str, Any]) -> PlannedEvent:
+    """The recommendation that reached the human checkpoint (actor: the agent)."""
     memo = record.get("memo") or {}
-    recommendation = {
-        **base,
+    details = {
         "reference_recommendation": record.get("reference_recommendation"),
         "memo_recommendation": memo.get("recommendation") if isinstance(memo, dict) else None,
         "memo_status": record.get("memo_status"),
         "fake_llm": record.get("fake_llm"),
     }
-    written.append(log.append("recommendation", AGENT_PRINCIPAL, "recommend", resource, "ok", None, recommendation))
-    for attempt in record.get("rejected_reviewer_attempts") or []:
+    return PlannedEvent("recommendation", "recommendation", AGENT_PRINCIPAL, "recommend", "ok", None, details)
+
+
+def refused_attempt_events(record: Mapping[str, Any]) -> list[PlannedEvent]:
+    """One decision_refused event per refused submission (actor: whoever the submission claimed to be)."""
+    events = []
+    for index, attempt in enumerate(record.get("rejected_reviewer_attempts") or []):
         submitted = attempt.get("submitted") if isinstance(attempt.get("submitted"), dict) else {}
-        details = {**base, "submitted_action": str(submitted.get("action"))[:MAX_SHORT_TEXT]}
+        details = {"submitted_action": str(submitted.get("action"))[:MAX_SHORT_TEXT]}
         reason = "; ".join(str(error) for error in attempt.get("errors") or [])[: MAX_SHORT_TEXT * 5]
         actor = claimed_principal(submitted)
-        written.append(
-            log.append("decision_refused", actor, "decide_file", resource, "refused", reason, details, redactor)
-        )
+        key = f"decision_refused:{index}"
+        events.append(PlannedEvent(key, "decision_refused", actor, "decide_file", "refused", reason, details))
+    return events
+
+
+def decision_events(record: Mapping[str, Any]) -> list[PlannedEvent]:
+    """The accepted decision and, when it differs from the recommendation, an override (actor: the reviewer)."""
     reviewer = record.get("reviewer") or {}
     action = str(reviewer.get("action"))
     actor = claimed_principal(reviewer)
-    decision_details = {
-        **base,
-        "final_status": record.get("final_status"),
-        "reference_recommendation": record.get("reference_recommendation"),
-        "is_override": bool(reviewer.get("is_override")),
-        "rationale": reviewer.get("rationale"),
-    }
+    events = []
     event_type = DECISION_EVENT_TYPES.get(action)
     if event_type is not None:
-        written.append(log.append(event_type, actor, action, resource, "ok", None, decision_details, redactor))
+        details = {
+            "final_status": record.get("final_status"),
+            "reference_recommendation": record.get("reference_recommendation"),
+            "is_override": bool(reviewer.get("is_override")),
+            "rationale": reviewer.get("rationale"),
+        }
+        events.append(PlannedEvent("decision", event_type, actor, action, "ok", None, details))
     if reviewer.get("is_override"):
-        override = {
-            **base,
+        details = {
             "action": action,
             "override_reason": reviewer.get("override_reason"),
             "reference_recommendation": record.get("reference_recommendation"),
         }
-        written.append(log.append("override", actor, action, resource, "ok", None, override, redactor))
+        events.append(PlannedEvent("override", "override", actor, action, "ok", None, details))
+    return events
+
+
+def decision_record_events(record: Mapping[str, Any]) -> list[PlannedEvent]:
+    """Every event a stored decision record holds, in the order they are logged."""
+    return [
+        *tool_call_events(record),
+        recommendation_event(record),
+        *refused_attempt_events(record),
+        *decision_events(record),
+    ]
+
+
+def audit_decision_record(
+    log: AuditLog, record: Mapping[str, Any], redactor: PiiRedactor | None = None
+) -> list[dict[str, Any]]:
+    """Log the events a stored agent decision record holds; idempotent PER EVENT. Returns the new events.
+
+    In order: one tool_call per tool call (actor: the agent), the recommendation (the agent), each refused decision
+    attempt (the claimed reviewer), the accepted decision (the claimed reviewer), and an override when the decision
+    differs from the recommendation. The record itself is not copied: events hold ids, statuses and redacted text.
+
+    Every event carries details.decision_record_id and a stable details.event_key ("tool_call:0", "recommendation",
+    "decision_refused:0", "decision", "override"). A replay writes only the events whose key is not in the log yet,
+    so a run interrupted after its first events is completed, not skipped. Call it from the one process that wrote
+    the record: two processes replaying the same record at the same moment could both write a missing event.
+
+    redactor: pass observability.redaction.redactor_for_application(application) so the applicant's and owners'
+    names are masked too; without it only patterns (FEIN, SSN, e-mail, phone, account numbers) and sensitive keys
+    (rationale, notes, ...) are masked, because names cannot be found by pattern.
+    """
+    record_id = str(record["record_id"])
+    resource = Resource("file", str(record.get("application_id") or "unknown"))
+    logged = audited_event_keys(log, record_id)
+    written = []
+    for planned in decision_record_events(record):
+        if planned.event_key in logged:
+            continue
+        details = {"decision_record_id": record_id, "event_key": planned.event_key, **planned.details}
+        event = log.append(
+            planned.event_type,
+            planned.actor,
+            planned.action,
+            resource,
+            outcome=planned.outcome,
+            reason=planned.reason,
+            details=details,
+            redactor=redactor,
+        )
+        written.append(event)
     return written

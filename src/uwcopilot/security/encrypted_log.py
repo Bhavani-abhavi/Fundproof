@@ -25,7 +25,13 @@ Trade-off of keeping the chain fields in clear (docs/security.md):
 - the envelope hash covers the ciphertext, and Fernet encryption is randomized, so the same record written twice
   (in two logs) gets two different record_sha256 values. Replay checks must compare decrypted records, not hashes;
 - like DecisionLog, the chain alone does not detect a truncated tail, and someone who can rewrite the whole file
-  can rebuild a consistent chain (but cannot forge payloads without the key). Anchor the latest hash elsewhere.
+  can rebuild a consistent chain (but cannot forge payloads without the key). Anchor the latest hash elsewhere;
+- key rotation: re-encrypting a payload under a new key would change its record_sha256 and every later hash, so
+  records stay under the key they were written with and that key must stay in UWC_FERNET_KEY (there is no
+  re-encryption tool).
+
+Never mix plaintext and encrypted records in one file: append() refuses a file that holds plaintext records. (A plain
+DecisionLog pointed at an encrypted file would append plaintext; give the two logs different paths.)
 """
 
 import json
@@ -38,6 +44,11 @@ from uwcopilot.security.crypto import CryptoError, Encryptor
 
 PAYLOAD_ENCRYPTION = "fernet"
 CHAIN_FIELDS: tuple[str, ...] = ("schema_version", "previous_record_sha256", "record_sha256")
+
+
+def is_envelope(line: dict[str, Any]) -> bool:
+    """True when a stored line is an encrypted envelope (not a plaintext decision record)."""
+    return line.get("payload_encryption") == PAYLOAD_ENCRYPTION and isinstance(line.get("payload"), str)
 
 
 class EncryptedDecisionLog(DecisionLog):
@@ -55,7 +66,7 @@ class EncryptedDecisionLog(DecisionLog):
 
     def open_envelope(self, envelope: dict[str, Any]) -> dict[str, Any]:
         """The decrypted record plus the envelope's chain fields; CryptoError if the payload does not fit the line."""
-        if envelope.get("payload_encryption") != PAYLOAD_ENCRYPTION or not isinstance(envelope.get("payload"), str):
+        if not is_envelope(envelope):
             raise CryptoError(f"line for {envelope.get('record_id')!r} has no Fernet payload")
         plaintext = self._encryptor.decrypt(envelope["payload"].encode("ascii"))
         record = json.loads(plaintext.decode("utf-8"))
@@ -77,9 +88,19 @@ class EncryptedDecisionLog(DecisionLog):
         return None
 
     def append(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Encrypt and append one record (idempotent by record_id); return it decrypted with its chain fields."""
+        """Encrypt and append one record (idempotent by record_id); return it decrypted with its chain fields.
+
+        Refuses (CryptoError) to append to a file that already holds plaintext records: mixing the two would leave
+        names in clear next to the ciphertext. Use a new file for encrypted records.
+        """
         if "record_id" not in record:
             raise ValueError("a decision record needs a record_id")
+        plaintext = [index for index, line in enumerate(self.envelopes()) if not is_envelope(line)]
+        if plaintext:
+            raise CryptoError(
+                f"{self.path.name} holds {len(plaintext)} plaintext record(s) (first: line {plaintext[0] + 1}); "
+                "encrypted records go to a separate file"
+            )
         token = self._encryptor.encrypt(canonical_json(record).encode("utf-8"))
         envelope = {
             "record_id": record["record_id"],

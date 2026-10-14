@@ -6,12 +6,15 @@
 
 The file is checked when it is loaded, so a mistake fails loudly instead of quietly granting access:
 - unknown keys are refused at every level;
-- the approval thresholds must be zero or more, one per business line;
+- the approval thresholds must be finite numbers, zero or more, one per business line (YAML .nan or .inf is refused:
+  every comparison with NaN is False, so a NaN threshold would let any amount through);
 - a packet access list may only name document-viewing roles (underwriter, senior_underwriter): granting documents
   to a model_validator or an admin is refused, because security/rbac.py would never honour it anyway;
-- principal ids must look like the reviewer ids the checkpoint accepts.
+- principal ids must look like the reviewer ids the checkpoint accepts;
+- packet ids must be plain (PACKET_ID_PATTERN, no '..'), and two entries may not differ only in case.
 """
 
+import math
 import re
 from functools import cache
 from pathlib import Path
@@ -28,6 +31,17 @@ SECURITY_CONFIG_VERSION = 1
 DOCUMENT_ROLES: tuple[str, ...] = REVIEWER_ROLES
 PRINCIPAL_ID_PATTERN = r"^[A-Za-z0-9_.@:-]{1,128}$"
 PACKET_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+
+
+def is_plain_packet_id(packet_id: object) -> bool:
+    """True for a plain packet id: a string matching PACKET_ID_PATTERN with no '..' (so it is a safe folder name).
+
+    Used by the config, the access check (security/rbac.py) and the packet store, so all three agree on what a packet
+    id is. Anything else (a trailing space or newline, a slash, '..') is not a packet id and is refused.
+    """
+    if not isinstance(packet_id, str) or ".." in packet_id:
+        return False
+    return re.fullmatch(PACKET_ID_PATTERN, packet_id) is not None
 
 
 class SecurityConfigError(ValueError):
@@ -85,15 +99,32 @@ class PacketAcl(BaseModel):
     @field_validator("packets")
     @classmethod
     def packet_ids_are_plain(cls, packets: dict[str, PacketAclEntry]) -> dict[str, PacketAclEntry]:
-        """Packet ids are plain names (letters, digits, '_', '.', '-')."""
+        """Packet ids are plain names (letters, digits, '_', '.', '-'; no '..'), and no two differ only in case."""
+        seen: dict[str, str] = {}
         for packet_id in packets:
-            if re.fullmatch(PACKET_ID_PATTERN, packet_id) is None:
-                raise ValueError(f"packet id {packet_id!r} must match {PACKET_ID_PATTERN}")
+            if not is_plain_packet_id(packet_id):
+                raise ValueError(f"packet id {packet_id!r} must match {PACKET_ID_PATTERN} and must not contain '..'")
+            folded = packet_id.casefold()
+            if folded in seen:
+                raise ValueError(f"packet ids {seen[folded]!r} and {packet_id!r} differ only in case")
+            seen[folded] = packet_id
         return packets
 
     def entry_for(self, packet_id: str) -> PacketAclEntry | None:
-        """The packet's own entry, or None when the default roles apply."""
+        """The packet's own entry (exact id), or None when the default roles apply."""
         return self.packets.get(packet_id)
+
+    def case_variant_of(self, packet_id: str) -> str | None:
+        """The listed packet id that equals packet_id except for case ('pkt-c-024' for 'PKT-C-024'), or None.
+
+        security/rbac.py refuses such a variant instead of applying the default roles to it, so changing the case
+        of a restricted packet's id never escapes its access list.
+        """
+        folded = packet_id.casefold()
+        for listed in self.packets:
+            if listed != packet_id and listed.casefold() == folded:
+                return listed
+        return None
 
 
 class SecurityConfig(BaseModel):
@@ -116,10 +147,12 @@ class SecurityConfig(BaseModel):
     @field_validator("senior_approval_above")
     @classmethod
     def thresholds_are_not_negative(cls, thresholds: dict[str, float]) -> dict[str, float]:
-        """A threshold is an amount in USD, zero or more."""
+        """A threshold is a finite amount in USD, zero or more (NaN and infinity are refused)."""
         if not thresholds:
             raise ValueError("at least one business line needs a threshold")
         for line, amount in thresholds.items():
+            if not math.isfinite(amount):
+                raise ValueError(f"the threshold for {line!r} must be a finite number, not {amount}")
             if amount < 0:
                 raise ValueError(f"the threshold for {line!r} must be zero or more")
         return thresholds

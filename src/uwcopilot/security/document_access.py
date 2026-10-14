@@ -1,23 +1,37 @@
 """Document-level permissions: what a principal may see of a file's review payload and of a packet's PDF.
 
-    review = review_for_principal(review, principal, packet_id="PKT-C-024", audit=log)  # needs view_file
-    pdf = read_packet_for(principal, "PKT-C-024", store, audit=log)                     # needs view_documents
+    review = review_for_principal(review, principal, audit=log, store=store)  # needs view_file
+    pdf = read_packet_for(principal, "PKT-C-024", store, audit=log)          # needs view_documents
 
 Two permissions (security/rbac.py):
 - view_file: the review payload at the human checkpoint (recommendation, findings, limits, tool statuses).
   Without it, nothing is shown: AccessDenied.
 - view_documents: the packet's documents and extraction (page text, extracted fields, document checks,
   contradictions, field provenance, quoted excerpts). It needs a document-viewing role AND the packet access list
-  (config/security.yaml). Without it the review payload is still shown, with every document-content part replaced
-  by WITHHELD, and document_access says why.
+  (config/security.yaml). Without it the review payload is still shown, with every document part replaced by
+  WITHHELD, and document_access says why and which keys were withheld.
 
-What counts as document content is listed here, in one place:
-- DOCUMENT_CONTENT_KEYS: top-level review keys that hold document content (spec Phase 5 A names: extraction,
-  document_checks, contradictions, field_provenance, plus page_texts and documents). The packet intake that adds
-  them to the review payload (Phase 5 A, not built yet) must add any NEW document key here;
-- DOCUMENT_TEXT_KEYS: keys that quote document or applicant text wherever they appear (for example the excerpt of
-  an injection hit). Withheld anywhere in the payload.
-Everything else (ids, rule codes, numbers, statuses, the memo) stays visible: the reviewer needs it to act.
+What may be shown WITHOUT document permission is listed here, in one place, and everything else is withheld
+(fail closed):
+- REVIEW_KEYS_WITHOUT_DOCUMENT_CONTENT: the top-level keys agent.hitl.build_review_request returns today (ids, rule
+  codes, numbers, statuses, the memo, limits) plus packet_id and packet_sha256. They stay visible because the
+  reviewer needs them to act;
+- DOCUMENT_TEXT_KEYS: keys that quote document or applicant text wherever they appear inside those visible parts
+  (for example the excerpt of an injection hit). Withheld at any depth;
+- any OTHER top-level key is withheld, including the document keys the packet intake will add (Phase 5 A, not
+  built yet: extraction, document_checks, contradictions, field_provenance, page texts). A new key the reviewer
+  needs without document permission must be added to REVIEW_KEYS_WITHOUT_DOCUMENT_CONTENT on purpose;
+  tests/security/test_document_access.py runs a real agent and fails if build_review_request gains a key that is
+  in neither list.
+
+Which packet's access list applies (fail closed):
+- only the review's OWN packet_id (set by whoever built the review from the packet) decides it. A packet_id passed
+  by the caller (for example taken from a URL) can only confirm it: if the two differ, or the caller names a packet
+  and the review names none, every document part is withheld;
+- the id must be a plain packet id, and an id that differs from a listed packet only in case is refused
+  (security/rbac.py), so a different spelling never falls back to the default roles;
+- with store= given, the packet must be in the encrypted packet store and the review's packet_sha256 must equal the
+  stored SHA-256, so the label is tied to the bytes the documents came from. The packet intake should pass it.
 
 Every call writes an audit event when an AuditLog is given: view, or access_denied.
 """
@@ -25,11 +39,47 @@ Every call writes an audit event when an AuditLog is given: view, or access_deni
 from typing import Any
 
 from uwcopilot.security.audit import AuditLog, record_access
-from uwcopilot.security.config import SecurityConfig
-from uwcopilot.security.packet_store import EncryptedPacketStore
+from uwcopilot.security.config import SecurityConfig, is_plain_packet_id
+from uwcopilot.security.packet_store import EncryptedPacketStore, PacketStoreError
 from uwcopilot.security.rbac import Decision, Principal, Resource, authorize
 
 WITHHELD = "[WITHHELD: no document permission for this packet]"
+# What an audit event names instead of a packet id that is not a plain id (the text could be anything).
+NOT_A_PACKET_ID = "not-a-plain-packet-id"
+# The review keys of agent.hitl.build_review_request that hold no document content (ids, codes, numbers, statuses),
+# plus the packet's id and SHA-256 (a hash reveals nothing of the PDF).
+REVIEW_KEYS_WITHOUT_DOCUMENT_CONTENT: frozenset[str] = frozenset(
+    {
+        "application_id",
+        "line",
+        "data_label",
+        "reference_recommendation",
+        "memo_recommendation",
+        "memo",
+        "memo_status",
+        "memo_check",
+        "escalations",
+        "referral_targets",
+        "review_queue",
+        "blocking_open",
+        "required_reviewer_role",
+        "authority_exposure",
+        "approval_limits",
+        "allowed_actions",
+        "tool_results",
+        "tool_rejections",
+        "injection_hits",
+        "not_evaluated",
+        "llm",
+        "stamp",
+        "previous_rejections",
+        "instructions",
+        "packet_id",
+        "packet_sha256",
+    }
+)
+# The document keys the packet intake is specified to add (Phase 5 A). Listed so the docs and tests can name them;
+# they are withheld because they are not in REVIEW_KEYS_WITHOUT_DOCUMENT_CONTENT, not because they are listed here.
 DOCUMENT_CONTENT_KEYS: frozenset[str] = frozenset(
     {"extraction", "document_checks", "contradictions", "field_provenance", "page_texts", "documents"}
 )
@@ -57,13 +107,43 @@ def withhold_text(value: Any) -> Any:
     return value
 
 
+def document_keys_in(review: dict[str, Any]) -> list[str]:
+    """The top-level keys of a review payload that may hold document content (every key not known to be safe)."""
+    return sorted(key for key in review if key not in REVIEW_KEYS_WITHOUT_DOCUMENT_CONTENT)
+
+
 def hide_document_content(review: dict[str, Any], decision: Decision, packet_id: str | None) -> dict[str, Any]:
     """The review payload with document content withheld unless decision allows it; adds document_access."""
-    access = {"packet_id": packet_id, "allowed": decision.allowed, "reason": decision.reason}
     if decision.allowed:
+        access = {"packet_id": packet_id, "allowed": True, "reason": decision.reason, "withheld": []}
         return {**review, "document_access": access}
-    hidden = {key: (WITHHELD if key in DOCUMENT_CONTENT_KEYS else value) for key, value in review.items()}
+    withheld = document_keys_in(review)
+    hidden = {key: (WITHHELD if key in withheld else value) for key, value in review.items()}
+    access = {"packet_id": packet_id, "allowed": False, "reason": decision.reason, "withheld": withheld}
     return {**withhold_text(hidden), "document_access": access}
+
+
+def packet_resource_for(packet_id: object) -> Resource:
+    """The resource an AUDIT EVENT names for a packet: the id when it is plain, else NOT_A_PACKET_ID.
+
+    Only for the audit log (an id that is not plain could hold any text). Authorize on the real id, never on this.
+    """
+    if is_plain_packet_id(packet_id):
+        return Resource("packet", str(packet_id))
+    return Resource("packet", NOT_A_PACKET_ID)
+
+
+def store_binding_problem(review: dict[str, Any], packet_id: str, store: EncryptedPacketStore) -> str | None:
+    """Why the review's packet label does not match the packet store, or None when it does."""
+    try:
+        if not store.has(packet_id):
+            return "the review's packet is not in the packet store; withheld"
+        stored_sha256 = store.meta(packet_id).sha256
+    except PacketStoreError as error:
+        return f"the review's packet cannot be checked against the packet store ({error}); withheld"
+    if review.get("packet_sha256") != stored_sha256:
+        return "the review's packet_sha256 does not match the stored packet; withheld"
+    return None
 
 
 def review_for_principal(
@@ -72,11 +152,15 @@ def review_for_principal(
     packet_id: str | None = None,
     audit: AuditLog | None = None,
     config: SecurityConfig | None = None,
+    store: EncryptedPacketStore | None = None,
 ) -> dict[str, Any]:
-    """The review payload this principal may see. AccessDenied without view_file.
+    """The review payload this principal may see. AccessDenied without view_file. The input is never changed.
 
-    packet_id: the packet the file came from, or None for a structured application. A structured application has
-    no packet documents, so nothing is withheld and document_access.allowed is None (not applicable).
+    The packet whose access list applies is the review's own "packet_id". packet_id (optional) is the packet the
+    caller expects: when it differs from the review's, or the review names none, document content is withheld.
+    A review with no packet_id is a structured application: nothing is withheld and document_access.allowed is None
+    (not applicable), unless it holds document keys, which are then withheld (no packet, no access list to grant
+    them). store (optional): also require the packet to be stored with the review's packet_sha256.
     """
     file_id = str(review.get("application_id") or "unknown")
     file_resource = Resource("file", file_id)
@@ -85,14 +169,32 @@ def review_for_principal(
         record_access(audit, principal, "view_file", file_resource, file_decision)
     if not file_decision.allowed:
         raise AccessDenied(file_decision)
-    if packet_id is None:
-        not_applicable = {"packet_id": None, "allowed": None, "reason": "structured application: no packet documents"}
+    named = review.get("packet_id")
+    if packet_id is not None and named != packet_id:
+        mismatch = Decision(False, "the packet id given does not match the review's own packet_id; withheld")
+        if audit is not None:
+            record_access(audit, principal, "view_documents", packet_resource_for(packet_id), mismatch)
+        return hide_document_content(review, mismatch, None if named is None else str(named))
+    if named is None:
+        if document_keys_in(review):
+            no_packet = Decision(False, "the review holds document content but names no packet; withheld")
+            return hide_document_content(review, no_packet, None)
+        not_applicable = {
+            "packet_id": None,
+            "allowed": None,
+            "reason": "structured application: no packet documents",
+            "withheld": [],
+        }
         return {**review, "document_access": not_applicable}
-    packet_resource = Resource("packet", packet_id)
-    document_decision = authorize(principal, "view_documents", packet_resource, config)
+    packet_resource = packet_resource_for(named)
+    document_decision = authorize(principal, "view_documents", Resource("packet", str(named)), config)
+    if document_decision.allowed and store is not None:
+        problem = store_binding_problem(review, str(named), store)
+        if problem is not None:
+            document_decision = Decision(False, problem)
     if audit is not None:
         record_access(audit, principal, "view_documents", packet_resource, document_decision)
-    return hide_document_content(review, document_decision, packet_id)
+    return hide_document_content(review, document_decision, str(named))
 
 
 def read_packet_for(
@@ -102,17 +204,22 @@ def read_packet_for(
     audit: AuditLog | None = None,
     config: SecurityConfig | None = None,
 ) -> bytes:
-    """The decrypted packet PDF, only for a principal allowed to view its documents (AccessDenied otherwise)."""
-    resource = Resource("packet", packet_id)
-    decision = authorize(principal, "view_documents", resource, config)
+    """The decrypted packet PDF, only for a principal allowed to view its documents (AccessDenied otherwise).
+
+    The store is not touched (nothing is decrypted) when access is denied.
+    """
+    decision = authorize(principal, "view_documents", Resource("packet", packet_id), config)
     if audit is not None:
-        record_access(audit, principal, "view_documents", resource, decision, {"what": "packet_pdf"})
+        audited = packet_resource_for(packet_id)
+        record_access(audit, principal, "view_documents", audited, decision, {"what": "packet_pdf"})
     if not decision.allowed:
         raise AccessDenied(decision)
     return store.get(packet_id)
 
 
-def audit_events_for(principal: Principal, audit: AuditLog, config: SecurityConfig | None = None) -> list[dict]:
+def audit_events_for(
+    principal: Principal, audit: AuditLog, config: SecurityConfig | None = None
+) -> list[dict[str, Any]]:
     """The audit events, only for a principal allowed to view the audit log; reading them is itself logged."""
     resource = Resource("audit_log", audit.path.name)
     decision = authorize(principal, "view_audit_log", resource, config)

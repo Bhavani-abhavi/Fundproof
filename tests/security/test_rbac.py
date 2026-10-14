@@ -7,8 +7,8 @@ must change both. Roles are CLAIMED in this demo; these tests show the rules, no
 from pathlib import Path
 
 import pytest
-from agent.agent_helpers import SENIOR_REFER, committed_by_scenario, credit_app, make_deps, memory_agent
 
+from agent.agent_helpers import SENIOR_REFER, committed_by_scenario, credit_app, make_deps, memory_agent
 from uwcopilot.agent.applications import screened_parties
 from uwcopilot.agent.decision_record import DecisionLog
 from uwcopilot.agent.hitl import APPROVAL_LIMITS, validate_decision
@@ -145,6 +145,14 @@ def test_approval_needs_a_known_line_and_a_positive_amount() -> None:
     assert not authorize(senior, "approve_file", Resource("file", "A", line="credit"), config()).allowed
     assert not authorize(senior, "approve_file", Resource("file", "A", line="auto", amount=10), config()).allowed
     assert not authorize(senior, "approve_file", Resource("file", "A", line="credit", amount=0), config()).allowed
+
+
+@pytest.mark.parametrize("amount", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("role", [UW, SENIOR])
+def test_approval_needs_a_finite_amount(role: str, amount: float) -> None:
+    """NaN fails both '<= 0' and '> threshold', so without an explicit check it would be allowed."""
+    decision = authorize(principal(role), "approve_file", Resource("file", "A", line="credit", amount=amount), config())
+    assert not decision.allowed and "finite" in decision.reason
 
 
 def test_the_threshold_comes_from_the_config() -> None:

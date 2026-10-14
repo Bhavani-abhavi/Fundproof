@@ -157,8 +157,9 @@ To find your id: sign in once, open `/api/me`, copy `subject`. The plain form `h
 local development), but in a Space the app logs a startup warning for every unpinned entry. Stored data is keyed
 by the same stable subject id (`hf_oauth:<sub>`), never by the username.
 
-Feature routers protect endpoints with one dependency (there is no `src/uwcopilot/security/rbac.py` yet, so the
-role logic lives in `web/auth.py`; move it there if the Phase 5 RBAC module appears):
+Feature routers protect endpoints with one dependency. The role logic still lives in `web/auth.py`:
+`src/uwcopilot/security/rbac.py` now exists (Phase 5 B), but the web has not adopted it yet; the adoption steps are
+in docs/security.md ("Web adoption"):
 
 ```python
 from typing import Annotated

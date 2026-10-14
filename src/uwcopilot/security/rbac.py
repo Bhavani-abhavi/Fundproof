@@ -22,6 +22,9 @@ The authorization table (docs/security.md has the same table with the reasons):
 | view_audit_log               | no                     | no                 | no              | yes   |
 
 - The threshold is config/security.yaml senior_approval_above[line]: above it only a senior_underwriter may approve.
+  The amount must be a positive, finite number (NaN is denied: every comparison with NaN is False).
+- view_documents needs a plain packet id (config.is_plain_packet_id). A packet with its own access list is looked
+  up by its exact id; an id that differs from a listed one only in case is denied, never given the default roles.
 - A file decision that authorize() allows is still checked at the human checkpoint by agent.hitl.validate_decision
   (blocking referrals, overrides, the senior underwriter's own ceiling, startup rules). authorize() is the coarse
   "may this role act at all" gate; validate_decision() is the guideline gate. Both must say yes.
@@ -31,13 +34,20 @@ The authorization table (docs/security.md has the same table with the reasons):
 - Anything not in the table (an unknown action or role) is denied.
 """
 
+import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from uwcopilot.agent.vocab import ACCESS_ROLES, REVIEWER_ROLES
-from uwcopilot.security.config import PRINCIPAL_ID_PATTERN, SecurityConfig, default_security_config
+from uwcopilot.security.config import (
+    PACKET_ID_PATTERN,
+    PRINCIPAL_ID_PATTERN,
+    SecurityConfig,
+    default_security_config,
+    is_plain_packet_id,
+)
 
 # Two roles that are not access roles and are never authorized for anything: "system" is the agent process itself,
 # "unknown" an actor whose claimed role was not recognised (kept only so an audit event can name the attempt).
@@ -164,8 +174,8 @@ def approval_decision(principal: Principal, resource: Resource | None, config: S
     thresholds = config.senior_approval_above
     if resource.line not in thresholds:
         return deny(f"no approval threshold is configured for line {resource.line!r}")
-    if resource.amount <= 0:
-        return deny("approve_file needs a positive amount")
+    if not math.isfinite(resource.amount) or resource.amount <= 0:
+        return deny("approve_file needs a positive, finite amount")
     if principal.role == "senior_underwriter":
         return allow(
             "senior_underwriter may approve_file; the guideline limits are still checked at the human checkpoint"
@@ -183,8 +193,12 @@ def document_decision(principal: Principal, resource: Resource | None, config: S
     """view_documents for a role that may view documents: the packet's access list, else the default roles."""
     if resource is None or resource.kind != "packet" or not resource.resource_id:
         return deny("view_documents needs a packet")
+    if not is_plain_packet_id(resource.resource_id):
+        return deny(f"view_documents needs a plain packet id ({PACKET_ID_PATTERN}, no '..')")
     acl = config.packet_acl
     entry = acl.entry_for(resource.resource_id)
+    if entry is None and acl.case_variant_of(resource.resource_id) is not None:
+        return deny("the packet id differs only in case from a packet with its own access list; use the exact id")
     if entry is None:
         if principal.role in acl.default_roles:
             return allow(f"{principal.role} may view the documents of packets without their own access list")

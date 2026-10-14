@@ -4,12 +4,13 @@
 # someone is. See docs/security.md.
 version: 1
 
-# An underwriter may approve a file only up to this amount (USD); above it only a senior_underwriter may.
-# The amount is the requested amount for credit and startup credit, and the schedule TIV for insurance.
-# These numbers mirror the underwriter limits in agent.hitl.APPROVAL_LIMITS (NBC-7.2, HM-9.2, NSP-9.1: an
-# underwriter cannot approve any startup file, so that limit is 0). tests/security/test_rbac.py checks that the two
-# agree. The guideline limits (including the senior underwriter's own ceiling) are still enforced at the human
-# checkpoint by agent.hitl.validate_decision.
+# security.rbac.authorize("approve_file") lets an underwriter approve a file only up to this amount (USD); above it
+# only a senior_underwriter may. The amount is the requested amount for credit and startup credit, and the schedule
+# TIV for insurance. Values must be finite numbers, zero or more (.nan and .inf are refused).
+# NOTE: no runtime path calls authorize("approve_file") yet. At runtime the human checkpoint
+# (agent.hitl.validate_decision) enforces the same numbers from its own copy, agent.hitl.APPROVAL_LIMITS
+# (NBC-7.2, HM-9.2, NSP-9.1: an underwriter cannot approve any startup file, so that limit is 0).
+# tests/security/test_rbac.py fails if the two disagree, so editing this file alone changes nothing at runtime.
 senior_approval_above:
   credit: 150000
   insurance: 5000000

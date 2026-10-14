@@ -483,3 +483,13 @@ studio-narrative-test:  ## Founder ledger and narrative tests only (offline)
 
 risk-contract-test:  ## Risk client <-> scoring service contract, round trips and domain-gap tests (offline)
 	uv run pytest -q tests/risk/test_client_service_integration.py tests/risk/test_service.py tests/test_risk_client.py
+
+# Phase 5 part B: roles (CLAIMED in this demo), packet access lists, Fernet encryption at rest and hash-chained audit
+# events. See docs/security.md. `make test-security` runs these together with the S2 containment tests.
+.PHONY: security-access-test verify-audit
+
+security-access-test:  ## RBAC matrix, packet ACLs, encryption at rest and audit-chain tests only (offline, test keys)
+	uv run pytest -q tests/security/test_rbac.py tests/security/test_document_access.py tests/security/test_crypto.py tests/security/test_audit.py
+
+verify-audit:  ## Check the audit log chain + head anchor (UWC_AUDIT_LOG; no key). ARGS="--decision-log <file>" adds logs
+	uv run python scripts/verify_audit.py $(ARGS)

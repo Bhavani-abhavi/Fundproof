@@ -21,7 +21,6 @@ the packet access list); security/document_access.py combines the two and writes
 
 import hashlib
 import json
-import re
 import shutil
 import tempfile
 from collections.abc import Callable, Iterator
@@ -31,7 +30,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from uwcopilot.security.config import PACKET_ID_PATTERN
+from uwcopilot.security.config import PACKET_ID_PATTERN, is_plain_packet_id
 from uwcopilot.security.crypto import Encryptor
 from uwcopilot.security.fileio import write_private_file
 
@@ -64,7 +63,7 @@ def utc_now() -> datetime:
 
 def check_packet_id(packet_id: str) -> str:
     """A packet id is a plain folder name (no slashes, no '..'); PacketStoreError otherwise."""
-    if re.fullmatch(PACKET_ID_PATTERN, packet_id) is None or ".." in packet_id:
+    if not is_plain_packet_id(packet_id):
         raise PacketStoreError(f"packet id must match {PACKET_ID_PATTERN} and must not contain '..'")
     return packet_id
 

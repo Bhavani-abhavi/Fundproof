@@ -5,10 +5,13 @@ in clear (security/encrypted_log.py).
 
 What is detected in the audit log: an edited event, a deleted event, reordered events and a truncated tail (by the
 head anchor). Someone who can rewrite both the log and its head file can rebuild a consistent chain, so keep a copy
-of the printed head (count and hash) elsewhere and pass it back with --expect-count and --expect-head.
+of the printed head (count and hash) elsewhere and pass it back later with --expect-count and --expect-head. The copy
+is checked as a prefix: the log may have grown since it was taken (normal), but the events up to it must be
+unchanged. Events appended after the copy are covered only by the stored head, so refresh the copy regularly.
 
 Decision logs (agent.decision_record.DecisionLog and security.encrypted_log.EncryptedDecisionLog) have no head
-anchor: their chain detects edits, deletions and reordering, not a truncated tail.
+anchor: their chain detects edits, deletions and reordering, not a truncated tail. A line that is no longer valid
+JSON is reported by its line number.
 
 Examples:
     uv run python scripts/verify_audit.py
@@ -20,11 +23,13 @@ Exit code 0 when everything checked is intact, 1 otherwise.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from uwcopilot.agent.decision_record import DecisionLog
 from uwcopilot.security.audit import AuditHead, AuditLog
+from uwcopilot.security.fileio import jsonl_lines
 from uwcopilot.security.settings import load_security_settings
 
 
@@ -57,23 +62,44 @@ def check_audit_log(args: argparse.Namespace) -> list[str]:
         for problem in problems:
             print(f"  - {problem}")
         return problems
-    head = expected or log.head()
-    count = head.count if head else 0
+    count = len(log.events())
     print(f"Audit log {path}: intact ({count} events)")
+    if expected is not None:
+        print(
+            f"  the anchor kept elsewhere still matches event {expected.count}; "
+            f"{count - expected.count} event(s) were appended after it"
+        )
+    head = log.head()
     if head is not None:
         print(f"  head anchor: count={head.count} head_hash={head.head_hash}")
         print("  Keep a copy of this anchor somewhere the log's writer cannot change.")
     return problems
 
 
+def unreadable_lines(path: Path) -> list[str]:
+    """Lines of a decision log that are not a JSON object (edited or cut off), by line number."""
+    problems = []
+    for number, line in enumerate(jsonl_lines(path.read_text(encoding="utf-8")), start=1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            problems.append(f"line {number}: not valid JSON (edited or cut off)")
+            continue
+        if not isinstance(value, dict):
+            problems.append(f"line {number}: not a JSON object (edited)")
+    return problems
+
+
 def check_decision_log(path: Path) -> list[str]:
-    """Print and return one decision log's chain problems (no key needed)."""
+    """Print and return one decision log's problems: unreadable lines, else chain problems (no key needed)."""
     if not path.is_file():
         problem = f"no decision log at {path}"
         print(f"Decision log {path}: {problem}")
         return [problem]
     log = DecisionLog(path)
-    problems = log.verify_chain()
+    problems = unreadable_lines(path) or log.verify_chain()
     if problems:
         print(f"Decision log {path}: {len(problems)} problem(s)")
         for problem in problems:

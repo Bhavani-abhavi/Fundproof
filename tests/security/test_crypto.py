@@ -8,8 +8,8 @@ import stat
 from pathlib import Path
 
 import pytest
-from agent.agent_helpers import committed_by_scenario, make_deps, memory_agent
 
+from agent.agent_helpers import committed_by_scenario, make_deps, memory_agent
 from uwcopilot.agent.decision_record import DecisionLog, record_hash
 from uwcopilot.agent.runner import resume_run, start_run
 from uwcopilot.evidence.record import append_record
@@ -145,6 +145,15 @@ def test_encrypted_log_detects_payloads_swapped_between_lines(tmp_path: Path) ->
     assert log.verify_chain() == []  # the forger re-chained it
     problems = log.verify_payloads()
     assert len(problems) == 2 and all("belongs to another record" in problem for problem in problems)
+
+
+def test_encrypted_log_refuses_a_file_with_plaintext_records(tmp_path: Path) -> None:
+    path = tmp_path / "records.jsonl"
+    DecisionLog(path).append(record("DR-plain"))
+    log = EncryptedDecisionLog(path, new_encryptor())
+    with pytest.raises(CryptoError, match="plaintext record"):
+        log.append(record("DR-enc"))
+    assert len(DecisionLog(path).records()) == 1  # nothing was appended
 
 
 def test_encrypted_log_is_a_drop_in_for_the_evidence_records(tmp_path: Path) -> None:
