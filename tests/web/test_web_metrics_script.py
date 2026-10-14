@@ -424,44 +424,47 @@ def test_optimize_png_reports_what_it_did(tmp_path: Path) -> None:
     assert "was not smaller" in web_metrics.optimize_png(path)
 
 
-def fake_git(head: str, status: str) -> Any:
-    """A stand-in for web_metrics.git_output with a fixed HEAD and `git status --porcelain` text."""
+def fake_git(head: str, status: str, commits: tuple[str, ...] = ()) -> Any:
+    """A stand-in for web_metrics.git_output: a fixed HEAD, `git status --porcelain` text and known commits."""
 
     def run(*arguments: str) -> str | None:
         if arguments[:1] == ("rev-parse",):
             return head + "\n"
         if arguments[:1] == ("status",):
             return status
+        if arguments[:1] == ("cat-file",):
+            return "" if arguments[2].removesuffix("^{commit}") in (head, *commits) else None
         return "diff --git a/x b/x\n"
 
     return run
 
 
-def test_a_clean_stamped_build_is_reproducible(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_image_stamped_with_a_commit_is_reproducible(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
     checked = web_metrics.reproducibility("a" * 40)
-    assert checked["reproducible"] is True and checked["reasons"] == []
+    assert checked["reproducible"] is True and checked["reasons"] == [] and checked["server_is_head"] is True
     assert checked["working_tree_digest_sha256"] is None
+    # An older commit is fine too, and later edits to the checkout do not change a committed image.
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, " M notes.md\n", commits=("c" * 40,)))
+    older = web_metrics.reproducibility("c" * 40)
+    assert older["reproducible"] is True and older["server_is_head"] is False and older["working_tree_dirty"] is True
 
 
 @pytest.mark.parametrize(
-    ("server_sha", "status", "expected"),
+    ("server_sha", "expected"),
     [
-        ("a" * 40, " M src/app.py\n", "uncommitted changes"),
-        (None, "", "does not name its commit"),
-        ("b" * 40, "", "not HEAD"),
-        ("a" * 40 + "-dirty", "", "uncommitted tree"),
+        (None, "does not name its commit"),
+        ("b" * 40, "not a commit of this repository"),
+        ("a" * 40 + "-dirty", "uncommitted tree"),
     ],
 )
 def test_an_unreproducible_build_says_why(
-    monkeypatch: pytest.MonkeyPatch, server_sha: str | None, status: str, expected: str
+    monkeypatch: pytest.MonkeyPatch, server_sha: str | None, expected: str
 ) -> None:
-    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, status))
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, " M src/app.py\n"))
     checked = web_metrics.reproducibility(server_sha)
     assert checked["reproducible"] is False and any(expected in reason for reason in checked["reasons"])
-    assert checked["note"].startswith("UNREPRODUCIBLE")
-    if status:
-        assert len(checked["working_tree_digest_sha256"]) == 64
+    assert checked["note"].startswith("UNREPRODUCIBLE") and len(checked["working_tree_digest_sha256"]) == 64
 
 
 def test_main_refuses_an_unreproducible_build_without_the_flag(
@@ -469,9 +472,14 @@ def test_main_refuses_an_unreproducible_build_without_the_flag(
 ) -> None:
     monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, " M src/app.py\n"))
     monkeypatch.setattr(web_metrics, "find_node_tools", lambda tools_dir, need_lighthouse: None)
-    monkeypatch.setattr(web_metrics, "read_server_config", lambda base_url, wait_s: {"git_sha": "a" * 40})
-    code = web_metrics.main(
-        ["--url", "http://127.0.0.1:7862", "--target", "local-container", "--output", str(tmp_path / "out.json")]
-    )
-    assert code == 2 and "unreproducible" in capsys.readouterr().err
+    monkeypatch.setattr(web_metrics, "read_server_config", lambda base_url, wait_s: {"git_sha": "a" * 40 + "-dirty"})
+    arguments = [
+        "--url",
+        "http://127.0.0.1:7862",
+        "--target",
+        "local-container",
+        "--output",
+        str(tmp_path / "out.json"),
+    ]
+    assert web_metrics.main(arguments) == 2 and "unreproducible" in capsys.readouterr().err
     assert not (tmp_path / "out.json").exists()

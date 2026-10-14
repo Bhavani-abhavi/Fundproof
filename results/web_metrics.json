@@ -7,15 +7,25 @@
         "label": "LOCAL Docker container on the machine that ran this script, started WITH the dev login (UWC_DEV_AUTH=1) so the script can sign in without Hugging Face OAuth. NOT the Hugging Face Space, which refuses the dev login: no internet hop, no Space proxy, not Space hardware.",
         "url": "http://127.0.0.1:7862"
       },
-      "measured_at_utc": "2026-10-13T19:09:56+00:00",
+      "reproducibility": {
+        "reproducible": true,
+        "reasons": [],
+        "server_git_sha": "271ca4d759f205ac457c6e692dc93de33269f632",
+        "head": "271ca4d759f205ac457c6e692dc93de33269f632",
+        "server_is_head": true,
+        "working_tree_dirty": true,
+        "working_tree_digest_sha256": "b3f4edadbef11cc4fdd1e10942a807672587c28d240a0cf85eea9ec31559dd3a",
+        "note": "Reproducible: rebuilding commit 271ca4d759f205ac457c6e692dc93de33269f632 with the Dockerfile gives the measured app."
+      },
+      "measured_at_utc": "2026-10-14T00:48:23+00:00",
       "auth": {
         "mode": "dev",
         "note": "The browser signed in through the DEV LOGIN form (POST /api/auth/dev-login), which exists only when the server runs with UWC_DEV_AUTH=1 and is refused inside a Hugging Face Space. Hugging Face sign-in was not exercised.",
-        "username": "metrics-founder-ffd822"
+        "username": "metrics-founder-c17f05"
       },
       "server": {
         "version": "0.1.0",
-        "git_sha": null,
+        "git_sha": "271ca4d759f205ac457c6e692dc93de33269f632",
         "product_name": "Fundproof",
         "disclaimer": "Educational planning tool. Not financial, legal or lending advice. Lenders make their own decisions.",
         "dev_auth": true,
@@ -61,19 +71,19 @@
               {
                 "name": "public_pages_load",
                 "passed": true,
-                "seconds": 5.998,
+                "seconds": 5.838,
                 "detail": ""
               },
               {
                 "name": "signed_out_studio_asks_to_sign_in",
                 "passed": true,
-                "seconds": 1.708,
+                "seconds": 1.637,
                 "detail": ""
               },
               {
                 "name": "unknown_page_is_404",
                 "passed": true,
-                "seconds": 1.655,
+                "seconds": 1.544,
                 "detail": ""
               }
             ],
@@ -97,64 +107,70 @@
               {
                 "name": "dev_login_form",
                 "passed": true,
-                "seconds": 2.038,
+                "seconds": 1.947,
                 "detail": ""
               },
               {
                 "name": "wizard_city",
                 "passed": true,
-                "seconds": 1.245,
+                "seconds": 1.197,
                 "detail": ""
               },
               {
                 "name": "wizard_business_type",
                 "passed": true,
-                "seconds": 0.096,
+                "seconds": 0.108,
                 "detail": ""
               },
               {
                 "name": "wizard_idea",
                 "passed": true,
-                "seconds": 0.079,
+                "seconds": 0.073,
                 "detail": ""
               },
               {
                 "name": "wizard_money",
                 "passed": true,
-                "seconds": 0.194,
+                "seconds": 0.15,
                 "detail": ""
               },
               {
                 "name": "wizard_sites",
                 "passed": true,
-                "seconds": 3.307,
+                "seconds": 3.354,
                 "detail": "",
-                "suggest_areas_ms": 311.9
+                "suggest_areas_ms": 601.9
               },
               {
                 "name": "create_plan_and_results",
                 "passed": true,
-                "seconds": 1.392,
+                "seconds": 1.1,
                 "detail": "",
-                "rendered_ms": 1391.1,
-                "create_answer_ms": 129.3,
-                "site_scores_answer_ms": 326.2,
-                "feasibility_answer_ms": 793.3,
-                "path_answer_ms": 1253.3
+                "rendered_ms": 1099.2,
+                "create_answer_ms": 80.6,
+                "site_scores_answer_ms": 189.6,
+                "feasibility_answer_ms": 531.8,
+                "path_answer_ms": 916.5
               },
               {
                 "name": "results_page_labels",
                 "passed": true,
-                "seconds": 4.852,
+                "seconds": 4.996,
+                "detail": ""
+              },
+              {
+                "name": "results_tables_open",
+                "passed": true,
+                "seconds": 4.019,
                 "detail": ""
               },
               {
                 "name": "edit_targets_and_apply_change",
                 "passed": true,
-                "seconds": 1.001,
+                "seconds": 1.065,
                 "detail": "",
-                "apply_put_ms": 140.9,
-                "rerun_path_ms": 412.5,
+                "apply_put_ms": 86.8,
+                "rerun_path_ms": 489.1,
                 "outcome": "applied the first change-set; the plan is version 2 and was re-run"
               }
             ],
@@ -175,23 +191,23 @@
               {
                 "name": "demo_queue",
                 "passed": true,
-                "seconds": 2.72,
+                "seconds": 2.484,
                 "detail": ""
               },
               {
                 "name": "open_first_file",
                 "passed": true,
-                "seconds": 16.161,
+                "seconds": 14.315,
                 "detail": "",
-                "file_answer_ms": 14608.7,
-                "rendered_ms": 14657.1
+                "file_answer_ms": 12953.1,
+                "rendered_ms": 12984.3
               },
               {
                 "name": "record_demo_decision",
                 "passed": true,
-                "seconds": 3.128,
+                "seconds": 4.333,
                 "detail": "",
-                "decision_answer_ms": 338.4
+                "decision_answer_ms": 302.0
               }
             ],
             "facts": {
@@ -212,12 +228,12 @@
                 {
                   "source": "OFAC",
                   "file": "sdn.csv",
-                  "date": "2026-10-13"
+                  "date": "2026-10-14"
                 },
                 {
                   "source": "OFAC",
                   "file": "alt.csv",
-                  "date": "2026-10-13"
+                  "date": "2026-10-14"
                 }
               ],
               "screening_statuses": [
@@ -239,13 +255,13 @@
               {
                 "name": "unknown_plan_says_not_found",
                 "passed": true,
-                "seconds": 1.934,
+                "seconds": 1.972,
                 "detail": ""
               },
               {
                 "name": "wizard_requires_a_city",
                 "passed": true,
-                "seconds": 0.769,
+                "seconds": 0.775,
                 "detail": ""
               }
             ],
@@ -278,7 +294,7 @@
               {
                 "name": "delete_plan",
                 "passed": true,
-                "seconds": 2.579,
+                "seconds": 2.095,
                 "detail": ""
               }
             ],
@@ -296,7 +312,7 @@
                 "flow": "founder_delete_plan",
                 "step": "delete_plan",
                 "method": "GET",
-                "path": "/api/studio/projects/add4e14442ae5d65",
+                "path": "/api/studio/projects/670990b06d375359",
                 "status": 404,
                 "expected": true
               }
@@ -318,7 +334,7 @@
           "height": 800
         },
         "totals": {
-          "scans": 28,
+          "scans": 32,
           "critical_violation_rules": 0,
           "critical_nodes": 0,
           "serious_violation_rules": 0,
@@ -827,6 +843,56 @@
             "other_violation_rules": []
           },
           {
+            "page": "studio results: chart tables open",
+            "path": "/studio/project/?id=<plan>",
+            "color_scheme": "light",
+            "violations_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "nodes_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "incomplete_by_impact": {
+              "critical": 0,
+              "serious": 1,
+              "moderate": 0,
+              "minor": 0
+            },
+            "serious_or_critical_rules": [],
+            "other_violation_rules": []
+          },
+          {
+            "page": "studio results: chart tables open",
+            "path": "/studio/project/?id=<plan>",
+            "color_scheme": "dark",
+            "violations_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "nodes_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "incomplete_by_impact": {
+              "critical": 0,
+              "serious": 1,
+              "moderate": 0,
+              "minor": 0
+            },
+            "serious_or_critical_rules": [],
+            "other_violation_rules": []
+          },
+          {
             "page": "lender demo queue",
             "path": "/lender/",
             "color_scheme": "light",
@@ -953,6 +1019,56 @@
           },
           {
             "page": "lender file (after the decision)",
+            "path": "/lender/file/?id=<file>",
+            "color_scheme": "dark",
+            "violations_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "nodes_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "incomplete_by_impact": {
+              "critical": 0,
+              "serious": 1,
+              "moderate": 0,
+              "minor": 0
+            },
+            "serious_or_critical_rules": [],
+            "other_violation_rules": []
+          },
+          {
+            "page": "lender file: decision record open",
+            "path": "/lender/file/?id=<file>",
+            "color_scheme": "light",
+            "violations_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "nodes_by_impact": {
+              "critical": 0,
+              "serious": 0,
+              "moderate": 0,
+              "minor": 0
+            },
+            "incomplete_by_impact": {
+              "critical": 0,
+              "serious": 1,
+              "moderate": 0,
+              "minor": 0
+            },
+            "serious_or_critical_rules": [],
+            "other_violation_rules": []
+          },
+          {
+            "page": "lender file: decision record open",
             "path": "/lender/file/?id=<file>",
             "color_scheme": "dark",
             "violations_by_impact": {
@@ -1047,21 +1163,21 @@
             "runs": [
               {
                 "scores": {
-                  "performance": 0.82,
+                  "performance": 0.75,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 82,
+                  "performance": 75,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 2110.0728,
-                  "largest-contentful-paint": 4575.7152,
-                  "total-blocking-time": 64.5,
+                  "first-contentful-paint": 2118.3945,
+                  "largest-contentful-paint": 5740.263,
+                  "total-blocking-time": 152.00000000000045,
                   "cumulative-layout-shift": 0.0012379898035239417,
-                  "speed-index": 2110.0728
+                  "speed-index": 2118.3945
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1069,25 +1185,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.1
+                "seconds": 11.7
               },
               {
                 "scores": {
-                  "performance": 0.78,
+                  "performance": 0.81,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 78,
+                  "performance": 81,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 2117.7288,
-                  "largest-contentful-paint": 3986.8192,
-                  "total-blocking-time": 341,
+                  "first-contentful-paint": 2112.53925,
+                  "largest-contentful-paint": 4568.3595,
+                  "total-blocking-time": 81.5,
                   "cumulative-layout-shift": 0.0012379898035239417,
-                  "speed-index": 2117.7288
+                  "speed-index": 2112.53925
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1095,25 +1211,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.1
+                "seconds": 11.9
               },
               {
                 "scores": {
-                  "performance": 0.82,
+                  "performance": 0.76,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 82,
+                  "performance": 76,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 2123.05875,
-                  "largest-contentful-paint": 4142.3725,
-                  "total-blocking-time": 162,
+                  "first-contentful-paint": 2127.549,
+                  "largest-contentful-paint": 5940.366,
+                  "total-blocking-time": 94,
                   "cumulative-layout-shift": 0.0012379898035239417,
-                  "speed-index": 2255.6270919043754
+                  "speed-index": 2127.549
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1121,26 +1237,26 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.1
+                "seconds": 11.7
               }
             ],
             "median": {
               "scores": {
-                "performance": 0.82,
+                "performance": 0.76,
                 "accessibility": 1,
                 "best-practices": 1
               },
               "scores_0_100": {
-                "performance": 82,
+                "performance": 76,
                 "accessibility": 100,
                 "best-practices": 100
               },
               "metrics": {
-                "first-contentful-paint": 2117.7288,
-                "largest-contentful-paint": 4142.3725,
-                "total-blocking-time": 162,
+                "first-contentful-paint": 2118.3945,
+                "largest-contentful-paint": 5740.263,
+                "total-blocking-time": 94,
                 "cumulative-layout-shift": 0.0012379898035239417,
-                "speed-index": 2117.7288
+                "speed-index": 2118.3945
               },
               "runs_with_scores": 3
             }
@@ -1162,11 +1278,11 @@
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 489.4222500000001,
-                  "largest-contentful-paint": 915.2815,
-                  "total-blocking-time": 0.5,
-                  "cumulative-layout-shift": 0.07568090989186586,
-                  "speed-index": 489.4222500000001
+                  "first-contentful-paint": 523.4562000000001,
+                  "largest-contentful-paint": 1176.9708,
+                  "total-blocking-time": 9,
+                  "cumulative-layout-shift": 0.0032343113562735316,
+                  "speed-index": 523.4562000000001
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1174,33 +1290,7 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.2
-              },
-              {
-                "scores": {
-                  "performance": 0.99,
-                  "accessibility": 1,
-                  "best-practices": 1
-                },
-                "scores_0_100": {
-                  "performance": 99,
-                  "accessibility": 100,
-                  "best-practices": 100
-                },
-                "metrics": {
-                  "first-contentful-paint": 500.5879500000001,
-                  "largest-contentful-paint": 875.7253000000001,
-                  "total-blocking-time": 23,
-                  "cumulative-layout-shift": 0.0032419003006158246,
-                  "speed-index": 500.5879500000001
-                },
-                "failed_weighted_audits": [],
-                "form_factor": "desktop",
-                "throttling_method": "simulate",
-                "lighthouse_version": "13.5.0",
-                "runtime_error": null,
-                "run_warnings": [],
-                "seconds": 12.3
+                "seconds": 11.7
               },
               {
                 "scores": {
@@ -1214,11 +1304,11 @@
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 491.80379999999997,
-                  "largest-contentful-paint": 1148.8692,
+                  "first-contentful-paint": 505.9956000000001,
+                  "largest-contentful-paint": 1077.3304,
                   "total-blocking-time": 0,
-                  "cumulative-layout-shift": 0.0032419003006158246,
-                  "speed-index": 491.80379999999997
+                  "cumulative-layout-shift": 0.0032343113562735316,
+                  "speed-index": 505.9956000000001
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1226,7 +1316,33 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 11.9
+                "seconds": 12.0
+              },
+              {
+                "scores": {
+                  "performance": 0.98,
+                  "accessibility": 1,
+                  "best-practices": 1
+                },
+                "scores_0_100": {
+                  "performance": 98,
+                  "accessibility": 100,
+                  "best-practices": 100
+                },
+                "metrics": {
+                  "first-contentful-paint": 504.9999,
+                  "largest-contentful-paint": 1152.6666,
+                  "total-blocking-time": 0,
+                  "cumulative-layout-shift": 0.0032343113562735316,
+                  "speed-index": 504.9999
+                },
+                "failed_weighted_audits": [],
+                "form_factor": "desktop",
+                "throttling_method": "simulate",
+                "lighthouse_version": "13.5.0",
+                "runtime_error": null,
+                "run_warnings": [],
+                "seconds": 11.7
               }
             ],
             "median": {
@@ -1241,11 +1357,11 @@
                 "best-practices": 100
               },
               "metrics": {
-                "first-contentful-paint": 491.80379999999997,
-                "largest-contentful-paint": 915.2815,
-                "total-blocking-time": 0.5,
-                "cumulative-layout-shift": 0.0032419003006158246,
-                "speed-index": 491.80379999999997
+                "first-contentful-paint": 505.9956000000001,
+                "largest-contentful-paint": 1152.6666,
+                "total-blocking-time": 0,
+                "cumulative-layout-shift": 0.0032343113562735316,
+                "speed-index": 505.9956000000001
               },
               "runs_with_scores": 3
             }
@@ -1257,21 +1373,73 @@
             "runs": [
               {
                 "scores": {
-                  "performance": 0.41,
+                  "performance": 0.47,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 41,
+                  "performance": 47,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 1817.118,
-                  "largest-contentful-paint": 7080.1179999999995,
-                  "total-blocking-time": 2051,
+                  "first-contentful-paint": 1081.5148,
+                  "largest-contentful-paint": 7600.2721999999985,
+                  "total-blocking-time": 1602.0000000000018,
+                  "cumulative-layout-shift": 0.0005158643595308912,
+                  "speed-index": 4102.355452211454
+                },
+                "failed_weighted_audits": [],
+                "form_factor": "mobile",
+                "throttling_method": "simulate",
+                "lighthouse_version": "13.5.0",
+                "runtime_error": null,
+                "run_warnings": [],
+                "seconds": 14.1
+              },
+              {
+                "scores": {
+                  "performance": 0.44,
+                  "accessibility": 1,
+                  "best-practices": 1
+                },
+                "scores_0_100": {
+                  "performance": 44,
+                  "accessibility": 100,
+                  "best-practices": 100
+                },
+                "metrics": {
+                  "first-contentful-paint": 1067.4596,
+                  "largest-contentful-paint": 7855.1894,
+                  "total-blocking-time": 1523.3649000000005,
                   "cumulative-layout-shift": 0.11230201259768399,
-                  "speed-index": 4244.905350389437
+                  "speed-index": 4349.2388680135655
+                },
+                "failed_weighted_audits": [],
+                "form_factor": "mobile",
+                "throttling_method": "simulate",
+                "lighthouse_version": "13.5.0",
+                "runtime_error": null,
+                "run_warnings": [],
+                "seconds": 14.1
+              },
+              {
+                "scores": {
+                  "performance": 0.42,
+                  "accessibility": 1,
+                  "best-practices": 1
+                },
+                "scores_0_100": {
+                  "performance": 42,
+                  "accessibility": 100,
+                  "best-practices": 100
+                },
+                "metrics": {
+                  "first-contentful-paint": 1057.7093,
+                  "largest-contentful-paint": 7385.563949999998,
+                  "total-blocking-time": 1710.5,
+                  "cumulative-layout-shift": 0.11230201259768399,
+                  "speed-index": 5376.026515538688
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1280,77 +1448,25 @@
                 "runtime_error": null,
                 "run_warnings": [],
                 "seconds": 14.2
-              },
-              {
-                "scores": {
-                  "performance": 0.43,
-                  "accessibility": 1,
-                  "best-practices": 1
-                },
-                "scores_0_100": {
-                  "performance": 43,
-                  "accessibility": 100,
-                  "best-practices": 100
-                },
-                "metrics": {
-                  "first-contentful-paint": 1061.3842260286733,
-                  "largest-contentful-paint": 6941.07633904301,
-                  "total-blocking-time": 1951.9999999999982,
-                  "cumulative-layout-shift": 0.11230201259768399,
-                  "speed-index": 4372.783193313442
-                },
-                "failed_weighted_audits": [],
-                "form_factor": "mobile",
-                "throttling_method": "simulate",
-                "lighthouse_version": "13.5.0",
-                "runtime_error": null,
-                "run_warnings": [],
-                "seconds": 14.0
-              },
-              {
-                "scores": {
-                  "performance": 0.41,
-                  "accessibility": 1,
-                  "best-practices": 1
-                },
-                "scores_0_100": {
-                  "performance": 41,
-                  "accessibility": 100,
-                  "best-practices": 100
-                },
-                "metrics": {
-                  "first-contentful-paint": 1824.6342,
-                  "largest-contentful-paint": 7557.6341999999995,
-                  "total-blocking-time": 2322.5,
-                  "cumulative-layout-shift": 0.11230201259768399,
-                  "speed-index": 4234.7435913640165
-                },
-                "failed_weighted_audits": [],
-                "form_factor": "mobile",
-                "throttling_method": "simulate",
-                "lighthouse_version": "13.5.0",
-                "runtime_error": null,
-                "run_warnings": [],
-                "seconds": 14.9
               }
             ],
             "median": {
               "scores": {
-                "performance": 0.41,
+                "performance": 0.44,
                 "accessibility": 1,
                 "best-practices": 1
               },
               "scores_0_100": {
-                "performance": 41,
+                "performance": 44,
                 "accessibility": 100,
                 "best-practices": 100
               },
               "metrics": {
-                "first-contentful-paint": 1817.118,
-                "largest-contentful-paint": 7080.1179999999995,
-                "total-blocking-time": 2051,
+                "first-contentful-paint": 1067.4596,
+                "largest-contentful-paint": 7600.2721999999985,
+                "total-blocking-time": 1602.0000000000018,
                 "cumulative-layout-shift": 0.11230201259768399,
-                "speed-index": 4244.905350389437
+                "speed-index": 4349.2388680135655
               },
               "runs_with_scores": 3
             }
@@ -1362,21 +1478,21 @@
             "runs": [
               {
                 "scores": {
-                  "performance": 0.77,
+                  "performance": 0.88,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 77,
+                  "performance": 88,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 348.52549999999997,
-                  "largest-contentful-paint": 1684.5254999999993,
-                  "total-blocking-time": 263.4999999999998,
-                  "cumulative-layout-shift": 0.13909483852844176,
-                  "speed-index": 1171.6625785097349
+                  "first-contentful-paint": 451.63399999999996,
+                  "largest-contentful-paint": 1453.6339999999996,
+                  "total-blocking-time": 117.5,
+                  "cumulative-layout-shift": 0.13908724958409946,
+                  "speed-index": 1005.0726174383072
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1384,25 +1500,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 15.0
+                "seconds": 13.5
               },
               {
                 "scores": {
-                  "performance": 0.84,
+                  "performance": 0.86,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 84,
+                  "performance": 86,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 458.81030000000004,
-                  "largest-contentful-paint": 1504.8102999999999,
-                  "total-blocking-time": 176.5,
-                  "cumulative-layout-shift": 0.13909483852844176,
-                  "speed-index": 1313.6361775938717
+                  "first-contentful-paint": 334.06955,
+                  "largest-contentful-paint": 1537.0695500000004,
+                  "total-blocking-time": 146,
+                  "cumulative-layout-shift": 0.13908724958409946,
+                  "speed-index": 1102.9595708817112
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1410,25 +1526,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 15.0
+                "seconds": 13.6
               },
               {
                 "scores": {
-                  "performance": 0.84,
+                  "performance": 0.86,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 84,
+                  "performance": 86,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 353.16949999999997,
-                  "largest-contentful-paint": 1563.1694999999995,
-                  "total-blocking-time": 186,
-                  "cumulative-layout-shift": 0.13909483852844176,
-                  "speed-index": 1055.118961988942
+                  "first-contentful-paint": 341.23055,
+                  "largest-contentful-paint": 1574.3073999999997,
+                  "total-blocking-time": 134,
+                  "cumulative-layout-shift": 0.13908724958409946,
+                  "speed-index": 1081.3497899238432
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1436,26 +1552,26 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 15.2
+                "seconds": 13.8
               }
             ],
             "median": {
               "scores": {
-                "performance": 0.84,
+                "performance": 0.86,
                 "accessibility": 1,
                 "best-practices": 1
               },
               "scores_0_100": {
-                "performance": 84,
+                "performance": 86,
                 "accessibility": 100,
                 "best-practices": 100
               },
               "metrics": {
-                "first-contentful-paint": 353.16949999999997,
-                "largest-contentful-paint": 1563.1694999999995,
-                "total-blocking-time": 186,
-                "cumulative-layout-shift": 0.13909483852844176,
-                "speed-index": 1171.6625785097349
+                "first-contentful-paint": 341.23055,
+                "largest-contentful-paint": 1537.0695500000004,
+                "total-blocking-time": 134,
+                "cumulative-layout-shift": 0.13908724958409946,
+                "speed-index": 1081.3497899238432
               },
               "runs_with_scores": 3
             }
@@ -1467,21 +1583,21 @@
             "runs": [
               {
                 "scores": {
-                  "performance": 0.74,
+                  "performance": 0.8,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 74,
+                  "performance": 80,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 1084.8579,
-                  "largest-contentful-paint": 3589.8579,
-                  "total-blocking-time": 664.0710500000014,
-                  "cumulative-layout-shift": 0.01296314317473201,
-                  "speed-index": 1084.8579
+                  "first-contentful-paint": 1810.9364999999998,
+                  "largest-contentful-paint": 4780.291,
+                  "total-blocking-time": 133.5,
+                  "cumulative-layout-shift": 0.0005492335815006767,
+                  "speed-index": 1810.9364999999998
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1489,7 +1605,7 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 13.0
+                "seconds": 11.9
               },
               {
                 "scores": {
@@ -1503,11 +1619,11 @@
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 1814.6268,
-                  "largest-contentful-paint": 4710.751199999999,
-                  "total-blocking-time": 257.00000000000045,
-                  "cumulative-layout-shift": 0.01296314317473201,
-                  "speed-index": 1814.6268
+                  "first-contentful-paint": 1812.9912000000002,
+                  "largest-contentful-paint": 4425.660800000001,
+                  "total-blocking-time": 307,
+                  "cumulative-layout-shift": 0.0005492335815006767,
+                  "speed-index": 1812.9912000000002
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1515,25 +1631,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.9
+                "seconds": 12.0
               },
               {
                 "scores": {
-                  "performance": 0.94,
+                  "performance": 0.69,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 94,
+                  "performance": 69,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 1059.0584,
-                  "largest-contentful-paint": 1209.0584,
-                  "total-blocking-time": 294.5,
-                  "cumulative-layout-shift": 0.011542371146533928,
-                  "speed-index": 1059.0584
+                  "first-contentful-paint": 1823.59725,
+                  "largest-contentful-paint": 5918.7315,
+                  "total-blocking-time": 346.5,
+                  "cumulative-layout-shift": 0.0005492335815006767,
+                  "speed-index": 1823.59725
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "mobile",
@@ -1541,7 +1657,7 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.8
+                "seconds": 12.0
               }
             ],
             "median": {
@@ -1556,11 +1672,11 @@
                 "best-practices": 100
               },
               "metrics": {
-                "first-contentful-paint": 1084.8579,
-                "largest-contentful-paint": 3589.8579,
-                "total-blocking-time": 294.5,
-                "cumulative-layout-shift": 0.01296314317473201,
-                "speed-index": 1084.8579
+                "first-contentful-paint": 1812.9912000000002,
+                "largest-contentful-paint": 4780.291,
+                "total-blocking-time": 307,
+                "cumulative-layout-shift": 0.0005492335815006767,
+                "speed-index": 1812.9912000000002
               },
               "runs_with_scores": 3
             }
@@ -1572,21 +1688,21 @@
             "runs": [
               {
                 "scores": {
-                  "performance": 0.91,
+                  "performance": 0.93,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 91,
+                  "performance": 93,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 453.1355,
-                  "largest-contentful-paint": 1371.1354999999999,
+                  "first-contentful-paint": 456.49595,
+                  "largest-contentful-paint": 1113.9973,
                   "total-blocking-time": 0,
-                  "cumulative-layout-shift": 0.13895279974024458,
-                  "speed-index": 453.1355
+                  "cumulative-layout-shift": 0.13894521079590227,
+                  "speed-index": 456.49595
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1594,25 +1710,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.4
+                "seconds": 12.1
               },
               {
                 "scores": {
-                  "performance": 0.91,
+                  "performance": 0.95,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 91,
+                  "performance": 95,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 450.176,
-                  "largest-contentful-paint": 1369.1760000000006,
-                  "total-blocking-time": 58.99999999999977,
-                  "cumulative-layout-shift": 0.13895279974024458,
-                  "speed-index": 450.176
+                  "first-contentful-paint": 298.9097,
+                  "largest-contentful-paint": 711.9096999999999,
+                  "total-blocking-time": 0,
+                  "cumulative-layout-shift": 0.13894521079590227,
+                  "speed-index": 298.9097
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1620,25 +1736,25 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.5
+                "seconds": 11.9
               },
               {
                 "scores": {
-                  "performance": 0.91,
+                  "performance": 0.93,
                   "accessibility": 1,
                   "best-practices": 1
                 },
                 "scores_0_100": {
-                  "performance": 91,
+                  "performance": 93,
                   "accessibility": 100,
                   "best-practices": 100
                 },
                 "metrics": {
-                  "first-contentful-paint": 458.76334999999995,
-                  "largest-contentful-paint": 1338.7633499999997,
-                  "total-blocking-time": 62.500000000000114,
-                  "cumulative-layout-shift": 0.13895279974024458,
-                  "speed-index": 458.76334999999995
+                  "first-contentful-paint": 456.48575,
+                  "largest-contentful-paint": 1160.9904999999999,
+                  "total-blocking-time": 19.5,
+                  "cumulative-layout-shift": 0.13894521079590227,
+                  "speed-index": 456.48575
                 },
                 "failed_weighted_audits": [],
                 "form_factor": "desktop",
@@ -1646,26 +1762,26 @@
                 "lighthouse_version": "13.5.0",
                 "runtime_error": null,
                 "run_warnings": [],
-                "seconds": 12.8
+                "seconds": 12.1
               }
             ],
             "median": {
               "scores": {
-                "performance": 0.91,
+                "performance": 0.93,
                 "accessibility": 1,
                 "best-practices": 1
               },
               "scores_0_100": {
-                "performance": 91,
+                "performance": 93,
                 "accessibility": 100,
                 "best-practices": 100
               },
               "metrics": {
-                "first-contentful-paint": 453.1355,
-                "largest-contentful-paint": 1369.1760000000006,
-                "total-blocking-time": 58.99999999999977,
-                "cumulative-layout-shift": 0.13895279974024458,
-                "speed-index": 453.1355
+                "first-contentful-paint": 456.48575,
+                "largest-contentful-paint": 1113.9973,
+                "total-blocking-time": 0,
+                "cumulative-layout-shift": 0.13894521079590227,
+                "speed-index": 456.48575
               },
               "runs_with_scores": 3
             }
@@ -1675,34 +1791,34 @@
       "screenshots": [
         {
           "file": "docs/web/screenshots/e2e/studio-results-1280-light.png",
-          "note": "kept as Chromium wrote it (1123080 bytes; the pillow re-encode was not smaller)"
+          "note": "kept as Chromium wrote it (1297581 bytes; the pillow re-encode was not smaller)"
         },
         {
           "file": "docs/web/screenshots/e2e/lender-decision-1280-light.png",
-          "note": "kept as Chromium wrote it (490403 bytes; the pillow re-encode was not smaller)"
+          "note": "kept as Chromium wrote it (496342 bytes; the pillow re-encode was not smaller)"
         },
         {
           "file": "docs/web/screenshots/e2e/error-unknown-plan-1280-light.png",
-          "note": "kept as Chromium wrote it (46891 bytes; the pillow re-encode was not smaller)"
+          "note": "kept as Chromium wrote it (46748 bytes; the pillow re-encode was not smaller)"
         }
       ],
       "docker_image": {
         "image": "fundproof:dev",
-        "id": "sha256:ff604e03465bf41103cc9515f8ce45eda80da0a5c2398ee63a39d03468520b18",
-        "size_bytes_from_docker_image_inspect": 2571584975,
+        "id": "sha256:20b3b04d9a6933a7822cee7d0b9f1440c126f5afa4ab023b85e3965e22b762ac",
+        "size_bytes_from_docker_image_inspect": 2572087031,
         "size_from_docker_image_ls": "2.57GB",
         "docker_image_ls_output": [
           "IMAGE           ID             DISK USAGE   CONTENT SIZE   EXTRA",
-          "fundproof:dev   ff604e03465b       2.57GB          659MB   U"
+          "fundproof:dev   20b3b04d9a69       2.57GB          659MB   U"
         ],
         "docker_server_version": "29.8.2",
         "note": "size_from_docker_image_ls is the DISK USAGE column (unpacked size on this machine); the CONTENT SIZE column in docker_image_ls_output is the compressed size of the image content."
       },
       "container": {
         "name": "fundproof-metrics",
-        "image_id": "sha256:ff604e03465bf41103cc9515f8ce45eda80da0a5c2398ee63a39d03468520b18",
+        "image_id": "sha256:20b3b04d9a6933a7822cee7d0b9f1440c126f5afa4ab023b85e3965e22b762ac",
         "state": "running",
-        "started_at": "2026-10-13T19:05:02.643028932Z"
+        "started_at": "2026-10-14T00:43:37.596277139Z"
       },
       "caveats": [
         "A local run: the server and the browser share one machine (4 CPUs here, shared with other jobs; see provenance.environment). Timings and Lighthouse performance scores say nothing about the Space.",
@@ -1712,9 +1828,9 @@
         "The founder plan, the lender decision and the edited targets are SYNTHETIC test inputs, not data."
       ],
       "provenance": {
-        "git_sha": "6e16420b50ab74ff7b79bb7ab72f2fc9d2e4b572",
+        "git_sha": "271ca4d759f205ac457c6e692dc93de33269f632",
         "git_dirty": true,
-        "generated_at_utc": "2026-10-13T19:09:56+00:00",
+        "generated_at_utc": "2026-10-14T00:48:23+00:00",
         "generated_by": "scripts/web_metrics.py",
         "prompts": {},
         "corpus_checksum": "not recorded (the guideline index inside the target is used; see the lender flow facts)",
@@ -1751,14 +1867,14 @@
         "environment": {
           "cpu_count": 4,
           "load_average_start": [
-            5.43,
-            7.97,
-            8.31
+            3.43,
+            3.55,
+            3.5
           ],
           "load_average_end": [
-            5.45,
-            6.35,
-            7.51
+            4.18,
+            4.03,
+            3.74
           ]
         }
       }

@@ -27,11 +27,11 @@ What it does, in one headless Chromium profile (Playwright, `channel="chromium"`
    the lender file, with the mobile (Lighthouse default) and desktop presets, --lighthouse-runs times each.
 8. Deletes the plan through "Delete plan" and checks that its page then says "Not found".
 
-Reproducibility: the results must name the code they measured. The script compares the server's /api/health
-git_sha (the image's UWC_GIT_SHA stamp, `make docker-build-stamped`) with this checkout's HEAD and checks that the
-working tree is clean. When either fails it REFUSES to write, unless --allow-unreproducible is given; the entry then
-says "reproducible": false with the reason and a SHA-256 digest of the uncommitted changes (so the tree can at least
-be identified), and its numbers must not be quoted as the release's.
+Reproducibility: the results must name the code they measured. The server's /api/health git_sha (the image's
+UWC_GIT_SHA stamp, set by `make docker-build-stamped`, which marks an uncommitted tree "-dirty") must name a commit of
+this repository. Otherwise the script REFUSES to write, unless --allow-unreproducible is given; the entry then says
+"reproducible": false with the reason and a SHA-256 digest of the checkout's uncommitted changes (so the tree can at
+least be identified), and its numbers must not be quoted as the release's.
 
 The results page is also scanned with every "Show the numbers as a table" opened, and the lender file with the
 decision record opened, because those scrolling boxes are where keyboard access can break.
@@ -237,33 +237,36 @@ def worktree_digest(status: str) -> str:
 
 
 def reproducibility(server_git_sha: str | None) -> dict[str, Any]:
-    """Whether the measured server can be rebuilt from a commit: a clean tree whose HEAD the server names."""
+    """Whether the measured server can be rebuilt from a commit: its /api/health stamp must name a commit of this
+    repository, without the "-dirty" mark that `make docker-build-stamped` adds for an uncommitted tree.
+
+    The checkout's own HEAD and working-tree state are recorded too (when the image was built from a commit, for
+    example `git archive <commit> | docker build ... -`, later edits to the checkout do not change the image).
+    """
     head = (git_output("rev-parse", "HEAD") or "").strip() or None
     status = git_output("status", "--porcelain")
     dirty = status is None or bool(status.strip())
     reasons = []
-    if head is None:
-        reasons.append("git HEAD could not be read")
-    if dirty:
-        reasons.append("the working tree has uncommitted changes")
     if not server_git_sha:
         reasons.append("the server does not name its commit (build with `make docker-build-stamped`)")
     elif server_git_sha.endswith("-dirty"):
         reasons.append(f"the server was built from an uncommitted tree ({server_git_sha})")
-    elif head is not None and not head.startswith(server_git_sha) and not server_git_sha.startswith(head):
-        reasons.append(f"the server runs commit {server_git_sha}, not HEAD {head}")
+    elif git_output("cat-file", "-e", f"{server_git_sha}^{{commit}}") is None:
+        reasons.append(f"the server's commit {server_git_sha} is not a commit of this repository")
     return {
         "reproducible": not reasons,
         "reasons": reasons,
-        "head": head,
         "server_git_sha": server_git_sha,
+        "head": head,
+        "server_is_head": bool(head and server_git_sha and head == server_git_sha),
         "working_tree_dirty": dirty,
         "working_tree_digest_sha256": worktree_digest(status or "") if dirty and status is not None else None,
         "note": (
-            "Reproducible means: a clean checkout of `head` rebuilt with the Dockerfile gives the measured app."
+            f"Reproducible: rebuilding commit {server_git_sha} with the Dockerfile gives the measured app."
             if not reasons
             else "UNREPRODUCIBLE: these numbers describe an uncommitted or unstamped build; rebuild from a commit "
-            "with `make docker-build-stamped` and run again before quoting them."
+            "(make docker-build-stamped on a clean tree, or git archive <commit> | docker build ... -) and run again "
+            "before quoting them."
         ),
     }
 

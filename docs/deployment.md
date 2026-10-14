@@ -120,20 +120,22 @@ docker build --network=host --build-arg HTTPS_PROXY="$HTTPS_PROXY" --build-arg H
 
 ## 4. Measured: local container (NOT the Space)
 
-From `results/deployment_metrics.json`, entry `runs.local-container`, measured 2026-10-13T19:04:57Z by
+From `results/deployment_metrics.json`, entry `runs.local-container`, measured 2026-10-14T00:25:57Z by
 `scripts/smoke_deploy.py --url http://127.0.0.1:7860 --target local-container --docker-image fundproof:dev
 --container fundproof-smoke` (run by `make docker-smoke`). **This is the v0.1 image running on the build machine,
-reached over 127.0.0.1, with the dev login OFF: no internet, no Space proxy, not Space hardware.** The code was commit
-`6e16420` with uncommitted v0.1 work in the tree (`git_dirty: true`), on a 4-CPU machine shared with other jobs (load
-average 5.31 at the start of the run).
+reached over 127.0.0.1, with the dev login OFF: no internet, no Space proxy, not Space hardware.** The image was built
+from commit `271ca4d` exactly (`git archive 271ca4d | docker build ... --build-arg UWC_GIT_SHA=271ca4d... -`, the
+proxy flags of section 3, so `/api/health` names that commit); the checkout itself had uncommitted result files while
+measuring (`git_dirty: true` in the provenance), which are not part of the image. A 4-CPU machine shared with other
+jobs (load average 3.41 at the start of the run).
 
 | What | Value | How it was measured |
 |---|---|---|
-| Image size on disk | 2.57GB | `docker image ls`, DISK USAGE column (2571584975 bytes from `docker image inspect`) |
+| Image size on disk | 2.57GB | `docker image ls`, DISK USAGE column (2572087031 bytes from `docker image inspect`) |
 | Image content size (compressed) | 659MB | `docker image ls`, CONTENT SIZE column |
-| Container start to first healthy `/api/health` | 2.709 s | Docker's `State.StartedAt` to the first 200, polling every 0.1 s |
-| First request to `/api/config` | 135.67 ms | the first call loads the Studio metro and business-type YAML files |
-| All paths, 100 requests after the first | p50 2.3 ms, p95 3.28 ms | 20 sequential GETs each to `/api/health`, `/`, `/studio`, `/api/config`, `/api/me` |
+| Container start to first healthy `/api/health` | 2.3 s | Docker's `State.StartedAt` to the first 200, polling every 0.1 s |
+| First request to `/api/config` | 131.06 ms | the first call loads the Studio metro and business-type YAML files |
+| All paths, 100 requests after the first | p50 1.93 ms, p95 5.73 ms | 20 sequential GETs each to `/api/health`, `/`, `/studio`, `/api/config`, `/api/me` |
 | Checks | 9 of 9 passed | see the list below |
 
 The checks: `/api/health` is ok; `/` and `/studio` are HTML with a Content-Security-Policy and `nosniff`;
@@ -149,11 +151,14 @@ feature routers. Section 4b has the browser measurements of the same image.
 
 ## 4b. Measured: browser flows, accessibility and Lighthouse (local container WITH the dev login)
 
-From `results/web_metrics.json`, entry `runs.local-container`, measured 2026-10-13T19:09:56Z by `make web-metrics`
-(`scripts/web_metrics.py` against the same image, id `sha256:ff604e03465b...`, started with `UWC_DEV_AUTH=1` on
+From `results/web_metrics.json`, entry `runs.local-container`, measured 2026-10-14T00:48:23Z by `make web-metrics`
+(`scripts/web_metrics.py` against the same image, id `sha256:20b3b04d9a69...`, started with `UWC_DEV_AUTH=1` on
 127.0.0.1:7862). **The dev login is on only because a script cannot sign in with Hugging Face; the Space refuses it,
-so none of this was measured on the Space.** Same machine and commit as section 4 (`6e16420` + uncommitted work), load
-average 5.43 at the start. Headless Chromium 141.0.7390.37 (Playwright 1.56.0), axe-core 4.13.0, Lighthouse 13.5.0.
+so none of this was measured on the Space.** The entry's `reproducibility` block says `reproducible: true`: the server
+names commit `271ca4d` (the script refuses to write results for an image that names no commit, or one stamped
+"-dirty" by `make docker-build-stamped`, unless `--allow-unreproducible` marks them so). Same machine as section 4,
+load average 3.43 at the start. Headless Chromium 141.0.7390.37 (Playwright 1.56.0), axe-core 4.13.0, Lighthouse
+13.5.0.
 
 End-to-end flows, all passed, with no unexpected console error or failed API answer (the expected ones are the 404s
 of the error paths):
@@ -161,8 +166,8 @@ of the error paths):
 | Flow | Steps | What it shows |
 |---|---|---|
 | signed_out | 3 of 3 | public pages load; a signed-in page asks to sign in with a `?next=` link; an unknown page is the 404 page |
-| founder_synthetic_plan | 9 of 9 | dev login form, the six wizard steps on the SYNTHETIC metro (one suggested area, one tract from the list), results page with the disclaimer, the "simulated, based on stated assumptions" label and the SYNTHETIC label; with the default targets the path search answered `no_path_within_bounds`; with edited targets `paths_found`, and "Apply this change" saved version 2 and re-ran |
-| lender_demo_decision | 3 of 3 | queue, file `APP-C-001` (template memo, memo check passed, guideline search `ok`, OFAC `sdn.csv` and `alt.csv` with snapshot date 2026-10-13, screening `clear`), a DEMO `approve` by the mapped `underwriter` role, recorded as `approved_by_human` |
+| founder_synthetic_plan | 10 of 10 | dev login form, the six wizard steps on the SYNTHETIC metro (one suggested area, one tract from the list), results page with the disclaimer, the "simulated, based on stated assumptions" label and the SYNTHETIC label, every chart table opened; with the default targets the path search answered `no_path_within_bounds`; with edited targets `paths_found`, and "Apply this change" saved version 2 and re-ran |
+| lender_demo_decision | 3 of 3 | queue, file `APP-C-001` (template memo, memo check passed, guideline search `ok`, OFAC `sdn.csv` and `alt.csv` with snapshot date 2026-10-14, screening `clear`), a DEMO `approve` by the mapped `underwriter` role, recorded as `approved_by_human` |
 | error_paths | 2 of 2 | an unknown plan id gets the API's 404 and the page says "Not found"; the wizard refuses to continue without a city |
 | founder_delete_plan | 1 of 1 | "Delete plan" -> DELETE 200 -> the plan's page then says "Not found" |
 
@@ -170,26 +175,27 @@ Timings inside those flows (one run, milliseconds from the click; the machine wa
 
 | What | Value |
 |---|---|
-| "Create plan" click to the plan answer / site scores / simulation / path search answers | 129.3 / 326.2 / 793.3 / 1253.3 ms |
-| "Create plan" click to the path-to-approval result on screen | 1391.1 ms |
-| "Apply this change": PUT answer / re-run path result | 140.9 / 412.5 ms |
-| First lender file after the container started (agent run, retriever and matcher load) | 14608.7 ms to the API answer |
-| Recording the DEMO decision | 338.4 ms |
+| "Create plan" click to the plan answer / site scores / simulation / path search answers | 80.6 / 189.6 / 531.8 / 916.5 ms |
+| "Create plan" click to the path-to-approval result on screen | 1099.2 ms |
+| "Apply this change": PUT answer / re-run path result | 86.8 / 489.1 ms |
+| First lender file after the container started (agent run, retriever and matcher load) | 12953.1 ms to the API answer |
+| Recording the DEMO decision | 302.0 ms |
 
-axe-core: 28 scans (14 page states x light and dark, at 1280 px): **0 critical and 0 serious violations, and no
-violation of any impact**. 16 scans have a "serious" item axe could not decide (`incomplete`), which needs a person to
-review. Zero violations is what automated checks can find, not a statement of WCAG conformance.
+axe-core: 32 scans (16 page states x light and dark, at 1280 px, including the results page with every chart table
+open and the lender file with the decision record open): **0 critical and 0 serious violations, and no violation of
+any impact**. 20 scans have a "serious" item axe could not decide (`incomplete`), which needs a person to review.
+Zero violations is what automated checks can find, not a statement of WCAG conformance.
 
 Lighthouse, median of 3 runs per page and preset (scores as Lighthouse shows them, 0-100):
 
 | Page | Preset | Performance (3 runs) | Accessibility | Best practices | LCP (median) | TBT (median) | CLS (median) |
 |---|---|---|---|---|---|---|---|
-| Landing `/` | mobile | 82 (82, 78, 82) | 100 | 100 | 4142 ms | 162 ms | 0.001 |
-| Landing `/` | desktop | 98 (98, 99, 98) | 100 | 100 | 915 ms | 0 ms | 0.003 |
-| Studio results | mobile | 41 (41, 43, 41) | 100 | 100 | 7080 ms | 2051 ms | 0.112 |
-| Studio results | desktop | 84 (77, 84, 84) | 100 | 100 | 1563 ms | 186 ms | 0.139 |
-| Lender file | mobile | 77 (74, 77, 94) | 100 | 100 | 3590 ms | 294 ms | 0.013 |
-| Lender file | desktop | 91 (91, 91, 91) | 100 | 100 | 1369 ms | 59 ms | 0.139 |
+| Landing `/` | mobile | 76 (75, 81, 76) | 100 | 100 | 5740 ms | 94 ms | 0.001 |
+| Landing `/` | desktop | 98 (98, 98, 98) | 100 | 100 | 1153 ms | 0 ms | 0.003 |
+| Studio results | mobile | 44 (47, 44, 42) | 100 | 100 | 7600 ms | 1602 ms | 0.112 |
+| Studio results | desktop | 86 (88, 86, 86) | 100 | 100 | 1537 ms | 134 ms | 0.139 |
+| Lender file | mobile | 77 (80, 77, 69) | 100 | 100 | 4780 ms | 307 ms | 0.001 |
+| Lender file | desktop | 93 (93, 95, 93) | 100 | 100 | 1114 ms | 0 ms | 0.139 |
 
 "mobile" is Lighthouse's default configuration (simulated throttling of a mid-range phone); "desktop" is
 `--preset=desktop`. The HTTP cache was cleared before each run; the session cookie was kept. The results page is
