@@ -61,7 +61,9 @@ def test_revenue_shocks_equal_the_parameterized_stress_formula(application_id: s
     for scenario_id, shock in (("revenue_minus_10", 0.10), ("revenue_minus_20", 0.20), ("revenue_minus_30", 0.30)):
         stressed = calc_values(scenario_policy(state, baseline, scenario_id))
         # Verified revenue falls by shock x verified (to the cent) and NOI by the same dollars.
-        assert stressed["CALC-verified_annual_revenue"] == pytest.approx(round(verified - shock * verified, 2), abs=0.01)
+        assert stressed["CALC-verified_annual_revenue"] == pytest.approx(
+            round(verified - shock * verified, 2), abs=0.01
+        )
         assert stressed["CALC-noi"] == pytest.approx(round(noi - shock * verified, 2), abs=0.01)
         assert stressed["CALC-dscr"] == stressed_dscr(noi, verified, service, shock)
         # The stated revenue moves by the same share, so the NBC-3.4 gap percent does not change.

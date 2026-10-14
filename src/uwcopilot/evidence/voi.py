@@ -1,4 +1,4 @@
-"""Next-best-evidence: a rules-based, scenario-based value-of-information score for evidence requests (Phase 4 D,
+"""Next-best evidence: a rules-based, scenario-based value-of-information score for evidence requests (Phase 4 D,
 innovation S5).
 
 For an open item (open_items.py) the resolution template lists its plausible resolutions r with documented prior
@@ -14,20 +14,24 @@ ratio of the quoted lines, as a fraction (55.0% -> 0.55), for insurance (scenari
 comes from config/evidence_requests.yaml (a relative planning assumption). VOI is exactly 0 when every resolution
 leaves the recommendation unchanged: such a request has no decision value, however interesting the answer.
 
-Items that share a request (the same request id and params, for example every missing checklist document, or two
-problems on the same carrier's loss run) are valued together: one request reveals all of them, so the resolutions
-are the combinations of each item's resolutions (priors multiplied), applied one item after the other.
+Items that share a request (the same request id and params: every missing checklist document, or two problems on
+the same carrier's loss run) are valued together: one request reveals all of them, so the resolutions are the
+combinations of each item's resolutions (priors multiplied), applied one item after the other.
 
-What this is not: it is not optimal and not an economic model. It is myopic (it values one request at a time, so two
-items that each block the same outcome, such as a missing statement month and another missing document, each score
-0 alone), it trusts the priors, and it measures decision change with the reference policy only. A resolution whose
-levers cannot be applied, or whose application does not validate, is listed with its error and counts as no change.
+Lookahead tie-breaker (an addition, not part of the VOI formula): the score is myopic, so when several open items
+each keep the same recommendation (two blocking referrals, or a missing month and another missing document), every
+one of them scores 0 alone. For a zero-value request, rank_requests therefore also computes the same score after
+every OTHER open item is resolved at its highest-prior resolution (voi_given_others). It only orders the zero-value
+requests among themselves and explains them; VOI itself, and the stopping rule "no request with VOI above 0", are
+unchanged.
+
+What this is not: not optimal and not an economic model. It trusts the priors and measures decision change with the
+reference policy only. A resolution whose levers cannot be applied, or whose application does not validate, is
+listed with its error and counts as no change.
 """
 
 import itertools
 from collections.abc import Sequence
-
-from pydantic import BaseModel, ConfigDict
 
 from uwcopilot.agent.applications import canonical_json
 from uwcopilot.agent.policy import PolicyResult
@@ -36,63 +40,28 @@ from uwcopilot.evidence.open_item_models import OpenItem
 from uwcopilot.evidence.requests import ResolutionChoice, cost_weight, instantiate_options, request_catalog
 from uwcopilot.evidence.scenarios import DecisionMetric, decision_metric
 from uwcopilot.evidence.state import CaseState, IncompleteApplicationError, apply, evaluate
+from uwcopilot.evidence.voi_models import OptionOutcome, RankedRequest, RequestValue
+from uwcopilot.evidence.voi_reasons import options_summary, reason_sentence
 
 SIZE_CAP = 1.0
 MAX_JOINT_OPTIONS = 729
 PCT_TO_FRACTION = 100.0
 SCORE_NAME = "a rules-based, scenario-based value-of-information score"
 
-
-class Frozen(BaseModel):
-    """Base for VOI models: unknown fields are an error and objects are immutable."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class OptionOutcome(Frozen):
-    """One plausible resolution (or combination, for a merged request) and what the reference policy then says."""
-
-    option_id: str
-    description: str
-    prior: float
-    recommendation: str | None
-    metric: float | None
-    changes_recommendation: bool
-    size: float
-    weighted: float  # prior x 1[change] x size (before the cost weight)
-    error: str | None = None
-
-
-class RequestValue(Frozen):
-    """The value of information of one request (one or more items that share it)."""
-
-    request_id: str
-    request_params: dict[str, str]
-    item_ids: tuple[str, ...]
-    cost_weight: float
-    current_recommendation: str
-    metric_name: str
-    current_metric: float | None
-    outcomes: tuple[OptionOutcome, ...]
-    p_change: float
-    voi: float
-    dropped_option_ids: tuple[str, ...] = ()
-    computable: bool = True
-
-
-class RankedRequest(Frozen):
-    """One recommended evidence request, its score and a one-sentence reason filled from the numbers."""
-
-    rank: int
-    request_id: str
-    title: str
-    params: dict[str, str]
-    item_ids: tuple[str, ...]
-    voi: float
-    p_change: float
-    cost_weight: float
-    options_summary: tuple[dict, ...]
-    reason: str
+__all__ = [
+    "SCORE_NAME",
+    "OptionOutcome",
+    "RankedRequest",
+    "RequestValue",
+    "group_items",
+    "nonzero_requests",
+    "options",
+    "rank_requests",
+    "request_value",
+    "request_values",
+    "resolution_choices",
+    "voi",
+]
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -142,8 +111,7 @@ def outcome_of(
     error: str | None,
     current: PolicyResult,
 ) -> OptionOutcome:
-    """One OptionOutcome compared with the current result."""
-    baseline = decision_metric(current)
+    """One OptionOutcome compared with the current result (a failed resolution counts as no change)."""
     if result is None:
         return OptionOutcome(
             option_id=option_id,
@@ -156,7 +124,7 @@ def outcome_of(
             weighted=0.0,
             error=error,
         )
-    metric = decision_metric(result)
+    baseline, metric = decision_metric(current), decision_metric(result)
     changed = result.recommendation != current.recommendation
     size = change_size(baseline, baseline.value, metric.value) if changed else 0.0
     return OptionOutcome(
@@ -167,7 +135,7 @@ def outcome_of(
         metric=metric.value,
         changes_recommendation=changed,
         size=round(size, 6),
-        weighted=round(prior * size, 6) if changed else 0.0,
+        weighted=round(prior * size, 6),
     )
 
 
@@ -197,6 +165,15 @@ def joint_choices(choice_lists: list[list[ResolutionChoice]]) -> list[tuple[Reso
     return list(itertools.product(*choice_lists))
 
 
+def item_choices(
+    item: OpenItem, choices_by_item: dict[str, list[ResolutionChoice]] | None
+) -> tuple[list[ResolutionChoice], tuple[str, ...]]:
+    """An item's resolutions: the caller's replacement when given, else its template's (and dropped option ids)."""
+    if choices_by_item is not None and item.item_id in choices_by_item:
+        return list(choices_by_item[item.item_id]), ()
+    return resolution_choices(item)
+
+
 def request_value(
     state: CaseState,
     items: Sequence[OpenItem],
@@ -216,10 +193,7 @@ def request_value(
     choice_lists: list[list[ResolutionChoice]] = []
     dropped: list[str] = []
     for item in items:
-        if choices_by_item is not None and item.item_id in choices_by_item:
-            choice_lists.append(list(choices_by_item[item.item_id]))
-            continue
-        choices, missing = resolution_choices(item)
+        choices, missing = item_choices(item, choices_by_item)
         choice_lists.append(choices)
         dropped.extend(f"{item.item_id}:{option_id}" for option_id in missing)
     computable = all(choice_lists)
@@ -233,8 +207,6 @@ def request_value(
             option_id = " + ".join(choice.option_id for choice in combination)
             description = " ".join(choice.description for choice in combination)
             outcomes.append(outcome_of(option_id, description, round(prior, 6), result, error, reference))
-    p_change = round(sum(outcome.prior for outcome in outcomes if outcome.changes_recommendation), 6)
-    voi = round(sum(outcome.weighted for outcome in outcomes) / weight, 6)
     return RequestValue(
         request_id=request_id,
         request_params=dict(items[0].request_params),
@@ -244,8 +216,8 @@ def request_value(
         metric_name=baseline.name,
         current_metric=baseline.value,
         outcomes=tuple(outcomes),
-        p_change=p_change,
-        voi=voi,
+        p_change=round(sum(outcome.prior for outcome in outcomes if outcome.changes_recommendation), 6),
+        voi=round(sum(outcome.weighted for outcome in outcomes) / weight, 6),
         dropped_option_ids=tuple(dropped),
         computable=computable,
     )
@@ -257,7 +229,7 @@ def voi(item: OpenItem, state: CaseState, current: PolicyResult | None = None) -
 
 
 # --------------------------------------------------------------------------------------------------------------
-# Ranking and reasons
+# Grouping, lookahead and ranking
 # --------------------------------------------------------------------------------------------------------------
 
 
@@ -276,75 +248,6 @@ def group_items(items: Sequence[OpenItem]) -> list[list[OpenItem]]:
     return list(groups.values())
 
 
-def format_metric(name: str, value: float | None) -> str:
-    """A decision metric for a sentence: a loss ratio as a percent with 1 decimal, a DSCR with 2 decimals."""
-    if value is None:
-        return "not available"
-    if "loss ratio" in name:
-        return f"{value:.1f}%"
-    return f"{value:.2f}"
-
-
-def request_phrase(value: RequestValue) -> str:
-    """'the <catalog title>' plus what is asked for, from ids and codes only (never document text)."""
-    title = request_catalog()[value.request_id].title
-    phrase = f"the {title[0].lower()}{title[1:]}"
-    request_params = value.request_params
-    if "month" in request_params:
-        phrase += f" for {request_params['month']}"
-    if "document" in request_params:
-        phrase += f" ({request_params['document']})"
-    if "carrier" in request_params:
-        phrase += " from the named carrier"
-    return phrase
-
-
-def representative(value: RequestValue) -> OptionOutcome | None:
-    """The changing resolution with the highest prior (the first one on a tie)."""
-    changing = [outcome for outcome in value.outcomes if outcome.changes_recommendation]
-    if not changing:
-        return None
-    return max(changing, key=lambda outcome: outcome.prior)
-
-
-def reason_sentence(value: RequestValue) -> str:
-    """The one-sentence reason, with every number taken from the calculation."""
-    phrase = request_phrase(value)
-    now = value.current_recommendation
-    if not value.computable:
-        return f"No plausible resolution could be built from the case values, so {phrase} is not scored."
-    example = representative(value)
-    if example is None:
-        return (
-            f"Requesting {phrase} has zero decision value: under every plausible resolution the reference "
-            f"recommendation stays {now}."
-        )
-    probability = f"(probability {value.p_change:.2f} under the documented priors)"
-    if value.current_metric is not None and example.metric is not None and example.metric != value.current_metric:
-        before = format_metric(value.metric_name, value.current_metric)
-        after = format_metric(value.metric_name, example.metric)
-        return (
-            f"Requesting {phrase} could move the {value.metric_name} from {before} to {after}, which changes "
-            f"{now} -> {example.recommendation} {probability}."
-        )
-    return f"Requesting {phrase} could change the recommendation {now} -> {example.recommendation} {probability}."
-
-
-def options_summary(value: RequestValue) -> tuple[dict, ...]:
-    """A compact list of the resolutions: id, prior, recommendation, metric, change, error."""
-    return tuple(
-        {
-            "option_id": outcome.option_id,
-            "prior": outcome.prior,
-            "recommendation": outcome.recommendation,
-            "metric": outcome.metric,
-            "changes_recommendation": outcome.changes_recommendation,
-            "error": outcome.error,
-        }
-        for outcome in value.outcomes
-    )
-
-
 def request_values(
     state: CaseState,
     items: Sequence[OpenItem],
@@ -357,6 +260,41 @@ def request_values(
     return [request_value(state, group, reference, choices_by_item, cost_weights) for group in group_items(items)]
 
 
+def resolve_others_as_most_likely(
+    state: CaseState, others: Sequence[OpenItem], choices_by_item: dict[str, list[ResolutionChoice]] | None
+) -> CaseState:
+    """The state after each other item is resolved at its highest-prior resolution (an item that fails is skipped)."""
+    resolved = state
+    for item in others:
+        choices, _ = item_choices(item, choices_by_item)
+        if not choices:
+            continue
+        likely = max(choices, key=lambda choice: choice.prior)
+        try:
+            resolved = apply(resolved, likely.substitutions)
+        except (LeverError, ValueError):
+            continue
+    return resolved
+
+
+def lookahead_value(
+    state: CaseState,
+    group: list[OpenItem],
+    others: list[OpenItem],
+    choices_by_item: dict[str, list[ResolutionChoice]] | None,
+    cost_weights: dict[str, float] | None,
+) -> RequestValue | None:
+    """The request's value once every other open item is resolved as most likely (None when not computable)."""
+    if not others:
+        return None
+    resolved = resolve_others_as_most_likely(state, others, choices_by_item)
+    try:
+        reference = evaluate(resolved)
+    except IncompleteApplicationError:
+        return None
+    return request_value(resolved, group, reference, choices_by_item, cost_weights)
+
+
 def rank_requests(
     state: CaseState,
     items: Sequence[OpenItem],
@@ -364,13 +302,27 @@ def rank_requests(
     choices_by_item: dict[str, list[ResolutionChoice]] | None = None,
     cost_weights: dict[str, float] | None = None,
 ) -> list[RankedRequest]:
-    """Requests ranked by VOI (highest first; ties: lower cost weight, then request id and params).
-
-    Zero-value requests are listed too, after the others, with a reason that says so.
+    """Requests ranked by VOI (highest first). Ties: the lookahead value of a zero-value request (higher first), then
+    the lower cost weight, then request id and params. Zero-value requests are listed too, with reasons saying so.
     """
-    values = request_values(state, items, current, choices_by_item, cost_weights)
-    values.sort(
-        key=lambda value: (-value.voi, value.cost_weight, value.request_id, canonical_json(value.request_params))
+    reference = current if current is not None else evaluate(state)
+    groups = group_items(items)
+    entries = []
+    for group in groups:
+        value = request_value(state, group, reference, choices_by_item, cost_weights)
+        others = [item for other in groups if other is not group for item in other]
+        ahead = None
+        if value.voi == 0 and value.computable:
+            ahead = lookahead_value(state, group, others, choices_by_item, cost_weights)
+        entries.append((value, ahead))
+    entries.sort(
+        key=lambda entry: (
+            -entry[0].voi,
+            -(entry[1].voi if entry[1] is not None else 0.0),
+            entry[0].cost_weight,
+            entry[0].request_id,
+            canonical_json(entry[0].request_params),
+        )
     )
     return [
         RankedRequest(
@@ -383,9 +335,12 @@ def rank_requests(
             p_change=value.p_change,
             cost_weight=value.cost_weight,
             options_summary=options_summary(value),
-            reason=reason_sentence(value),
+            reason=reason_sentence(value, ahead),
+            voi_given_others=None if ahead is None else ahead.voi,
+            p_change_given_others=None if ahead is None else ahead.p_change,
+            recommendation_given_others=None if ahead is None else ahead.current_recommendation,
         )
-        for rank, value in enumerate(values, start=1)
+        for rank, (value, ahead) in enumerate(entries, start=1)
     ]
 
 

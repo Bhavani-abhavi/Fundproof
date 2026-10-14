@@ -425,3 +425,13 @@ docker-build-archive:  ## Build DOCKER_IMAGE from `git archive HEAD` (committed 
 		$(if $(EXTRA_CA_CERTS),--secret id=extra_ca_certs$(comma)src=$(EXTRA_CA_CERTS),) \
 		--build-arg UWC_GIT_SHA=$$sha --label $(BUILD_METHOD_LABEL)=git-archive --label $(BUILD_COMMIT_LABEL)=$$sha \
 		-t $(DOCKER_IMAGE) -
+
+# Phase 4: the Evidence-to-Action Engine on ONE SYNTHETIC packet (document pipeline, then ledger, scenarios, decision
+# stability and next-best evidence). Appends the decision record to data/processed/evidence/decision_records.jsonl
+# (gitignored) and writes its Markdown/HTML views. Needs `make packets`. Choose the packet with PACKET=PKT-I-024.
+.PHONY: run-evidence
+
+PACKET ?= PKT-C-024
+
+run-evidence:  ## Run the Evidence-to-Action Engine on one packet (PACKET=PKT-C-024) and write its decision record
+	uv run python scripts/run_evidence.py --packet $(PACKET)
