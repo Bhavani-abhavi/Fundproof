@@ -462,3 +462,17 @@ eval-evidence:  ## Evaluate the Evidence-to-Action Engine on the test packets ->
 # `make docker-build` image is. Build the image to measure with `make docker-build-archive` (or docker-build-stamped /
 # docker-build-bundle on a clean tree), then run `make web-metrics`.
 docker-build-bundle: override DOCKER_BUILD_FLAGS += --no-cache-filter studio-snapshots
+
+# Founder Studio S4: the founder ledger and the provenance-locked narrative (src/uwcopilot/studio/narrative). The
+# template run is offline and writes results/studio_evidence_metrics.json; the local-model run needs `ollama serve`
+# and writes results/studio_evidence_metrics_ollama.json (hf_inference stays disabled unless the owners opt in).
+.PHONY: studio-evidence studio-evidence-ollama studio-narrative-test
+
+studio-evidence:  ## Founder ledger + template narrative on the 36 golden scenarios -> results/studio_evidence_metrics.json
+	uv run python scripts/eval_studio_evidence.py
+
+studio-evidence-ollama:  ## The same with the local 1.5B model on 6 scenarios -> results/studio_evidence_metrics_ollama.json
+	uv run python scripts/eval_studio_evidence.py --provider ollama --model qwen2.5-1.5b-instruct-f16 --limit 6
+
+studio-narrative-test:  ## Founder ledger and narrative tests only (offline)
+	uv run pytest tests/studio -q -k narrative tests/llm/test_hf_inference_client.py
