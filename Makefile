@@ -476,3 +476,10 @@ studio-evidence-ollama:  ## The same with the local 1.5B model on 6 scenarios ->
 
 studio-narrative-test:  ## Founder ledger and narrative tests only (offline)
 	uv run pytest tests/studio -q -k narrative tests/llm/test_hf_inference_client.py
+
+# Phase 5 part C: the shared risk client against the real scoring app, with tiny SYNTHETIC models, an in-process
+# transport (no network) and the agent's planned requests (the domain gap). See docs/risk_service.md.
+.PHONY: risk-contract-test
+
+risk-contract-test:  ## Risk client <-> scoring service contract, round trips and domain-gap tests (offline)
+	uv run pytest -q tests/risk/test_client_service_integration.py tests/risk/test_service.py tests/test_risk_client.py

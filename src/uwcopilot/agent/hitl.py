@@ -4,6 +4,8 @@ The graph always stops here (LangGraph interrupt) and only a human's resume valu
 code path that approves or declines without one: not a clean file, not a "pre-approved" note, not a memo.
 
 validate_decision() refuses, with reasons, a decision that the guidelines do not allow:
+- role: a model_validator or an admin may never decide a file, whatever the action (security/rbac.py); this is
+  checked first, with the reason from security.rbac.authorize. Roles are CLAIMED in this demo (no identity provider);
 - schema: action, reviewer_id, role and a rationale of at least 10 characters are required; unknown fields are
   rejected;
 - only a senior_underwriter may decline (NBC-7.2, HM-9.2), and a decline-for-review file must be reviewed by a
@@ -42,6 +44,7 @@ from uwcopilot.agent.vocab import (
     ReviewerAction,
     ReviewerRole,
 )
+from uwcopilot.security.rbac import checkpoint_role_refusal
 
 # Approval limits by role: credit and startup credit use the requested exposure (NBC-7.2, NSP-9.1), insurance the
 # account TIV (HM-9.2). An underwriter cannot approve any startup file (NSP-9.1), so that limit is zero.
@@ -129,6 +132,9 @@ def validate_decision(
     raw: Any, policy: PolicyResult, application: AnyApplication
 ) -> tuple[HumanDecision | None, list[str]]:
     """Return (decision, []) when the decision is allowed, or (None, reasons) when it is refused."""
+    role_refusal = checkpoint_role_refusal(raw)
+    if role_refusal is not None:
+        return None, [role_refusal]
     try:
         decision = HumanDecision.model_validate(raw)
     except ValidationError as error:
