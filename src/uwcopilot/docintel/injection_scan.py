@@ -5,8 +5,9 @@ reviewer, a system or an AI assistant appears, so the file can be referred to Fr
 
 Detection reuses uwcopilot.agent.injection.detect (the agent's fixed pattern set: rag.prompt.INSTRUCTION_PATTERNS
 plus agent.injection.AGENT_PATTERNS). No pattern was added or tuned on the synthetic packets. Before detection
-every text is normalized with docintel.normalize.normalize_text (invisible characters removed, NFKC, homoglyph
-fold), and any message hidden in Unicode tag characters is decoded and appended, so it is checked too.
+every text goes through uwcopilot.security.normalize.detection_text, the canonical S2 normalization (the whole
+Unicode Default_Ignorable set removed, NFKC, lookalike letters and angle-bracket lookalikes folded), and any message
+hidden in Unicode tag characters is decoded and appended, so it is checked too.
 
 Input interfaces (so this module does not depend on the page-text models in docintel/layout.py):
 - scan_lines(lines): any iterable of (doc_id, page, line_number, text) tuples or ScanLine named tuples.
@@ -35,8 +36,8 @@ from typing import NamedTuple, Protocol
 from pydantic import BaseModel, ConfigDict
 
 from uwcopilot.agent.injection import ALL_PATTERNS, MAX_EXCERPT_CHARS, detect
-from uwcopilot.docintel.normalize import hidden_tag_text, normalize_text
 from uwcopilot.docintel.schemas import Cited, InsuranceSubmission, LoanPacket, PacketExtraction
+from uwcopilot.security.normalize import detection_text
 
 
 class DocumentInjectionHit(BaseModel):
@@ -86,15 +87,6 @@ def number_attribute(item: object, names: tuple[str, ...]) -> int:
         if isinstance(value, int):
             return value
     raise AttributeError(f"{type(item).__name__} has none of the number attributes {names}")
-
-
-def detection_text(raw: str) -> str:
-    """The text the detector sees: normalized visible text plus any decoded tag-character message."""
-    visible = normalize_text(raw)
-    hidden = normalize_text(hidden_tag_text(raw))
-    if hidden:
-        return f"{visible} {hidden}".strip()
-    return visible
 
 
 def excerpt_of(text: str, patterns: Sequence[str] = ()) -> str:

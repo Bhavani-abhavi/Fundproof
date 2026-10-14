@@ -30,27 +30,22 @@ Python 3.11's unicodedata implements, 14.0.0):
   punctuation or symbols, https://www.unicode.org/Public/security/14.0.0/confusables.txt. The entries that are
   letters of a real script (Canadian syllabics, Runic, Miao) are left out, so words in those scripts never change.
 
-Where the implementation lives: the homoglyph table, the tag-character constants and hidden_tag_text() are
-imported from uwcopilot.docintel.normalize, which the Phase 2 build wrote and still owns. The invisible-character
-set and the bracket fold here are LARGER than docintel's (the S2 review found that docintel.normalize keeps
-characters such as U+034F, the bidirectional controls and the variation selectors). Until Phase 2 is finished,
-docintel.normalize.normalize_text therefore differs from this normalize_text for those characters only. When
-Phase 2 is finished, the implementation moves into this module and docintel/normalize.py becomes a thin
-re-export, so every import of this module keeps working unchanged. The comparison keys for names and FEINs
-(canonical_name, canonical_fein) are document-consistency helpers, not injection controls, and stay in docintel.
+Where the implementation lives: here. The Phase 2 code (docintel/normalize.py) handed over its homoglyph table, the
+tag-character constants, fold_homoglyphs(), hidden_tag_text(), strip_invisible() and normalize_text() to this module
+on 2026-10-14; docintel/normalize.py is now a thin re-export, so `from uwcopilot.docintel.normalize import
+normalize_text` and `from uwcopilot.security.normalize import normalize_text` name the same function. The handover
+made the document pipeline strip the full Default_Ignorable set and fold the bracket lookalikes too (before it, the
+Phase 2 copy kept characters such as U+034F, the bidirectional controls and the variation selectors). The comparison
+keys for names and FEINs (canonical_name, canonical_fein, digits_only, edit_distance) are document-consistency
+helpers, not injection controls, and stay in docintel/normalize.py.
+
+The homoglyph table is written with \\u escapes and the Unicode character name in a comment, because a Cyrillic
+small a (U+0430) and a Latin "a" look the same in an editor. This module imports only the standard library, so any
+package (docintel, rag, agent, kyc, web) can import it without a cycle.
 """
 
 import re
 import unicodedata
-
-from uwcopilot.docintel.normalize import (
-    HOMOGLYPHS,
-    INVISIBLE_CODEPOINTS,
-    TAG_FIRST,
-    TAG_LAST,
-    fold_homoglyphs,
-    hidden_tag_text,
-)
 
 __all__ = [
     "BRACKET_LOOKALIKES",
@@ -59,6 +54,10 @@ __all__ = [
     "INVISIBLE_CODEPOINTS",
     "TAG_FIRST",
     "TAG_LAST",
+    "TAG_PRINTABLE_FIRST",
+    "TAG_PRINTABLE_LAST",
+    "TAG_TO_ASCII_OFFSET",
+    "WHITESPACE_RUN",
     "detection_text",
     "fold_homoglyphs",
     "fold_lookalikes",
@@ -90,6 +89,82 @@ DEFAULT_IGNORABLE_RANGES: tuple[tuple[int, int], ...] = (
     (0x1D173, 0x1D17A),  # musical symbol format controls
     (0xE0000, 0xE0FFF),  # tag characters, variation selectors 17-256, reserved
 )
+# The smaller invisible set the Phase 2 copy stripped before the handover (zero-width characters, word joiner, byte
+# order mark, soft hyphen, invisible operators). Every one is inside DEFAULT_IGNORABLE_RANGES; is_invisible() uses
+# the ranges. Kept so earlier imports keep working and a test can show the handover only made the set larger.
+INVISIBLE_CODEPOINTS: tuple[int, ...] = (*range(0x200B, 0x2010), 0x2060, 0xFEFF, 0x00AD, *range(0x2061, 0x2065))
+# Unicode tag characters U+E0000-U+E007F (inside the last DEFAULT_IGNORABLE_RANGES entry). U+E0020-U+E007E mirror
+# printable ASCII 0x20-0x7E, which is how a message is hidden in them ("ASCII smuggling").
+TAG_FIRST = 0xE0000
+TAG_LAST = 0xE007F
+TAG_PRINTABLE_FIRST = 0xE0020
+TAG_PRINTABLE_LAST = 0xE007E
+TAG_TO_ASCII_OFFSET = 0xE0000
+# Homoglyph fold (step 3 of normalize_text): lookalike letters from Cyrillic and Greek, plus typographic
+# punctuation. Deliberately small; every entry is a character that renders like the Latin letter in common fonts.
+HOMOGLYPHS: dict[str, str] = {
+    # Cyrillic lowercase
+    "\u0430": "a",  # cyrillic small letter a
+    "\u0435": "e",  # cyrillic small letter ie
+    "\u043e": "o",  # cyrillic small letter o
+    "\u0440": "p",  # cyrillic small letter er
+    "\u0441": "c",  # cyrillic small letter es
+    "\u0443": "y",  # cyrillic small letter u
+    "\u0445": "x",  # cyrillic small letter ha
+    "\u0455": "s",  # cyrillic small letter dze
+    "\u0456": "i",  # cyrillic small letter byelorussian-ukrainian i
+    "\u0458": "j",  # cyrillic small letter je
+    "\u04bb": "h",  # cyrillic small letter shha
+    "\u04cf": "l",  # cyrillic small letter palochka
+    "\u0501": "d",  # cyrillic small letter komi de
+    # Cyrillic uppercase
+    "\u0410": "A",  # cyrillic capital letter a
+    "\u0412": "B",  # cyrillic capital letter ve
+    "\u0415": "E",  # cyrillic capital letter ie
+    "\u041a": "K",  # cyrillic capital letter ka
+    "\u041c": "M",  # cyrillic capital letter em
+    "\u041d": "H",  # cyrillic capital letter en
+    "\u041e": "O",  # cyrillic capital letter o
+    "\u0420": "P",  # cyrillic capital letter er
+    "\u0421": "C",  # cyrillic capital letter es
+    "\u0422": "T",  # cyrillic capital letter te
+    "\u0425": "X",  # cyrillic capital letter ha
+    "\u0405": "S",  # cyrillic capital letter dze
+    "\u0406": "I",  # cyrillic capital letter byelorussian-ukrainian i
+    "\u0408": "J",  # cyrillic capital letter je
+    # Greek
+    "\u03bf": "o",  # greek small letter omicron
+    "\u03b1": "a",  # greek small letter alpha
+    "\u03b9": "i",  # greek small letter iota
+    "\u03ba": "k",  # greek small letter kappa
+    "\u03bd": "v",  # greek small letter nu
+    "\u03c1": "p",  # greek small letter rho
+    "\u0391": "A",  # greek capital letter alpha
+    "\u0392": "B",  # greek capital letter beta
+    "\u0395": "E",  # greek capital letter epsilon
+    "\u0396": "Z",  # greek capital letter zeta
+    "\u0397": "H",  # greek capital letter eta
+    "\u0399": "I",  # greek capital letter iota
+    "\u039a": "K",  # greek capital letter kappa
+    "\u039c": "M",  # greek capital letter mu
+    "\u039d": "N",  # greek capital letter nu
+    "\u039f": "O",  # greek capital letter omicron
+    "\u03a1": "P",  # greek capital letter rho
+    "\u03a4": "T",  # greek capital letter tau
+    "\u03a5": "Y",  # greek capital letter upsilon
+    "\u03a7": "X",  # greek capital letter chi
+    # Typographic punctuation
+    "\u2018": "'",  # left single quotation mark
+    "\u2019": "'",  # right single quotation mark
+    "\u201c": '"',  # left double quotation mark
+    "\u201d": '"',  # right double quotation mark
+    "\u2010": "-",  # hyphen
+    "\u2012": "-",  # figure dash
+    "\u2013": "-",  # en dash
+    "\u2014": "-",  # em dash
+    "\u2212": "-",  # minus sign
+}
+
 # Unicode 14.0.0 confusables.txt entries for "<" and ">" that are punctuation or symbols (see the module docstring).
 BRACKET_LOOKALIKES: dict[str, str] = {
     "\u02c2": "<",  # modifier letter left arrowhead
@@ -119,6 +194,21 @@ def strip_invisible(text: str) -> str:
     if text.isascii():
         return text
     return "".join(character for character in text if not is_invisible(character))
+
+
+def hidden_tag_text(text: str) -> str:
+    """The ASCII message hidden in Unicode tag characters ("" when there is none); U+E0041 is a hidden "A"."""
+    hidden = []
+    for character in text:
+        codepoint = ord(character)
+        if TAG_PRINTABLE_FIRST <= codepoint <= TAG_PRINTABLE_LAST:
+            hidden.append(chr(codepoint - TAG_TO_ASCII_OFFSET))
+    return "".join(hidden)
+
+
+def fold_homoglyphs(text: str) -> str:
+    """Replace lookalike letters and typographic punctuation using the HOMOGLYPHS table."""
+    return "".join(HOMOGLYPHS.get(character, character) for character in text)
 
 
 def fold_lookalikes(text: str) -> str:
