@@ -6,8 +6,9 @@
 *
 
 # 2. Let back in what the Dockerfile copies. The eval/ and results/ entries are the Lender Desk demo's SYNTHETIC
-#    applications and the screening threshold; the two scripts download the public lists and build the guideline
-#    index at build time (stage "assets"). Nothing else under eval/, results/, scripts/ or data/ comes back.
+#    applications and the screening threshold; the first two scripts download the public lists and build the guideline
+#    index at build time (stage "assets"); the third builds the real metros' Studio snapshots when the build has the
+#    Census key secret (stage "studio-snapshots"). Nothing else under eval/, results/, scripts/ or data/ comes back.
 !pyproject.toml
 !uv.lock
 !README.md
@@ -20,6 +21,7 @@
 !results/kyc_metrics.json
 !scripts/download_data.py
 !scripts/build_index.py
+!scripts/build_studio_snapshots.py
 
 # 3. Inside those folders, exclude build output, dependencies, caches and anything secret-looking.
 **/__pycache__

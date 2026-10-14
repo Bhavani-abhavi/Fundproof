@@ -20,6 +20,10 @@ Recommendation precedence (documented in docs/agent_design.md):
 The line-specific rules live in policy_credit.py (Northwind), policy_insurance.py (Harborline) and
 policy_startup.py (the SYNTHETIC Northwind startup program, corpus/programs/). Startup files always need a senior
 underwriter (NSP-9.1), whatever the recommendation.
+
+Phase 4 adds PolicyInputs.document_checks: confirmed Phase 2 document checks (balance continuity, tax return vs
+P&L, name / FEIN / owner consistency, loss-run totals) raise the findings in DOCUMENT_CHECK_RULES
+(check_document_findings). The list is empty by default, and then nothing changes.
 """
 
 from typing import Literal
@@ -36,10 +40,12 @@ from uwcopilot.agent.vocab import (
     BLOCKING_FUNCTIONS,
     COMPLIANCE,
     FRAUD_OPERATIONS,
+    KYC_OPERATIONS,
     REFERRAL_PRIORITY,
     SENIOR_UNDERWRITER,
     SPECIAL_INVESTIGATIONS,
     UNDERWRITER,
+    UNDERWRITING_MANAGER,
     Recommendation,
     ReviewerRole,
 )
@@ -72,6 +78,72 @@ INJECTION_REFER_TO = {
 # NSP-9.1: lines whose files always need a senior underwriter, whatever the recommendation.
 SENIOR_REVIEW_LINES = frozenset({"startup_credit"})
 INJECTION_EVIDENCE_ID = "CHK-injection_screen"
+
+
+class DocumentCheckRule(BaseModel):
+    """What a confirmed document check (Phase 2, docintel/checks.py) raises: sections, trigger, reviewers."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    section_ids: tuple[str, ...]
+    trigger_id: str
+    refer_to: tuple[str, ...]
+    blocking: bool
+
+
+# Document checks the policy turns into findings, by line (Phase 4). The startup program applies NBC-6.1, NBC-6.2
+# and NBC-9.1 unchanged (NSP-7.3), so startup files use the Northwind table.
+# - NBC-9.1: a balance that does not continue, or tax-return receipts more than 10.0% from the P&L, is a document
+#   integrity indicator: Fraud Operations, blocking (R-NBC-13).
+# - NBC-6.2: a business name or FEIN that differs between documents is an identity verification failure:
+#   KYC Operations, blocking (R-NBC-09).
+# - NBC-6.1: ownership that differs between documents: Senior Underwriter and KYC Operations, blocking (R-NBC-08).
+# - HM-11.1: loss-run "totals that do not equal the sum of the lines": the SIU, blocking (R-HM-16).
+# - HM-8.1: a named insured or ownership that cannot be verified: Underwriting Manager (R-HM-12, not blocking).
+# Other check ids (revenue gap, statement months, required documents, TIV, claims history, paid/reserve per claim,
+# account conduct, debt payments) are NOT listed: the policy already evaluates those problems from the
+# application itself, so a flag for them is accepted and ignored. Embedded instructions enter through
+# PolicyInputs.injection_flags (field "doc:<doc_id>:p<page>"), not through document checks.
+NORTHWIND_DOCUMENT_CHECKS: dict[str, DocumentCheckRule] = {
+    "balance_continuity": DocumentCheckRule(
+        section_ids=("NBC-9.1", "NBC-7.3"), trigger_id="R-NBC-13", refer_to=(FRAUD_OPERATIONS,), blocking=True
+    ),
+    "tax_return_vs_pnl": DocumentCheckRule(
+        section_ids=("NBC-9.1", "NBC-7.3"), trigger_id="R-NBC-13", refer_to=(FRAUD_OPERATIONS,), blocking=True
+    ),
+    "name_consistency": DocumentCheckRule(
+        section_ids=("NBC-6.2", "NBC-7.3"), trigger_id="R-NBC-09", refer_to=(KYC_OPERATIONS,), blocking=True
+    ),
+    "fein_consistency": DocumentCheckRule(
+        section_ids=("NBC-6.2", "NBC-7.3"), trigger_id="R-NBC-09", refer_to=(KYC_OPERATIONS,), blocking=True
+    ),
+    "owner_consistency": DocumentCheckRule(
+        section_ids=("NBC-6.1", "NBC-7.3"),
+        trigger_id="R-NBC-08",
+        refer_to=(SENIOR_UNDERWRITER, KYC_OPERATIONS),
+        blocking=True,
+    ),
+}
+HARBORLINE_DOCUMENT_CHECKS: dict[str, DocumentCheckRule] = {
+    "loss_run_totals": DocumentCheckRule(
+        section_ids=("HM-11.1", "HM-9.3"), trigger_id="R-HM-16", refer_to=(SPECIAL_INVESTIGATIONS,), blocking=True
+    ),
+    "name_consistency": DocumentCheckRule(
+        section_ids=("HM-8.1", "HM-9.3"), trigger_id="R-HM-12", refer_to=(UNDERWRITING_MANAGER,), blocking=False
+    ),
+    "fein_consistency": DocumentCheckRule(
+        section_ids=("HM-8.1", "HM-9.3"), trigger_id="R-HM-12", refer_to=(UNDERWRITING_MANAGER,), blocking=False
+    ),
+    "owner_consistency": DocumentCheckRule(
+        section_ids=("HM-8.1", "HM-9.3"), trigger_id="R-HM-12", refer_to=(UNDERWRITING_MANAGER,), blocking=False
+    ),
+}
+DOCUMENT_CHECK_RULES: dict[str, dict[str, DocumentCheckRule]] = {
+    "credit": NORTHWIND_DOCUMENT_CHECKS,
+    "insurance": HARBORLINE_DOCUMENT_CHECKS,
+    "startup_credit": NORTHWIND_DOCUMENT_CHECKS,
+}
+DOCUMENT_RULE_PREFIX = "document_"
 
 
 class PolicyModel(BaseModel):
@@ -149,13 +221,33 @@ class InjectionFlag(PolicyModel):
     patterns: list[str]
 
 
+class DocumentCheckFlag(PolicyModel):
+    """The outcome of one Phase 2 document check (docintel/checks.py) that the policy should act on.
+
+    status "confirmed": the problem stands (a failing check, or a resolution that confirmed it) and raises the
+    finding in DOCUMENT_CHECK_RULES; "resolved": it was cleared (recorded as a passed check, no finding).
+    detail and evidence_ids are copied into the finding. detail must be built from structured values only (counts,
+    document ids, contradiction ids), never from document text: finding details reach the memo prompt.
+    """
+
+    check_id: str
+    status: Literal["confirmed", "resolved"]
+    detail: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class PolicyInputs(PolicyModel):
-    """Everything the policy uses besides the application itself."""
+    """Everything the policy uses besides the application itself.
+
+    document_checks (Phase 4) defaults to empty; with no flags the policy output is byte-identical to the output
+    before the field existed (tests/evidence/test_policy_integration.py checks this on every committed application).
+    """
 
     screening: list[ScreeningOutcome] = Field(default_factory=list)
     risk: RiskSignal | None = None
     risk_unavailable_reason: str | None = None
     injection_flags: list[InjectionFlag] = Field(default_factory=list)
+    document_checks: list[DocumentCheckFlag] = Field(default_factory=list)
 
 
 class PolicyResult(PolicyModel):
@@ -335,6 +427,58 @@ def check_injection(application: AnyApplication, inputs: PolicyInputs, context: 
     )
 
 
+def merged_document_checks(flags: list[DocumentCheckFlag]) -> dict[str, DocumentCheckFlag]:
+    """One flag per check id, in first-seen order: confirmed wins over resolved; details and evidence are joined."""
+    merged: dict[str, DocumentCheckFlag] = {}
+    for flag in flags:
+        current = merged.get(flag.check_id)
+        if current is None:
+            merged[flag.check_id] = flag
+            continue
+        status = "confirmed" if "confirmed" in (current.status, flag.status) else "resolved"
+        details = [text for text in (current.detail, flag.detail) if text]
+        evidence = list(current.evidence_ids)
+        evidence.extend(item for item in flag.evidence_ids if item not in evidence)
+        merged[flag.check_id] = DocumentCheckFlag(
+            check_id=flag.check_id, status=status, detail=" ".join(details), evidence_ids=evidence
+        )
+    return merged
+
+
+def check_document_findings(application: AnyApplication, inputs: PolicyInputs, context: RuleContext) -> None:
+    """Phase 2 document checks as policy rules (see DOCUMENT_CHECK_RULES for the sections and referrals).
+
+    A confirmed flag raises the finding "document_<check_id>"; a resolved flag is recorded as a passed check with
+    the same rule name. Flags for check ids the table does not list are ignored on purpose (the policy evaluates
+    those problems from the application). With no flags this adds nothing at all.
+    """
+    rules = DOCUMENT_CHECK_RULES[application.line]
+    for check_id, flag in merged_document_checks(inputs.document_checks).items():
+        rule = rules.get(check_id)
+        if rule is None:
+            continue
+        name = f"{DOCUMENT_RULE_PREFIX}{check_id}"
+        suffix = f": {flag.detail}" if flag.detail else "."
+        if flag.status == "confirmed":
+            context.find(
+                name,
+                "refer",
+                list(rule.section_ids),
+                list(rule.refer_to),
+                f"Document check {check_id} is confirmed{suffix}",
+                list(flag.evidence_ids),
+                trigger_ids=[rule.trigger_id],
+                blocking=rule.blocking,
+            )
+        else:
+            context.passed(
+                name,
+                [rule.section_ids[0]],
+                f"Document check {check_id} was resolved{suffix}",
+                list(flag.evidence_ids),
+            )
+
+
 def check_credit_risk_model(inputs: PolicyInputs, context: RuleContext) -> None:
     """NBC-8.1: a PD above 12.0% (band E) is a referral (R-NBC-12). Missing PD is reported, never filled in."""
     if inputs.risk is None:
@@ -431,6 +575,7 @@ def evaluate_policy(application: AnyApplication, inputs: PolicyInputs) -> Policy
         evaluate_startup_rules(application, inputs, context)
     else:
         evaluate_insurance_rules(application, inputs, context)
+    check_document_findings(application, inputs, context)
     check_sanctions(application, inputs, context)
     check_injection(application, inputs, context)
 

@@ -7,9 +7,11 @@
 bundle: copies an explicit allow-list into an EMPTY folder: Dockerfile, .dockerignore, pyproject.toml, uv.lock,
     src/, config/, corpus/, the frontend SOURCE (no node_modules, .next or out: the Space builds them; no mock API or
     screenshot helpers), the SYNTHETIC demo applications (eval/applications, eval/startup_applications),
-    results/kyc_metrics.json and the two build-time scripts (scripts/download_data.py, scripts/build_index.py),
-    plus deploy/space/README.md as README.md (the Space card). The commit hash is written into the bundle's Dockerfile
-    line `ARG UWC_GIT_SHA=`, so GET /api/health on the Space names the commit it runs.
+    results/kyc_metrics.json and the three build-time scripts (scripts/download_data.py, scripts/build_index.py,
+    scripts/build_studio_snapshots.py), plus deploy/space/README.md as README.md (the Space card). The Studio
+    snapshot builder, the metro and business-type configs it reads and the Overture settings are in src/ and
+    config/; it reads no other file (no data/ file is ever bundled). The commit hash is written into the bundle's
+    Dockerfile line `ARG UWC_GIT_SHA=`, so GET /api/health on the Space names the commit it runs.
 push: create_repo(repo_type="space", space_sdk="docker", exist_ok=True, private=False), then sets the Space secret
     UWC_SESSION_SECRET to a fresh random value (the app refuses to start in a Space without it; a new value on each
     deploy signs everyone out, which is acceptable for this prototype; --keep-session-secret skips this when the
@@ -42,7 +44,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SPACE_CARD = Path("deploy/space/README.md")
 # Files and folders copied into the bundle, as they are in the repo: everything the Dockerfile copies. The eval/
 # folders are the Lender Desk demo's SYNTHETIC applications; results/kyc_metrics.json is the screening threshold; the
-# two scripts download the public OFAC lists and build the guideline index while the Space builds the image.
+# first two scripts download the public OFAC lists and build the guideline index while the Space builds the image;
+# build_studio_snapshots.py builds the real metros' Studio snapshots then (only with the CENSUS_API_KEY build secret).
 BUNDLE_FILES: tuple[str, ...] = (
     "Dockerfile",
     ".dockerignore",
@@ -51,6 +54,7 @@ BUNDLE_FILES: tuple[str, ...] = (
     "results/kyc_metrics.json",
     "scripts/download_data.py",
     "scripts/build_index.py",
+    "scripts/build_studio_snapshots.py",
 )
 BUNDLE_DIRS: tuple[str, ...] = ("src", "config", "corpus", "frontend", "eval/applications", "eval/startup_applications")
 # Never copied, at any depth (file or folder names), whatever folder they are in.

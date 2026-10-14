@@ -1,5 +1,6 @@
 "use client";
 
+import { Import } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 
@@ -8,6 +9,7 @@ import { EvidenceChip } from "@/components/evidence/evidence-chip";
 import { ChartFrame, DataTable } from "@/components/studio/charts/chart-frame";
 import { ProbabilityGauge } from "@/components/studio/project/probability-gauge";
 import { SimulationLabel } from "@/components/studio/simulation-label";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber, formatPercent, formatRange, formatShare, formatUsd, formatWithUnit, humanize, isNumber, monthLabel, sentenceCase } from "@/lib/format";
@@ -32,9 +34,27 @@ function overrunInput(response: FeasibilityResponse) {
 }
 
 /**
+ * The label of the two blocks that list what the simulation STARTED FROM (the loan, and every sampled input): figures
+ * the founder stated, assumed ranges and sourced values, each with its own status chip. They are inputs, not
+ * simulated results, so these blocks do not carry the "simulated, based on stated assumptions" label.
+ */
+function SimulationInputsLabel({ id }: { id: string }) {
+  return (
+    <p id={id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed text-muted-foreground">
+      <Badge variant="outline" className="font-semibold">
+        <Import aria-hidden="true" />
+        Inputs, not results
+      </Badge>
+      <span>What the simulation was given (stated, assumed or sourced), not what it simulated.</span>
+    </p>
+  );
+}
+
+/**
  * The feasibility results for one site: three probability gauges, the revenue fan, the cash runway, the tornado,
- * break-even, the loan as simulated and every sampled input with its status and source. Every block carries the
- * "simulated, based on stated assumptions" label; every number comes from the FeasibilityResult the API returned.
+ * break-even, the loan as simulated and every sampled input with its status and source. Every block of simulated
+ * numbers carries the "simulated, based on stated assumptions" label; the two blocks of inputs (the loan and the
+ * sampled inputs) carry SimulationInputsLabel instead. Every number comes from the FeasibilityResult the API returned.
  *
  * rateTyped: false when the founder left the rate empty, so the rate is the city's prime rate PLUS an assumed spread
  * (the simulator's rate status describes the prime rate only; the spread is shown as an assumption next to it).
@@ -220,10 +240,15 @@ export function FeasibilityPanel({ response, target, rateTyped = true }: { respo
           </p>
         </section>
 
-        <section aria-labelledby="loan-title" className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:p-5">
+        <section
+          aria-labelledby="loan-title"
+          aria-describedby="loan-inputs-label"
+          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:p-5"
+        >
           <h3 id="loan-title" className="font-semibold">
             The loan as simulated
           </h3>
+          <SimulationInputsLabel id="loan-inputs-label" />
           <dl className="flex flex-col divide-y divide-border text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 py-2">
               <dt className="text-muted-foreground">Amount and term</dt>
@@ -271,11 +296,16 @@ export function FeasibilityPanel({ response, target, rateTyped = true }: { respo
         </section>
       </div>
 
-      <section aria-labelledby="inputs-title" className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:p-5">
+      <section
+        aria-labelledby="inputs-title"
+        aria-describedby="sampled-inputs-label"
+        className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:p-5"
+      >
         <div className="flex flex-col gap-1">
           <h3 id="inputs-title" className="font-semibold">
             Every input the simulation sampled ({result.distributions.length})
           </h3>
+          <SimulationInputsLabel id="sampled-inputs-label" />
           <p className="text-sm text-muted-foreground">
             Low, most likely and high values, with where each came from. Assumptions are ranges you can replace with your own
             figures or documents.

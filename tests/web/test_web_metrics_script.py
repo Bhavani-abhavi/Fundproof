@@ -7,6 +7,7 @@ tested with small hand-written inputs.
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -439,14 +440,29 @@ def fake_git(head: str, status: str, commits: tuple[str, ...] = ()) -> Any:
     return run
 
 
+def labelled_build(method: str | None, image_sha: str | None, commit_label: str | None = None) -> dict[str, Any]:
+    """A build record as image_build_facts reads it from `docker image inspect` (labels and the image's stamp)."""
+    labels: dict[str, str] = {}
+    if method is not None:
+        labels[web_metrics.BUILD_METHOD_LABEL] = method
+    if commit_label is not None:
+        labels[web_metrics.BUILD_COMMIT_LABEL] = commit_label
+    env = ["PATH=/app/.venv/bin:/usr/bin"] + ([f"UWC_GIT_SHA={image_sha}"] if image_sha is not None else [])
+    return web_metrics.build_facts_from_config({"Labels": labels, "Env": env})
+
+
+STAMPED = "make-docker-build-stamped"
+
+
 def test_an_image_stamped_with_a_commit_is_reproducible(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
-    checked = web_metrics.reproducibility("a" * 40)
+    checked = web_metrics.reproducibility("a" * 40, labelled_build(STAMPED, "a" * 40), container_runs_image=True)
     assert checked["reproducible"] is True and checked["reasons"] == [] and checked["server_is_head"] is True
-    assert checked["working_tree_digest_sha256"] is None
+    assert checked["working_tree_digest_sha256"] is None and checked["build_method"] == STAMPED
+    assert checked["note"].startswith("Reproducible") and STAMPED in checked["note"]
     # An older commit is fine too, and later edits to the checkout do not change a committed image.
     monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, " M notes.md\n", commits=("c" * 40,)))
-    older = web_metrics.reproducibility("c" * 40)
+    older = web_metrics.reproducibility("c" * 40, labelled_build("git-archive", "c" * 40, commit_label="c" * 40))
     assert older["reproducible"] is True and older["server_is_head"] is False and older["working_tree_dirty"] is True
 
 
@@ -462,9 +478,80 @@ def test_an_unreproducible_build_says_why(
     monkeypatch: pytest.MonkeyPatch, server_sha: str | None, expected: str
 ) -> None:
     monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, " M src/app.py\n"))
-    checked = web_metrics.reproducibility(server_sha)
+    checked = web_metrics.reproducibility(server_sha, labelled_build(STAMPED, server_sha))
     assert checked["reproducible"] is False and any(expected in reason for reason in checked["reasons"])
     assert checked["note"].startswith("UNREPRODUCIBLE") and len(checked["working_tree_digest_sha256"]) == 64
+
+
+def test_an_unknown_build_method_is_never_reproducible(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The stamp names a clean commit, but nothing says how the image was built: it could be a plain
+    # `docker build --build-arg UWC_GIT_SHA=<HEAD> .` of a dirty checkout.
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
+    plain_build = web_metrics.reproducibility("a" * 40, labelled_build(None, "a" * 40))
+    assert plain_build["reproducible"] is False and plain_build["build_method"] is None
+    assert any("build method is unknown" in reason for reason in plain_build["reasons"])
+    assert any("docker-build-archive" in reason for reason in plain_build["reasons"])
+    no_image = web_metrics.reproducibility("a" * 40, None)
+    assert no_image["reproducible"] is False and no_image["build"] is None
+    assert any("no --docker-image" in reason for reason in no_image["reasons"])
+    made_up = web_metrics.reproducibility("a" * 40, labelled_build("my-laptop", "a" * 40))
+    assert made_up["reproducible"] is False and made_up["build"]["method_known"] is False
+
+
+def test_the_server_stamp_must_be_the_images_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    # e.g. `docker run -e UWC_GIT_SHA=<HEAD>` on an image built from something else
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
+    checked = web_metrics.reproducibility("a" * 40, labelled_build(STAMPED, "a" * 40 + "-dirty"))
+    assert checked["reproducible"] is False
+    assert any("not the image's own UWC_GIT_SHA" in reason for reason in checked["reasons"])
+
+
+def test_a_git_archive_build_must_name_the_same_commit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, "", commits=("c" * 40,)))
+    checked = web_metrics.reproducibility("a" * 40, labelled_build("git-archive", "a" * 40, commit_label="c" * 40))
+    assert checked["reproducible"] is False
+    assert any(web_metrics.BUILD_COMMIT_LABEL in reason for reason in checked["reasons"])
+
+
+def test_the_container_must_run_the_measured_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
+    checked = web_metrics.reproducibility("a" * 40, labelled_build(STAMPED, "a" * 40), container_runs_image=False)
+    assert checked["reproducible"] is False and checked["container_runs_image"] is False
+    assert any("does not run the --docker-image" in reason for reason in checked["reasons"])
+
+
+def test_build_facts_come_from_docker_image_inspect_and_copy_nothing_else() -> None:
+    config = {
+        "Labels": {
+            web_metrics.BUILD_METHOD_LABEL: "git-archive",
+            web_metrics.BUILD_COMMIT_LABEL: "d" * 40,
+            "org.opencontainers.image.title": "Fundproof",
+        },
+        "Env": ["PATH=/usr/bin", "UWC_GIT_SHA=" + "d" * 40, "SOME_TOKEN=do-not-copy"],
+    }
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **options: Any) -> Any:
+        calls.append(command)
+        return web_metrics.subprocess.CompletedProcess(command, 0, stdout=json.dumps(config) + "\n", stderr="")
+
+    facts = web_metrics.image_build_facts("fundproof:dev", run=fake_run)
+    assert calls == [["docker", "image", "inspect", "--format", "{{json .Config}}", "fundproof:dev"]]
+    assert facts["method"] == "git-archive" and facts["method_known"] is True
+    assert facts["commit_label"] == "d" * 40 and facts["image_git_sha"] == "d" * 40
+    assert "do-not-copy" not in json.dumps(facts) and "Fundproof" not in json.dumps(facts)
+    unlabelled = web_metrics.build_facts_from_config({"Labels": None, "Env": None})
+    assert unlabelled["method"] is None and unlabelled["image_git_sha"] is None
+    assert unlabelled["method_description"].startswith("unknown")
+
+
+def test_the_makefile_sets_the_build_label_the_script_reads() -> None:
+    makefile = (web_metrics.REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+    assert web_metrics.BUILD_METHOD_LABEL in makefile and web_metrics.BUILD_COMMIT_LABEL in makefile
+    for method in [*web_metrics.BUILD_METHODS, *web_metrics.REFUSED_BUILD_METHODS]:
+        # the whole name, not a part of a longer one ("space-bundle" inside "space-bundle-dirty-tree")
+        assert re.search(rf"(?<![\w-]){re.escape(method)}(?![\w-])", makefile), method
+    assert "docker-build-archive:" in makefile and "git archive" in makefile
 
 
 def test_main_refuses_an_unreproducible_build_without_the_flag(
@@ -483,3 +570,141 @@ def test_main_refuses_an_unreproducible_build_without_the_flag(
     ]
     assert web_metrics.main(arguments) == 2 and "unreproducible" in capsys.readouterr().err
     assert not (tmp_path / "out.json").exists()
+
+
+def test_main_refuses_an_image_without_a_build_label(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
+    monkeypatch.setattr(web_metrics, "find_node_tools", lambda tools_dir, need_lighthouse: None)
+    monkeypatch.setattr(web_metrics, "read_server_config", lambda base_url, wait_s: {"git_sha": "a" * 40})
+    monkeypatch.setattr(web_metrics, "docker_image_facts", lambda image: {"image": image, "id": "sha256:1"})
+    monkeypatch.setattr(web_metrics, "image_build_facts", lambda image: labelled_build(None, "a" * 40))
+    monkeypatch.setattr(web_metrics, "container_facts", lambda name: {"name": name, "image_id": "sha256:1"})
+    arguments = ["--url", "http://127.0.0.1:7862", "--target", "local-container", "--output", str(tmp_path / "o.json")]
+    arguments += ["--docker-image", "fundproof:dev", "--container", "fundproof-metrics"]
+    assert web_metrics.main(arguments) == 2
+    error = capsys.readouterr().err
+    assert "build method is unknown" in error and "docker-build-archive" in error
+    assert not (tmp_path / "o.json").exists()
+
+
+# ---- axe per viewport ----------------------------------------------------------------------------------------------
+
+
+def test_axe_totals_are_also_given_per_viewport_widest_first() -> None:
+    desktop = {**summarize_axe({"violations": [axe_rule("a", "serious", 2)]}), "viewport": "1280x800"}
+    phone = {**summarize_axe({"violations": [axe_rule("b", "critical", 1)]}), "viewport": "375x812"}
+    phone_clean = {**summarize_axe({"violations": []}), "viewport": "375x812"}
+    by_viewport = web_metrics.axe_totals_by_viewport([phone, desktop, phone_clean])
+    assert list(by_viewport) == ["1280x800", "375x812"]
+    assert by_viewport["1280x800"]["serious_violation_rules"] == 1 and by_viewport["1280x800"]["scans"] == 1
+    assert by_viewport["375x812"]["critical_nodes"] == 1 and by_viewport["375x812"]["scans"] == 2
+    assert web_metrics.viewport_key(web_metrics.MOBILE_VIEWPORT) == "375x812"
+    assert web_metrics.viewport_key(None) == "unknown"
+
+
+# ---- the keyboard walk helpers ---------------------------------------------------------------------------------------
+
+
+def focus(tag: str, **fields: Any) -> dict[str, Any]:
+    """A READ_FOCUS_JS answer: an element with tag, then the given fields."""
+    answer: dict[str, Any] = {
+        "tag": tag,
+        "id": "",
+        "name": "",
+        "text": "",
+        "label": "",
+        "list": "",
+        "pressed": None,
+        "in_dialog": False,
+    }
+    answer.update(fields)
+    return answer
+
+
+class FakeKeyboard:
+    """A page whose focus walks through `ring` on Tab (backwards on Shift+Tab), wrapping like a browser does."""
+
+    def __init__(self, ring: list[dict[str, Any]]) -> None:
+        """Start with nothing focused (position -1 = the page body)."""
+        self.ring = ring
+        self.position = -1
+        self.keys: list[str] = []
+
+    def press(self, key: str) -> None:
+        """Shift+Tab moves back one element; every other key moves forward (Tab, ArrowDown in a group)."""
+        self.keys.append(key)
+        step = -1 if key == "Shift+Tab" else 1
+        self.position = (self.position + step) % len(self.ring)
+
+    def read_focus(self) -> dict[str, Any]:
+        """The element that has the focus now."""
+        if self.position < 0:
+            return focus("body")
+        return self.ring[self.position]
+
+
+WIZARD_RING = [
+    focus("a", text="Skip to content"),
+    focus("button", text="Back"),
+    focus("select", label="Or pick a census tract from the list", text="Choose one of 300 tracts"),
+    focus("button", text="Add as a site"),
+    focus("button", text="Continue"),
+]
+
+
+def test_tab_until_counts_the_presses_to_the_target() -> None:
+    page = FakeKeyboard(WIZARD_RING)
+    target = web_metrics.FocusTarget("the Continue button", tag="button", text="Continue")
+    assert web_metrics.tab_until(page.press, page.read_focus, target) == 5
+    back = web_metrics.FocusTarget("the tract list", tag="select", label_prefix="Or pick a census tract")
+    assert web_metrics.tab_until(page.press, page.read_focus, back, key="Shift+Tab") == 2
+    assert page.keys == ["Tab"] * 5 + ["Shift+Tab"] * 2
+
+
+def test_tab_until_fails_with_what_had_the_focus() -> None:
+    page = FakeKeyboard(WIZARD_RING)
+    missing = web_metrics.FocusTarget("the Create plan button", tag="button", text_prefix="Create plan")
+    with pytest.raises(CheckFailed, match="Create plan button was not reached with Tab in 7 presses") as caught:
+        web_metrics.tab_until(page.press, page.read_focus, missing, max_presses=7)
+    assert "button 'Back'" in str(caught.value) and len(page.keys) == 7
+
+
+def test_focus_target_checks_every_field_it_sets() -> None:
+    chip = focus("button", text="Open guideline section NBC-4.2", list="Citations")
+    assert web_metrics.FocusTarget("chip", tag="button", text_prefix="Open ", list="Citations").matches(chip)
+    assert not web_metrics.FocusTarget("chip", tag="button", text_prefix="Open ", list="Findings").matches(chip)
+    assert not web_metrics.FocusTarget("chip", tag="a", text_prefix="Open ").matches(chip)
+    assert not web_metrics.FocusTarget("exact", text="Open").matches(chip)
+    radio = focus("input", id="metro-synthetic_metro", name="metro")
+    assert web_metrics.FocusTarget("cities", tag="input", name="metro").matches(radio)
+    assert web_metrics.describe_focus(radio) == "input#metro-synthetic_metro"
+    assert web_metrics.describe_focus(chip) == "button 'Open guideline section NBC-4.2'"
+
+
+def test_arrow_until_moves_inside_a_radio_group() -> None:
+    page = FakeKeyboard([focus("input", id=f"metro-{name}", name="metro") for name in ("a", "b", "c")])
+    page.position = 0
+    assert web_metrics.arrow_until(page.press, page.read_focus, "metro-c") == 2
+    assert web_metrics.arrow_until(page.press, page.read_focus, "metro-c") == 0
+    with pytest.raises(CheckFailed, match="metro-z"):
+        web_metrics.arrow_until(page.press, page.read_focus, "metro-z", max_presses=4)
+
+
+def test_focus_leaks_counts_tab_presses_that_leave_a_dialog() -> None:
+    inside = [focus("button", text="Close", in_dialog=True), focus("div", text="NBC-4.2", in_dialog=True)]
+    trapped = FakeKeyboard(inside)
+    assert web_metrics.focus_leaks(trapped.press, trapped.read_focus, 6) == 0
+    leaky = FakeKeyboard([*inside, focus("button", text="Approve")])
+    assert web_metrics.focus_leaks(leaky.press, leaky.read_focus, 6) == 2
+
+
+def test_the_new_flows_run_in_the_session() -> None:
+    import inspect
+
+    source = inspect.getsource(web_metrics.BrowserSession.run)
+    assert '"keyboard_only"' in source and '"small_screen_375"' in source
+    assert source.index('"small_screen_375"') < source.index("self.lighthouse()")
+    assert "Escape" in inspect.getsource(web_metrics.BrowserSession.keyboard)
+    assert "MOBILE_VIEWPORT" in inspect.getsource(web_metrics.BrowserSession.small_screen)

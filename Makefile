@@ -386,3 +386,42 @@ docker-build-stamped:  ## docker-build with UWC_GIT_SHA=<HEAD> (<HEAD>-dirty for
 	docker build $(DOCKER_BUILD_FLAGS) $(if $(EXTRA_CA_CERTS),--secret id=extra_ca_certs$(comma)src=$(EXTRA_CA_CERTS),) \
 		--build-arg UWC_GIT_SHA=$$(git rev-parse HEAD)$$(test -z "$$(git status --porcelain)" || echo -dirty) \
 		-t $(DOCKER_IMAGE) .
+
+# Website v0.1.1: build the image the way the Space does, FROM the Space bundle. With STUDIO_BUILD_SECRETS=1 the
+# real-metro build secrets CENSUS_API_KEY and FRED_API_KEY are passed from this shell's environment as BuildKit
+# secrets (never as build arguments; their values are not shown and not stored in the image), so stage
+# "studio-snapshots" builds the real metros' snapshots; without them it builds nothing and the real metros run in
+# limited mode. Extra docker flags (a build proxy) go in DOCKER_BUILD_FLAGS as for docker-build-stamped.
+.PHONY: docker-build-bundle
+
+STUDIO_BUILD_SECRETS ?=
+SPACE_BUNDLE_DIR ?= build/space
+
+docker-build-bundle:  ## Build DOCKER_IMAGE from the Space bundle; STUDIO_BUILD_SECRETS=1 adds the Census/FRED build secrets
+	rm -rf $(SPACE_BUNDLE_DIR)
+	uv run python scripts/deploy_space.py bundle --out $(SPACE_BUNDLE_DIR) --git-sha $$(git rev-parse HEAD)
+	docker build $(DOCKER_BUILD_FLAGS) $(if $(EXTRA_CA_CERTS),--secret id=extra_ca_certs$(comma)src=$(EXTRA_CA_CERTS),) \
+		$(if $(STUDIO_BUILD_SECRETS),--secret id=CENSUS_API_KEY$(comma)env=CENSUS_API_KEY --secret id=FRED_API_KEY$(comma)env=FRED_API_KEY,) \
+		-t $(DOCKER_IMAGE) $(SPACE_BUNDLE_DIR)
+
+# Website v0.1.1 hardening: HOW an image was built, written as an image label that scripts/web_metrics.py reads with
+# `docker image inspect` (BUILD_METHOD_LABEL there). It calls a measurement reproducible only when the method ties the
+# commit stamp (UWC_GIT_SHA) to the files that went into the image:
+#   make-docker-build-stamped  the stamp is HEAD, or HEAD-dirty when the tree had uncommitted changes;
+#   git-archive                the build context is `git archive <commit>`: committed files only (target below);
+#   space-bundle               the Space bundle of a CLEAN tree; a dirty tree is labelled space-bundle-dirty-tree.
+# A plain `docker build` has no label, so its results are marked unreproducible. The labels are added to
+# DOCKER_BUILD_FLAGS for these targets only ("override" keeps the flags given on the command line and appends).
+.PHONY: docker-build-archive
+
+BUILD_METHOD_LABEL := org.fundproof.build.method
+BUILD_COMMIT_LABEL := org.fundproof.build.commit
+
+docker-build-stamped: override DOCKER_BUILD_FLAGS += --label $(BUILD_METHOD_LABEL)=make-docker-build-stamped
+docker-build-bundle: override DOCKER_BUILD_FLAGS += --label $(BUILD_METHOD_LABEL)=$(if $(shell git status --porcelain),space-bundle-dirty-tree,space-bundle)
+
+docker-build-archive:  ## Build DOCKER_IMAGE from `git archive HEAD` (committed files only), stamped and labelled
+	sha=$$(git rev-parse HEAD) && git archive --format=tar $$sha | docker build $(DOCKER_BUILD_FLAGS) \
+		$(if $(EXTRA_CA_CERTS),--secret id=extra_ca_certs$(comma)src=$(EXTRA_CA_CERTS),) \
+		--build-arg UWC_GIT_SHA=$$sha --label $(BUILD_METHOD_LABEL)=git-archive --label $(BUILD_COMMIT_LABEL)=$$sha \
+		-t $(DOCKER_IMAGE) -

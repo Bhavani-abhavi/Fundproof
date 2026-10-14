@@ -31,6 +31,7 @@ DEMO_AND_BUILD_FILES = (
     "results/kyc_metrics.json",
     "scripts/download_data.py",
     "scripts/build_index.py",
+    "scripts/build_studio_snapshots.py",
 )
 
 
@@ -49,7 +50,7 @@ def fake_repo(tmp_path: Path) -> Path:
         write(root / name)
     for name in ("corpus/guide.md", "frontend/package.json", "frontend/app/page.tsx"):
         write(root / name)
-    # The Lender Desk demo inputs and the two build-time scripts (stage "assets" of the Dockerfile).
+    # The Lender Desk demo inputs and the three build-time scripts (stages "assets" and "studio-snapshots").
     for name in DEMO_AND_BUILD_FILES:
         write(root / name)
     write(root / "deploy/space/README.md", "---\ntitle: Fundproof\nsdk: docker\n---\n# Card\n")
@@ -66,6 +67,10 @@ def fake_repo(tmp_path: Path) -> Path:
         "frontend/mock-api/fixtures/queue.json",
         "data/web/store/secret.bin",
         "data/raw/ofac/sdn.csv",
+        "data/studio/cache/ab/abc.body",
+        "data/studio/snapshots/houston_tx/2026-10-13/manifest.json",
+        "data/studio/reference/list1_2023.xlsx",
+        "scripts/studio_fetch_delineation.py",
         "results/risk_metrics.json",
         "scripts/eval_agent.py",
         "eval/generation/questions.jsonl",
@@ -304,12 +309,13 @@ def test_dockerignore_starts_from_nothing_and_never_lets_secrets_or_data_back_in
         "config",
         "corpus",
         "frontend",
-        # the Lender Desk demo's SYNTHETIC applications, the screening threshold and the two build-time scripts
+        # the Lender Desk demo's SYNTHETIC applications, the screening threshold and the three build-time scripts
         "eval/applications",
         "eval/startup_applications",
         "results/kyc_metrics.json",
         "scripts/download_data.py",
         "scripts/build_index.py",
+        "scripts/build_studio_snapshots.py",
     }
     assert {"**/.env", "frontend/node_modules", "frontend/out", "frontend/mock-api"} <= set(rules)
 

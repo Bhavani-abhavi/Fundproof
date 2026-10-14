@@ -20,17 +20,36 @@ What it does, in one headless Chromium profile (Playwright, `channel="chromium"`
    action the policy suggests when the checkpoint allows it for this user, otherwise the first allowed action).
 5. Error paths: an unknown plan id (the API answers 404 and the page says "Not found"), the wizard's own input
    check (Continue with nothing chosen), and an unknown page (the 404 page).
-6. axe-core (injected with Playwright's evaluate, so the app's CSP stays on) at every page and wizard state above,
-   in the light and the dark color scheme. Its default rule set; counts per impact level are recorded.
-7. Lighthouse (CLI, attached to the same Chromium over the DevTools port, `--disable-storage-reset` so the session
+6. Keyboard only (no mouse click): Tab and Shift+Tab to move, Enter and Space to press, Escape to close, the arrow
+   keys inside radio groups and native selects (as the platform defines them) and typing into text fields. It walks
+   the wizard to a created plan, adds two sites through the map's tract-list alternative, opens and closes the
+   citation drawer (focus moves into it, stays inside it, and returns to the chip on Escape) and records a DEMO
+   decision on a second lender file through the decision panel (focus then moves to the record). How many key presses
+   each target took is recorded. The plan it creates is deleted through the API afterwards.
+7. A small-phone pass at 375 x 812 px: the main pages, three wizard steps, the results page, the lender file and
+   the open citation drawer, each with axe and with how far the page scrolls sideways (horizontal_overflow_px).
+8. axe-core (injected with Playwright's evaluate, so the app's CSP stays on) at every page and wizard state above,
+   in the light and the dark color scheme, at 1280 x 800 px and (step 7) 375 x 812 px. Its default rule set; counts
+   per impact level are recorded, in total and per viewport.
+9. Lighthouse (CLI, attached to the same Chromium over the DevTools port, `--disable-storage-reset` so the session
    cookie is kept; the HTTP cache is cleared before each run) on the landing page, the founder's results page and
    the lender file, with the mobile (Lighthouse default) and desktop presets, --lighthouse-runs times each.
-8. Deletes the plan through "Delete plan" and checks that its page then says "Not found".
+10. Deletes the plan through "Delete plan" and checks that its page then says "Not found".
 
-Reproducibility: the results must name the code they measured. The server's /api/health git_sha (the image's
-UWC_GIT_SHA stamp, set by `make docker-build-stamped`, which marks an uncommitted tree "-dirty") must name a commit of
-this repository. Otherwise the script REFUSES to write, unless --allow-unreproducible is given; the entry then says
-"reproducible": false with the reason and a SHA-256 digest of the checkout's uncommitted changes (so the tree can at
+Reproducibility: the results must name the code they measured, and the way the image was built must tie that name to
+the files inside it. Three things are checked before the browser starts:
+- the server's /api/health git_sha (the image's UWC_GIT_SHA stamp) names a commit of this repository, without the
+  "-dirty" mark that `make docker-build-stamped` adds for an uncommitted tree;
+- the image (--docker-image) carries the label BUILD_METHOD_LABEL with a known build method (the Makefile sets it):
+  `make docker-build-stamped` (stamp = HEAD, "-dirty" when the tree was not clean), `make docker-build-archive` (the
+  build context is `git archive` of the stamped commit, so uncommitted files cannot reach the image) or `make
+  docker-build-bundle` on a clean tree (a dirty tree gets a label that is refused). A plain `docker build
+  --build-arg UWC_GIT_SHA=...` has no label: its stamp could come from a dirty tree, so its build method is
+  "unknown" and the run is not reproducible. Without --docker-image the method cannot be read at all;
+- the server's stamp equals the image's own UWC_GIT_SHA (and, for a git-archive build, the commit label), and the
+  --container runs that image.
+When any check fails the script REFUSES to write, unless --allow-unreproducible is given; the entry then says
+"reproducible": false with the reasons and a SHA-256 digest of the checkout's uncommitted changes (so the tree can at
 least be identified), and its numbers must not be quoted as the release's.
 
 The results page is also scanned with every "Show the numbers as a table" opened, and the lender file with the
@@ -74,7 +93,14 @@ from urllib.parse import urlsplit
 import httpx
 
 from optimize_pngs import optimize_file
-from smoke_deploy import SmokeConfigError, container_facts, docker_image_facts, validate_target, write_json_atomically
+from smoke_deploy import (
+    SmokeConfigError,
+    container_facts,
+    docker_image_facts,
+    run_docker,
+    validate_target,
+    write_json_atomically,
+)
 from uwcopilot.common.paths import REPO_ROOT, RESULTS_DIR
 from uwcopilot.governance.provenance import RunProvenance, display_path
 
@@ -102,6 +128,62 @@ AXE_IMPACTS: tuple[str, ...] = ("critical", "serious", "moderate", "minor")
 SERIOUS_IMPACTS: tuple[str, ...] = ("critical", "serious")
 COLOR_SCHEMES: tuple[str, ...] = ("light", "dark")
 VIEWPORT = {"width": 1280, "height": 800}
+# The small-phone pass (a design choice: 375 px is the narrowest width the website spec names).
+MOBILE_VIEWPORT = {"width": 375, "height": 812}
+# Keyboard walk limits: how many Tab presses may pass before a target counts as unreachable, how many arrow presses
+# a radio group or select may need, and how many Tab presses inside an open dialog are checked for a focus leak.
+MAX_TAB_PRESSES = 250
+MAX_ARROW_PRESSES = 20
+DIALOG_TAB_PRESSES = 6
+# What document.activeElement is, for the keyboard walk (see FocusTarget). Text is the aria-label, else the visible
+# text, else the value, with white space collapsed.
+READ_FOCUS_JS = """() => {
+  const el = document.activeElement;
+  if (!el || el === document.body || el === document.documentElement) {
+    return {tag: "body", id: "", name: "", text: "", label: "", list: "", pressed: null, in_dialog: false};
+  }
+  const own = el.getAttribute("aria-label") || el.innerText || el.value || "";
+  const label = el.labels && el.labels.length > 0 ? el.labels[0].innerText : "";
+  const list = el.closest("ul[aria-label]");
+  return {
+    tag: el.tagName.toLowerCase(),
+    id: el.id || "",
+    name: el.getAttribute("name") || "",
+    text: String(own).replace(/\\s+/g, " ").trim().slice(0, 160),
+    label: String(label).replace(/\\s+/g, " ").trim().slice(0, 160),
+    list: list ? list.getAttribute("aria-label") : "",
+    pressed: el.getAttribute("aria-pressed"),
+    in_dialog: el.closest("[role='dialog']") !== null,
+  };
+}"""
+
+# How the measured image was built: an image label that the Makefile sets (`make docker-build-stamped`, `make
+# docker-build-archive`) and this script reads with `docker image inspect`. Only these methods tie the commit stamp
+# (UWC_GIT_SHA) to the files that went into the image; tests/web/test_web_metrics_script.py checks that the Makefile
+# uses the same label and method names.
+BUILD_METHOD_LABEL = "org.fundproof.build.method"
+BUILD_COMMIT_LABEL = "org.fundproof.build.commit"
+BUILD_METHODS: dict[str, str] = {
+    "make-docker-build-stamped": (
+        "make docker-build-stamped: the build context is the checkout, stamped with HEAD, and with HEAD-dirty when "
+        "the tree had uncommitted changes"
+    ),
+    "git-archive": (
+        "make docker-build-archive: the build context is `git archive` of the stamped commit (committed files only), "
+        "so uncommitted changes cannot reach the image"
+    ),
+    "space-bundle": (
+        "make docker-build-bundle on a clean tree: the build context is the Space bundle (scripts/deploy_space.py "
+        "bundle) of a checkout with no uncommitted changes, stamped with HEAD"
+    ),
+}
+# Labels the Makefile writes when the build cannot be tied to its stamp: the method is known, the answer is no.
+REFUSED_BUILD_METHODS: dict[str, str] = {
+    "space-bundle-dirty-tree": (
+        "make docker-build-bundle from a checkout with uncommitted changes: the bundle copied those files, but the "
+        "stamp names HEAD"
+    ),
+}
 
 TARGET_LABELS: dict[str, str] = {
     "local-container": (
@@ -172,6 +254,11 @@ CAVEATS: tuple[str, ...] = (
     "axe-core finds only the problems that can be detected automatically; zero violations is not a statement of "
     "WCAG conformance. Its 'incomplete' items need a person to review them.",
     "The founder plan, the lender decision and the edited targets are SYNTHETIC test inputs, not data.",
+    "The keyboard walk shows that each target can be reached and used with the keys listed (arrow keys inside radio "
+    "groups and native selects behave as Chromium defines them); it does not check that the focus indicator is "
+    "visible, and it is no substitute for a person testing with a keyboard and a screen reader.",
+    "The 375 px pass changes only the viewport of the same desktop Chromium profile (no touch input, no mobile user "
+    "agent, device scale factor 1); it is not a test on a phone.",
 )
 
 
@@ -236,12 +323,96 @@ def worktree_digest(status: str) -> str:
     return digest.hexdigest()
 
 
-def reproducibility(server_git_sha: str | None) -> dict[str, Any]:
-    """Whether the measured server can be rebuilt from a commit: its /api/health stamp must name a commit of this
-    repository, without the "-dirty" mark that `make docker-build-stamped` adds for an uncommitted tree.
+def build_facts_from_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """How an image was built, from its config (`docker image inspect`, .Config): the build-method label, the commit
+    label (git-archive builds) and the image's own UWC_GIT_SHA. No other label or environment variable is copied."""
+    config = config or {}
+    labels = config.get("Labels") or {}
+    image_git_sha = None
+    for item in config.get("Env") or []:
+        name, _, value = str(item).partition("=")
+        if name == "UWC_GIT_SHA":
+            image_git_sha = value or None
+    method = labels.get(BUILD_METHOD_LABEL)
+    known = method in BUILD_METHODS
+    if known:
+        description = BUILD_METHODS[method]
+    elif method in REFUSED_BUILD_METHODS:
+        description = "not reproducible: " + REFUSED_BUILD_METHODS[method]
+    else:
+        description = f"unknown: the image has no {BUILD_METHOD_LABEL} label naming one of {sorted(BUILD_METHODS)}"
+    return {
+        "method": method,
+        "method_known": known,
+        "method_description": description,
+        "commit_label": labels.get(BUILD_COMMIT_LABEL),
+        "image_git_sha": image_git_sha,
+        "label_names": {"method": BUILD_METHOD_LABEL, "commit": BUILD_COMMIT_LABEL},
+    }
+
+
+def image_build_facts(
+    image: str, run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run
+) -> dict[str, Any]:
+    """build_facts_from_config for a local image; SmokeConfigError when docker cannot inspect it."""
+    output = run_docker(["docker", "image", "inspect", "--format", "{{json .Config}}", image], run)
+    try:
+        config = json.loads(output) if output else {}
+    except ValueError as error:
+        raise SmokeConfigError(f"`docker image inspect` gave no JSON config for {image}") from error
+    facts = build_facts_from_config(config if isinstance(config, dict) else {})
+    facts["image"] = image
+    return facts
+
+
+def build_problems(
+    server_git_sha: str | None, build: Mapping[str, Any] | None, container_runs_image: bool | None
+) -> list[str]:
+    """Why the build method does not tie the server's commit stamp to the files in the image (empty: it does)."""
+    if build is None:
+        return [
+            "the build method is unknown: no --docker-image was given, so the script cannot read how the server was "
+            "built, and its commit stamp could come from an uncommitted tree"
+        ]
+    problems = []
+    if build.get("method") in REFUSED_BUILD_METHODS:
+        problems.append(f"the image was built by {REFUSED_BUILD_METHODS[build['method']]}")
+    elif not build.get("method_known"):
+        problems.append(
+            f"the build method is unknown: the image has no {BUILD_METHOD_LABEL} label naming one of "
+            f"{sorted(BUILD_METHODS)} (a plain docker build), so its commit stamp could come from an uncommitted tree; "
+            "build it with `make docker-build-stamped`, `make docker-build-archive` or (clean tree) `make "
+            "docker-build-bundle`"
+        )
+    if build.get("image_git_sha") != server_git_sha:
+        problems.append(
+            f"the server's commit stamp ({server_git_sha}) is not the image's own UWC_GIT_SHA "
+            f"({build.get('image_git_sha')}); was it changed with `docker run -e`?"
+        )
+    if build.get("method") == "git-archive" and build.get("commit_label") != server_git_sha:
+        problems.append(
+            f"the image's {BUILD_COMMIT_LABEL} label ({build.get('commit_label')}) is not the server's commit stamp "
+            f"({server_git_sha})"
+        )
+    if container_runs_image is False:
+        problems.append("the container named by --container does not run the --docker-image image")
+    return problems
+
+
+def reproducibility(
+    server_git_sha: str | None,
+    build: Mapping[str, Any] | None = None,
+    container_runs_image: bool | None = None,
+) -> dict[str, Any]:
+    """Whether the measured server can be rebuilt from a commit.
+
+    Its /api/health stamp must name a commit of this repository, without the "-dirty" mark that `make
+    docker-build-stamped` adds for an uncommitted tree; AND the image must say how it was built (build, from
+    image_build_facts): only a known build method ties the stamp to the files that went into the image. build=None
+    (no --docker-image) means the method is unknown, so the result is never reproducible.
 
     The checkout's own HEAD and working-tree state are recorded too (when the image was built from a commit, for
-    example `git archive <commit> | docker build ... -`, later edits to the checkout do not change the image).
+    example `make docker-build-archive`, later edits to the checkout do not change the image).
     """
     head = (git_output("rev-parse", "HEAD") or "").strip() or None
     status = git_output("status", "--porcelain")
@@ -253,19 +424,25 @@ def reproducibility(server_git_sha: str | None) -> dict[str, Any]:
         reasons.append(f"the server was built from an uncommitted tree ({server_git_sha})")
     elif git_output("cat-file", "-e", f"{server_git_sha}^{{commit}}") is None:
         reasons.append(f"the server's commit {server_git_sha} is not a commit of this repository")
+    reasons.extend(build_problems(server_git_sha, build, container_runs_image))
     return {
         "reproducible": not reasons,
         "reasons": reasons,
         "server_git_sha": server_git_sha,
+        "build_method": build.get("method") if build else None,
+        "build": dict(build) if build else None,
+        "container_runs_image": container_runs_image,
         "head": head,
         "server_is_head": bool(head and server_git_sha and head == server_git_sha),
         "working_tree_dirty": dirty,
         "working_tree_digest_sha256": worktree_digest(status or "") if dirty and status is not None else None,
+        "checked": "before the browser started",
         "note": (
-            f"Reproducible: rebuilding commit {server_git_sha} with the Dockerfile gives the measured app."
-            if not reasons
-            else "UNREPRODUCIBLE: these numbers describe an uncommitted or unstamped build; rebuild from a commit "
-            "(make docker-build-stamped on a clean tree, or git archive <commit> | docker build ... -) and run again "
+            f"Reproducible: rebuilding commit {server_git_sha} with the Dockerfile ({build['method']}) gives the "
+            "measured app."
+            if not reasons and build
+            else "UNREPRODUCIBLE: these numbers describe an uncommitted, unstamped or unlabelled build; rebuild from "
+            "a commit (`make docker-build-stamped` on a clean tree, or `make docker-build-archive`) and run again "
             "before quoting them."
         ),
     }
@@ -373,6 +550,120 @@ def axe_totals(scans: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         totals[f"{impact}_nodes"] = sum(scan["nodes_by_impact"][impact] for scan in scans)
     totals["scans_with_serious_or_critical"] = sum(1 for scan in scans if scan["serious_or_critical_rules"])
     return totals
+
+
+def viewport_key(viewport: Mapping[str, Any] | None) -> str:
+    """'1280x800' for {"width": 1280, "height": 800}; 'unknown' when the page reports no viewport."""
+    if not viewport:
+        return "unknown"
+    return f"{viewport['width']}x{viewport['height']}"
+
+
+def axe_totals_by_viewport(scans: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """axe_totals per viewport ('1280x800', '375x812'), widest first."""
+    keys = {str(scan.get("viewport", "unknown")) for scan in scans}
+
+    def width(key: str) -> int:
+        first = key.split("x")[0]
+        return int(first) if first.isdigit() else 0
+
+    ordered = sorted(keys, key=width, reverse=True)
+    return {key: axe_totals([scan for scan in scans if scan.get("viewport", "unknown") == key]) for key in ordered}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Keyboard walk helpers (no browser: the key press and the focus reader are passed in, so tests can fake them)
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FocusTarget:
+    """The element the keyboard focus should reach. Every field that is set must match what READ_FOCUS_JS reports.
+
+    tag: lower-case tag name ("button"); element_id: its id; name: its name attribute (a radio group);
+    text / text_prefix: its accessible text (aria-label, else visible text, else value), exactly or at the start;
+    label_prefix: the start of its <label> text (a select or input); list: the aria-label of the <ul> around it.
+    """
+
+    description: str
+    tag: str | None = None
+    element_id: str | None = None
+    name: str | None = None
+    text: str | None = None
+    text_prefix: str | None = None
+    label_prefix: str | None = None
+    list: str | None = None
+
+    def matches(self, focus: Mapping[str, Any]) -> bool:
+        """True when the focused element (READ_FOCUS_JS output) is this target."""
+        checks = [
+            self.tag is None or focus.get("tag") == self.tag,
+            self.element_id is None or focus.get("id") == self.element_id,
+            self.name is None or focus.get("name") == self.name,
+            self.text is None or focus.get("text") == self.text,
+            self.text_prefix is None or str(focus.get("text", "")).startswith(self.text_prefix),
+            self.label_prefix is None or str(focus.get("label", "")).startswith(self.label_prefix),
+            self.list is None or focus.get("list") == self.list,
+        ]
+        return all(checks)
+
+
+def describe_focus(focus: Mapping[str, Any]) -> str:
+    """A short description of the focused element for a failure message, e.g. "button 'Continue'"."""
+    tag = str(focus.get("tag") or "nothing")
+    element_id = f"#{focus['id']}" if focus.get("id") else ""
+    text = str(focus.get("text") or focus.get("label") or "")[:60]
+    return f"{tag}{element_id} '{text}'" if text else f"{tag}{element_id}"
+
+
+def tab_until(
+    press: Callable[[str], None],
+    read_focus: Callable[[], Mapping[str, Any]],
+    target: FocusTarget,
+    key: str = "Tab",
+    max_presses: int = MAX_TAB_PRESSES,
+) -> int:
+    """Press `key` (Tab, or Shift+Tab to go back) until the focus is on target; returns how many presses it took.
+
+    CheckFailed when the target is not reached within max_presses: it cannot be reached by keyboard (or is far
+    beyond any reasonable number of presses)."""
+    last: Mapping[str, Any] = {}
+    for count in range(1, max_presses + 1):
+        press(key)
+        last = read_focus()
+        if target.matches(last):
+            return count
+    raise CheckFailed(
+        f"{target.description} was not reached with {key} in {max_presses} presses "
+        f"(focus ended on {describe_focus(last)})"
+    )
+
+
+def arrow_until(
+    press: Callable[[str], None],
+    read_focus: Callable[[], Mapping[str, Any]],
+    element_id: str,
+    max_presses: int = MAX_ARROW_PRESSES,
+) -> int:
+    """Inside a radio group, press ArrowDown until the option with element_id has the focus (the arrow keys also
+    check the option they move to). Returns the number of presses (0 when it already had the focus)."""
+    for count in range(max_presses + 1):
+        if read_focus().get("id") == element_id:
+            return count
+        if count < max_presses:
+            press("ArrowDown")
+    raise CheckFailed(f"the option #{element_id} was not reached with ArrowDown in {max_presses} presses")
+
+
+def focus_leaks(press: Callable[[str], None], read_focus: Callable[[], Mapping[str, Any]], presses: int) -> int:
+    """Press Tab `presses` times inside an open dialog; returns how many times the focus left the dialog (0 when the
+    dialog keeps the focus, as a modal dialog must)."""
+    leaks = 0
+    for _ in range(presses):
+        press("Tab")
+        if not read_focus().get("in_dialog"):
+            leaks += 1
+    return leaks
 
 
 def summarize_lighthouse(report: Mapping[str, Any]) -> dict[str, Any]:
@@ -706,6 +997,7 @@ class BrowserSession:
         self.username = f"metrics-founder-{secrets.token_hex(3)}"
         self.plan_id: str | None = None
         self.lender_file_id: str | None = None
+        self.keyboard_plan_id: str | None = None
         self.browser_facts: dict[str, Any] = {}
 
     # -- plumbing ---------------------------------------------------------------------------------------------------
@@ -736,10 +1028,13 @@ class BrowserSession:
         self.page.evaluate("document.fonts.ready")
         return response
 
-    def scan(self, name: str, path_label: str) -> None:
-        """axe-core on the current page state, in the light and the dark color scheme (then back to light)."""
+    def scan(self, name: str, path_label: str, extra: Mapping[str, Any] | None = None) -> None:
+        """axe-core on the current page state, in the light and the dark color scheme (then back to light).
+
+        Each scan records the viewport it ran at; extra facts (the sideways scroll at 375 px) are added to both."""
         if self.page.evaluate("() => typeof window.axe") != "object":
             self.page.evaluate(self.axe_source)
+        viewport = viewport_key(self.page.viewport_size)
         for scheme in COLOR_SCHEMES:
             self.page.emulate_media(color_scheme=scheme)
             self.page.wait_for_timeout(300)
@@ -748,9 +1043,49 @@ class BrowserSession:
             )
             summary = summarize_axe(result)
             engine = result.get("testEngine") or {}
-            self.scans.append({"page": name, "path": path_label, "color_scheme": scheme, **summary})
+            record = {"page": name, "path": path_label, "color_scheme": scheme, "viewport": viewport, **summary}
+            self.scans.append({**record, **(extra or {})})
             self.browser_facts.setdefault("axe_engine", f"{engine.get('name')} {engine.get('version')}")
         self.page.emulate_media(color_scheme="light")
+
+    def scan_small_screen(self, name: str, path_label: str) -> None:
+        """scan() plus how many CSS pixels the page is wider than the viewport (0: no sideways scrolling)."""
+        overflow = self.page.evaluate("() => document.documentElement.scrollWidth - window.innerWidth")
+        self.scan(name, path_label, {"horizontal_overflow_px": overflow})
+
+    # -- keyboard plumbing --------------------------------------------------------------------------------------------
+
+    def read_focus(self) -> dict[str, Any]:
+        """What has the keyboard focus now (READ_FOCUS_JS)."""
+        return self.page.evaluate(READ_FOCUS_JS)
+
+    def press(self, key: str) -> None:
+        """One key press on the page (no mouse)."""
+        self.page.keyboard.press(key)
+
+    def focus_on(self, target: FocusTarget, record: dict[str, Any], key: str = "Tab") -> None:
+        """Tab (or Shift+Tab) to target and record how many presses it took under record["key_presses"]."""
+        presses = tab_until(self.press, self.read_focus, target, key=key)
+        record.setdefault("key_presses", {})[target.description] = presses
+
+    def choose_radio(self, group: str, value: str, record: dict[str, Any]) -> None:
+        """Tab into a radio group, move to the option `value` with ArrowDown (which checks it), then press Space."""
+        self.focus_on(FocusTarget(f"the {group} options", tag="input", name=group), record)
+        wanted = f"{group}-{value}"
+        arrows = arrow_until(self.press, self.read_focus, wanted)
+        record.setdefault("key_presses", {})[f"ArrowDown to {wanted}"] = arrows
+        self.press("Space")
+        require(self.page.locator(f"#{wanted}").is_checked(), f"the option {wanted} is not checked")
+
+    def continue_by_keyboard(self, record: dict[str, Any], next_heading: str) -> None:
+        """Tab to the wizard's Continue button, press Enter, and wait for the next step's heading."""
+        self.focus_on(FocusTarget("the Continue button", tag="button", text="Continue"), record)
+        self.press("Enter")
+        self.wait_heading(next_heading)
+
+    def csrf_token(self) -> str:
+        """The session's CSRF token (the browser context shares its cookies with page.request)."""
+        return str(self.page.request.get(self.url("/api/auth/csrf")).json()["token"])
 
     def screenshot(self, name: str) -> None:
         """A full-page PNG of the current page into --screenshots-dir, optimized losslessly when Pillow is there."""
@@ -1015,6 +1350,187 @@ class BrowserSession:
             self.goto(f"/studio/project/?id={self.plan_id}")
             self.wait_text("Not found")
 
+    def focused_value(self) -> str:
+        """The value of the focused form control ('' when it has none)."""
+        return str(self.page.evaluate("() => document.activeElement ? (document.activeElement.value || '') : ''"))
+
+    def keyboard(self, log: FlowLog) -> None:
+        """Keyboard only, no mouse click: the wizard to a created plan (two sites from the tract list), the citation
+        drawer, and a DEMO decision on a second lender file through the decision panel.
+
+        Keys: Tab and Shift+Tab move, Enter and Space press, Escape closes, ArrowDown moves inside a radio group or a
+        native select (the platform's own keys there), and text is typed. Each step records how many presses each
+        target took (key_presses)."""
+        page = self.page
+        with log.step("wizard_choices_by_keyboard") as record:
+            self.goto("/studio/new/")
+            self.wait_heading("Which city?")
+            self.choose_radio("metro", DEMO_PLAN["metro_id"], record)
+            self.continue_by_keyboard(record, "What kind of business?")
+            self.choose_radio("business", DEMO_PLAN["business_type_id"], record)
+            self.continue_by_keyboard(record, "Describe your idea")
+        with log.step("wizard_text_fields_by_keyboard") as record:
+            self.focus_on(FocusTarget("the idea text box", tag="textarea", element_id="idea"), record)
+            page.keyboard.type(DEMO_PLAN["idea"])
+            self.continue_by_keyboard(record, "The money plan")
+            for field_id in ("budget", "equity", "loan", "term", "rate"):
+                self.focus_on(FocusTarget(f"the {field_id} field", tag="input", element_id=field_id), record)
+                page.keyboard.type(DEMO_PLAN[field_id])
+            self.continue_by_keyboard(record, "Candidate sites")
+        with log.step("tract_list_by_keyboard") as record:
+            # The keyboard alternative to clicking the map (frontend/components/studio/map/tract-list.tsx).
+            label = "Or pick a census tract"
+            add_button = FocusTarget("the Add as a site button", tag="button", text="Add as a site")
+            self.focus_on(FocusTarget("the tract list", tag="select", label_prefix=label), record)
+            self.press("ArrowDown")  # from the placeholder to the first tract
+            require(self.focused_value() != "", "ArrowDown in the tract list chose no tract")
+            self.focus_on(add_button, record)
+            self.press("Space")
+            self.wait_text(re.compile(r"\(1 of 3\)"))
+            # The list goes back to its placeholder after a site is added: two presses reach the second tract.
+            self.focus_on(FocusTarget("the tract list again", tag="select", label_prefix=label), record, "Shift+Tab")
+            self.press("ArrowDown")
+            self.press("ArrowDown")
+            require(self.focused_value() != "", "ArrowDown in the tract list chose no tract")
+            self.focus_on(FocusTarget("the Add as a site button again", tag="button", text="Add as a site"), record)
+            self.press("Enter")
+            self.wait_text(re.compile(r"\(2 of 3\)"))
+            self.continue_by_keyboard(record, "Check and create the plan")
+        with log.step("create_plan_by_keyboard") as record:
+            self.focus_on(FocusTarget("the Create plan button", tag="button", text_prefix="Create plan"), record)
+            with page.expect_response(self.is_path_answer, timeout=self.timeout_ms):
+                self.press("Enter")
+                page.wait_for_url(re.compile(r"/studio/project/\?id=[0-9a-f]{16}"), timeout=self.timeout_ms)
+            plan_match = re.search(r"id=([0-9a-f]{16})", page.url)
+            require(plan_match is not None, f"no plan id in {page.url}")
+            self.keyboard_plan_id = plan_match.group(1) if plan_match else None
+            self.wait_text(PATH_STATUS_TEXT)
+        with log.step("delete_the_keyboard_plan"):
+            # Clean-up through the API, not part of the walk (the founder flow's plan stays for Lighthouse).
+            answer = page.request.delete(
+                self.url(f"/api/studio/projects/{self.keyboard_plan_id}"), headers={"X-CSRF-Token": self.csrf_token()}
+            )
+            require(answer.status == 200, f"deleting the keyboard plan answered HTTP {answer.status}")
+        with log.step("citation_drawer_by_keyboard") as record:
+            require(self.lender_file_id is not None, "the lender flow opened no file")
+            self.goto(f"/lender/file/?id={self.lender_file_id}")
+            self.wait_heading("Your decision")
+            self.focus_on(FocusTarget("a citation chip", tag="button", text_prefix="Open ", list="Citations"), record)
+            record["chip"] = self.read_focus().get("text")
+            # Mark the chip, so "the focus came back" means this very element, not another chip with the same name.
+            page.evaluate("() => document.activeElement.setAttribute('data-keyboard-walk', 'chip')")
+            dialog = page.get_by_role("dialog")
+            for opener in ("Enter", "Space"):
+                self.press(opener)
+                dialog.wait_for(timeout=self.timeout_ms)
+                require(self.read_focus().get("in_dialog") is True, f"{opener}: the focus did not move into the drawer")
+                leaks = focus_leaks(self.press, self.read_focus, DIALOG_TAB_PRESSES)
+                require(leaks == 0, f"Tab moved the focus out of the open drawer {leaks} time(s)")
+                self.press("Escape")
+                dialog.wait_for(state="hidden", timeout=self.timeout_ms)
+                marker = page.evaluate("() => document.activeElement && document.activeElement.dataset.keyboardWalk")
+                require(marker == "chip", f"after Escape the focus is on {describe_focus(self.read_focus())}")
+            record["opened_with"] = ["Enter", "Space"]
+            record["tab_presses_checked_inside"] = DIALOG_TAB_PRESSES
+        with log.step("decision_panel_by_keyboard") as record:
+            queue = page.request.get(self.url("/api/lender/queue")).json()
+            others = [str(item["id"]) for item in queue.get("files") or [] if item.get("id") != self.lender_file_id]
+            require(bool(others), "the demo queue has no second file")
+            file_id = others[0]
+            with page.expect_response(
+                lambda response: response.request.method == "GET" and response.url.endswith(f"/files/{file_id}"),
+                timeout=self.timeout_ms,
+            ) as file_info:
+                self.goto(f"/lender/file/?id={file_id}")
+            data = file_info.value.json()
+            self.wait_heading("Your decision")
+            checks = data.get("action_checks") or []
+            action = choose_action(str(data.get("reference_recommendation")), checks)
+            require(action is not None, "the checkpoint allows no action for this user")
+            action_label = ACTION_LABELS[str(action)]
+            self.focus_on(FocusTarget(f"the {action_label} button", tag="button", text=action_label), record)
+            self.press("Space")
+            require(self.read_focus().get("pressed") == "true", f"Space did not select {action_label}")
+            self.focus_on(FocusTarget("the rationale box", tag="textarea", element_id="rationale"), record)
+            page.keyboard.type(DEMO_RATIONALE)
+            if needs_override(str(action), checks):
+                reason_list = FocusTarget("the override reason list", tag="select", element_id="override-reason")
+                self.focus_on(reason_list, record)
+                self.press("ArrowDown")
+                require(self.focused_value() != "", "ArrowDown chose no override reason")
+            self.focus_on(FocusTarget("the Record button", tag="button", text_prefix="Record:"), record)
+            with page.expect_response(
+                lambda response: response.request.method == "POST" and response.url.endswith("/decision"),
+                timeout=self.timeout_ms,
+            ) as decision_info:
+                self.press("Enter")
+            require(decision_info.value.status == 200, f"the decision answered HTTP {decision_info.value.status}")
+            self.wait_heading(re.compile(r"Your decision record \(DEMO\)"))
+            focus = self.read_focus()
+            require(focus.get("id") == "record-title", f"after recording, the focus is on {describe_focus(focus)}")
+            record.update({"file_id": file_id, "action": action})
+
+    def small_screen(self, log: FlowLog) -> None:
+        """The 375 px pass: axe (light and dark) and the sideways scroll of the main pages, three wizard steps (the
+        plan is not created), the results page, the lender file and its open citation drawer. Only the viewport
+        changes (same desktop Chromium profile); it goes back to 1280 px afterwards."""
+        page = self.page
+        page.set_viewport_size(MOBILE_VIEWPORT)
+        try:
+            with log.step("pages_at_375"):
+                for name, path in (("landing", "/"), ("about", "/about/"), ("studio plans list", "/studio/")):
+                    self.goto(path)
+                    self.scan_small_screen(f"{name} (375 px)", path)
+                self.goto("/lender/")
+                page.locator("a[href^='/lender/file/?id=']").first.wait_for(timeout=self.timeout_ms)
+                self.scan_small_screen("lender demo queue (375 px)", "/lender/")
+            with log.step("wizard_at_375"):
+                self.goto("/studio/new/")
+                self.wait_heading("Which city?")
+                self.scan_small_screen("wizard: city step (375 px)", "/studio/new/")
+                page.locator(f"label[for='metro-{DEMO_PLAN['metro_id']}']").click()
+                page.get_by_role("button", name="Continue").click()
+                self.wait_heading("What kind of business?")
+                page.locator(f"label[for='business-{DEMO_PLAN['business_type_id']}']").click()
+                page.get_by_role("button", name="Continue").click()
+                self.wait_heading("Describe your idea")
+                page.locator("#idea").fill(DEMO_PLAN["idea"])
+                page.get_by_role("button", name="Continue").click()
+                self.wait_heading("The money plan")
+                for field_id in ("budget", "equity", "loan", "term", "rate"):
+                    page.locator(f"#{field_id}").fill(DEMO_PLAN[field_id])
+                page.get_by_role("button", name="Continue").click()
+                self.wait_heading("Candidate sites")
+                tract_select = page.get_by_label("Or pick a census tract from the list")
+                values = tract_select.locator("option").evaluate_all("options => options.map(option => option.value)")
+                first = min((value for value in values if value), default=None)
+                require(first is not None, "the tract list is empty")
+                tract_select.select_option(str(first))
+                page.get_by_role("button", name="Add as a site").click()
+                self.wait_text(re.compile(r"\(1 of 3\)"))
+                self.scan_small_screen("wizard: sites step (375 px)", "/studio/new/")
+                page.get_by_role("button", name="Continue").click()
+                self.wait_heading("Check and create the plan")
+                self.scan_small_screen("wizard: review step (375 px)", "/studio/new/")
+            with log.step("results_at_375"):
+                require(self.plan_id is not None, "the founder flow created no plan")
+                self.goto(f"/studio/project/?id={self.plan_id}")
+                self.wait_text(PATH_STATUS_TEXT)
+                self.scan_small_screen("studio results (375 px)", "/studio/project/?id=<plan>")
+            with log.step("lender_file_at_375"):
+                require(self.lender_file_id is not None, "the lender flow opened no file")
+                self.goto(f"/lender/file/?id={self.lender_file_id}")
+                self.wait_heading("Your decision")
+                self.scan_small_screen("lender file (375 px)", "/lender/file/?id=<file>")
+                # The first chip on screen (chips inside a closed "Rules that passed" list are hidden).
+                page.locator("ul[aria-label='Citations'] button:visible").first.click()
+                page.get_by_role("dialog").wait_for(timeout=self.timeout_ms)
+                self.scan_small_screen("lender file: citation drawer open (375 px)", "/lender/file/?id=<file>")
+                self.press("Escape")
+                page.get_by_role("dialog").wait_for(state="hidden", timeout=self.timeout_ms)
+        finally:
+            page.set_viewport_size(VIEWPORT)
+
     # -- Lighthouse -------------------------------------------------------------------------------------------------
 
     def lighthouse(self) -> None:
@@ -1085,6 +1601,8 @@ class BrowserSession:
                 self.flows.append(run_flow(self.new_log("founder_synthetic_plan"), self.founder))
                 self.flows.append(run_flow(self.new_log("lender_demo_decision"), self.lender))
                 self.flows.append(run_flow(self.new_log("error_paths"), self.errors))
+                self.flows.append(run_flow(self.new_log("keyboard_only"), self.keyboard))
+                self.flows.append(run_flow(self.new_log("small_screen_375"), self.small_screen))
                 if not self.args.skip_lighthouse:
                     self.lighthouse()
                 if self.plan_id:
@@ -1113,12 +1631,13 @@ def build_entry(
     docker: Mapping[str, Any] | None,
     container: Mapping[str, Any] | None,
     provenance_run: RunProvenance,
+    checked: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """The results entry for this target."""
+    """The results entry for this target. checked is the reproducibility() record made before the browser started."""
     lighthouse_runs = [run for page in session.lighthouse_pages for run in page["runs"]]
     return {
         "target": {"kind": args.target, "label": TARGET_LABELS[args.target], "url": base_url},
-        "reproducibility": reproducibility(server.get("git_sha")),
+        "reproducibility": dict(checked),
         "measured_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "auth": {"mode": "dev", "note": DEV_LOGIN_NOTE, "username": session.username},
         "server": dict(server),
@@ -1134,8 +1653,9 @@ def build_entry(
             "engine": session.browser_facts.get("axe_engine"),
             "rule_set": "axe-core's default rules (no runOnly); resultTypes violations + incomplete",
             "color_schemes": list(COLOR_SCHEMES),
-            "viewport": VIEWPORT,
+            "viewports": [VIEWPORT, MOBILE_VIEWPORT],
             "totals": axe_totals(session.scans),
+            "totals_by_viewport": axe_totals_by_viewport(session.scans),
             "scans": session.scans,
         },
         "lighthouse": {
@@ -1193,11 +1713,12 @@ def print_summary(entry: Mapping[str, Any]) -> None:
         for step in flow["steps"]:
             mark = "ok " if step["passed"] else "BAD"
             print(f"      {mark} {step['name']} {step['seconds']} s {step['detail']}")
-    totals = entry["axe"]["totals"]
-    print(
-        f"  axe: {totals['scans']} scans, critical rules {totals['critical_violation_rules']}, serious rules "
-        f"{totals['serious_violation_rules']}, scans with serious/critical {totals['scans_with_serious_or_critical']}"
-    )
+    for viewport, totals in entry["axe"]["totals_by_viewport"].items():
+        print(
+            f"  axe at {viewport}: {totals['scans']} scans, critical rules {totals['critical_violation_rules']}, "
+            f"serious rules {totals['serious_violation_rules']}, scans with serious/critical "
+            f"{totals['scans_with_serious_or_critical']}"
+        )
     for page in entry["lighthouse"]["pages"]:
         print(f"  lighthouse {page['page']} ({page['preset']}): median {page['median']['scores_0_100']}")
 
@@ -1210,15 +1731,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         tools = find_node_tools(args.tools_dir, need_lighthouse=not args.skip_lighthouse)
         server = read_server_config(base_url, wait_s=args.wait_s)
         docker = docker_image_facts(args.docker_image) if args.docker_image else None
+        build = image_build_facts(args.docker_image) if args.docker_image else None
         container = container_facts(args.container) if args.container else None
     except (MetricsConfigError, SmokeConfigError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
-    checked = reproducibility(server.get("git_sha"))
+    container_runs_image = None
+    if container is not None and docker is not None:
+        container_runs_image = container["image_id"] == docker["id"]
+    checked = reproducibility(server.get("git_sha"), build, container_runs_image)
     if not checked["reproducible"] and not args.allow_unreproducible:
         print(
             "Error: refusing to measure an unreproducible build: " + "; ".join(checked["reasons"]) + ". Commit, "
-            "rebuild with `make docker-build-stamped`, or pass --allow-unreproducible to record it marked as such.",
+            "rebuild with `make docker-build-stamped` (clean tree) or `make docker-build-archive`, or pass "
+            "--allow-unreproducible to record it marked as such.",
             file=sys.stderr,
         )
         return 2
@@ -1227,7 +1753,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     provenance_run = RunProvenance.start(GENERATED_BY)
     session = BrowserSession(base_url, server, args, tools)
     session.run()
-    entry = build_entry(session, args, base_url, server, docker, container, provenance_run)
+    entry = build_entry(session, args, base_url, server, docker, container, provenance_run, checked)
     try:
         document = merge_run(args.output, args.target, entry)
     except MetricsConfigError as error:

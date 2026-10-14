@@ -5,15 +5,19 @@
 #   docker build -t fundproof:dev .
 #   docker run --rm -p 7860:7860 fundproof:dev          # then open http://127.0.0.1:7860
 #
-# Four stages:
-#   1. frontend     node:22-slim builds frontend/out with `npm ci` + `npm run build` (exact versions from the lockfile)
-#   2. python-deps  python:3.11-slim + uv installs the locked Python dependencies into /app/.venv (no dev group)
-#   3. assets       public data the Lender Desk demo needs, made at BUILD time (network, no keys): the OFAC SDN +
-#                   alternate-name lists, the public regulatory documents, the Qdrant guideline index built from
-#                   them and corpus/guidelines, and the fastembed models the guideline search loads
-#   4. runtime      python:3.11-slim with only the virtualenv, the code, config/, corpus/, frontend/out, the
-#                   SYNTHETIC demo applications and the assets above; runs as the non-root user "user" (uid 1000,
-#                   the Hugging Face Spaces convention)
+# Five stages:
+#   1. frontend          node:22-slim builds frontend/out with `npm ci` + `npm run build` (exact versions from the
+#                        lockfile)
+#   2. python-deps       python:3.11-slim + uv installs the locked Python dependencies into /app/.venv (no dev group)
+#   3. assets            public data the Lender Desk demo needs, made at BUILD time (network, no keys): the OFAC SDN +
+#                        alternate-name lists, the public regulatory documents, the Qdrant guideline index built from
+#                        them and corpus/guidelines, and the fastembed models the guideline search loads
+#   4. studio-snapshots  the real metros' Founder Studio data snapshots (public data), built ONLY when the build gets
+#                        the CENSUS_API_KEY build secret (a Space secret; optional FRED_API_KEY); without it this stage
+#                        builds nothing and the real metros run in limited mode
+#   5. runtime           python:3.11-slim with only the virtualenv, the code, config/, corpus/, frontend/out, the
+#                        SYNTHETIC demo applications, the assets and the snapshots above; runs as the non-root user
+#                        "user" (uid 1000, the Hugging Face Spaces convention)
 #
 # Behind a TLS-inspecting proxy (like the machine this file was first built on), pass the proxy's CA bundle as an
 # OPTIONAL build secret; it is only mounted while packages and data download and never ends up in the image:
@@ -23,10 +27,18 @@
 #   docker build --network=host --build-arg HTTPS_PROXY="$HTTPS_PROXY" --build-arg HTTP_PROXY="$HTTP_PROXY" \
 #       --build-arg NO_PROXY="$NO_PROXY" --secret id=extra_ca_certs,src=/path/to/ca-bundle.crt -t fundproof:dev .
 # Without that secret (GitHub Actions, Hugging Face) the default certificate stores are used.
+#
+# Real-metro data (stage 4) needs the Census key as a BuildKit secret; a Hugging Face Space passes its Space secret of
+# that name. Locally, from the environment (the value is never shown or stored in the image):
+#   docker build --secret id=CENSUS_API_KEY,env=CENSUS_API_KEY --secret id=FRED_API_KEY,env=FRED_API_KEY ...
 
 # Base images pinned by digest (the tag is kept for readers). Reproducible: the same bytes on every build.
 ARG NODE_IMAGE=node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 ARG PYTHON_IMAGE=python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+# The commit shown by GET /api/health (stage 5); stage 4 uses it so every new commit re-runs the snapshot step. The
+# deploy workflow writes the real hash into this default in the bundle it uploads (scripts/deploy_space.py); a plain
+# local build shows null.
+ARG UWC_GIT_SHA=
 
 # ---------------------------------------------------------------------------------------------------------------
 # Stage 1: the static frontend (frontend/out)
@@ -124,13 +136,54 @@ print(f'guideline search check: {len(result.hits)} hits')" \
     && chmod -R a+rX /app/.cache/models
 
 # ---------------------------------------------------------------------------------------------------------------
-# Stage 4: the runtime image
+# Stage 4: the real metros' Studio data snapshots (public data; only with the CENSUS_API_KEY build secret)
+# ---------------------------------------------------------------------------------------------------------------
+FROM python-deps AS studio-snapshots
+
+# BuildKit leaves secrets out of its cache key, so a build that gets the secrets could reuse the "skipped" result
+# of an earlier build that did not. Using the commit here re-runs this stage for every new commit.
+ARG UWC_GIT_SHA
+# The snapshot builder's time limit in seconds, a whole number (a Space VARIABLE of this name overrides it: Hugging
+# Face passes Space variables as build arguments). A design choice: long enough for the five real metros on the
+# machine this was built on, short enough for the deploy job's 30-minute wait (docs/deployment.md, section 5b).
+# The whole step is also bounded by `timeout` (this plus 180 s).
+ARG STUDIO_SNAPSHOT_TIMEOUT_S=1500
+
+ENV PATH=/app/.venv/bin:$PATH \
+    UWCOPILOT_ROOT=/app \
+    PYTHONDONTWRITEBYTECODE=1
+
+COPY config ./config
+COPY scripts/build_studio_snapshots.py ./scripts/
+
+# The Space secrets CENSUS_API_KEY (needed) and FRED_API_KEY (optional) are files in /run/secrets during this one
+# RUN only; required=false lets the build go on without them. scripts/build_studio_snapshots.py puts them into the
+# environment of the snapshot builder alone (`python -m uwcopilot.studio.data.snapshot --metro all`, what
+# `make studio-data METRO=all` runs), never prints them, keeps only complete snapshot folders, deletes the HTTP
+# response cache (data/studio/cache) and everything else under data/studio, searches the kept files for the values,
+# and prints the names of the steps that failed. Without CENSUS_API_KEY it builds nothing. If the script itself
+# fails or hits the outer time limit, data/studio is emptied, so no unchecked file is kept. The image build never
+# fails because of this step; a metro without a snapshot runs in limited mode and says so.
+RUN --mount=type=secret,id=CENSUS_API_KEY,required=false \
+    --mount=type=secret,id=FRED_API_KEY,required=false \
+    --mount=type=secret,id=extra_ca_certs,required=false \
+    if [ -f /run/secrets/extra_ca_certs ]; then \
+        export REQUESTS_CA_BUNDLE=/run/secrets/extra_ca_certs SSL_CERT_FILE=/run/secrets/extra_ca_certs; \
+    fi \
+    && ( (timeout --kill-after=30 "$((STUDIO_SNAPSHOT_TIMEOUT_S + 180))" \
+            python scripts/build_studio_snapshots.py --secrets-dir /run/secrets \
+                --timeout-s "${STUDIO_SNAPSHOT_TIMEOUT_S}") \
+        || (echo "WARNING: the Studio snapshot step did not finish; every real metro runs in limited mode" \
+            && rm -rf /app/data/studio) ) \
+    && mkdir -p /app/data/studio/snapshots
+
+# ---------------------------------------------------------------------------------------------------------------
+# Stage 5: the runtime image
 # ---------------------------------------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS runtime
 
-# The commit shown by GET /api/health. The deploy workflow writes the real hash into this default in the bundle
-# it uploads (scripts/deploy_space.py); a plain local build shows null.
-ARG UWC_GIT_SHA=
+# The commit shown by GET /api/health (its default is set at the top of this file).
+ARG UWC_GIT_SHA
 
 LABEL org.opencontainers.image.title="Fundproof" \
       org.opencontainers.image.description="Fundproof prototype (Founder Studio + Lender Desk). Educational planning tool. Not financial, legal or lending advice." \
@@ -170,6 +223,9 @@ COPY --from=assets /app/data/raw/checksums.jsonl ./data/raw/checksums.jsonl
 COPY --from=assets /app/.cache/models ./.cache/models
 COPY --from=assets /app/results/rag_index_manifest.json ./results/rag_index_manifest.json
 COPY --from=assets --chown=user:user /app/qdrant_storage ./qdrant_storage
+# Stage 4's real-metro snapshots (an empty folder when the build had no CENSUS_API_KEY secret). Read-only for the app;
+# GET /api/studio/options reports each metro's mode from what is here.
+COPY --from=studio-snapshots /app/data/studio/snapshots ./data/studio/snapshots
 # Compile the project's own modules now (the dependencies were compiled by uv), because the app cannot write
 # __pycache__ into the root-owned src/ at runtime; this saves compiling them on every start.
 RUN python -m compileall -q /app/src \
