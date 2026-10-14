@@ -22,7 +22,9 @@ added the "use a made-up plan" notice (below).
 
 **Status.**
 
-- Built, reviewed and committed. Measured only on a **LOCAL container** (image built from commit `271ca4d`).
+- Built, reviewed and committed. Measured only on a **LOCAL container** (image built from commit `271ca4d`, the
+  same app as `39da937`). The v0.1.0 deploy target `aa2260b` adds the "use a made-up plan" notice after that
+  measurement, so the Studio home and new-plan pages with the notice are **not measured**.
 - **Not deployed yet.** The owners created the Hugging Face Space `astra6/FundProof` and the `HF_TOKEN` repository
   secret on 2026-10-13. The first deploy runs when an owner pushes a `v*` tag (or starts the workflow by hand).
   **Nothing has been measured on the Space.**
@@ -35,7 +37,8 @@ added the "use a made-up plan" notice (below).
   committed v0.1 versions.
 - Not in v0.1, although the S7 build prompt names them: Supabase Auth (v0.1 uses Hugging Face sign-in), Stripe
   (there is no payment code; `/api/config` says `payments_enabled: false`), uploads, PDF download (v0.1 downloads
-  the results as JSON), "share with a lender" links, and the founder-to-lender handoff (planned for v0.2).
+  the results as JSON), "share with a lender" links, and the founder-to-lender handoff (not built yet; when it comes
+  is for the owners to decide).
 
 ## 1. Architecture: one container
 
@@ -151,8 +154,9 @@ minute with a burst of 60 each, by default. They live in the process's memory, w
 Address lookups have their own, smaller per-user budget.
 
 **Body cap.** A JSON body over 64 KiB on `/api` is refused with 413 before it is read further. The largest real body
-(a plan with a 2,000-character idea and three addresses) is a few KiB. Before this cap, a 9 MB body of list items
-froze the event loop for over 30 s (found in review). Validation errors never echo the rejected input.
+(a plan with a 2,000-character idea and three addresses) is a few KiB. Before this cap, a very large body of list
+items blocked the event loop for a long time (found in review; not measured in a results file). Validation errors
+never echo the rejected input.
 
 ## 4. Heavy work: the compute runner
 
@@ -272,7 +276,9 @@ owners turn on the dataset store). `privacy.md` says to remove the notice once i
 
 Measured 2026-10-14T00:25:57Z by `scripts/smoke_deploy.py` (`make docker-smoke`), on image `fundproof:dev` built from
 commit `271ca4d`, on the build machine over 127.0.0.1 with the dev login OFF. **Not the Space**: no internet hop, no
-Space proxy, not Space hardware.
+Space proxy, not Space hardware. It is the app of `39da937` (between the two commits only
+`src/uwcopilot/governance/freeze_proof.py` changed among the image's files, and the web app does not import it), not
+of `aa2260b`: the "use a made-up plan" notice is not in it.
 
 | What | Value |
 |---|---|
@@ -288,8 +294,9 @@ One client sending one request at a time: a smoke test, not a load test.
 
 Measured 2026-10-14T00:48:23Z by `scripts/web_metrics.py` against the same image, started **with the dev login**
 (`UWC_DEV_AUTH=1`) on 127.0.0.1:7862, because a script cannot sign in with Hugging Face. The server named commit
-`271ca4d` (`reproducible: true` in the file). Headless Chromium 141.0.7390.37, Playwright 1.56.0, axe-core 4.13.0,
-Lighthouse 13.5.0.
+`271ca4d` (`reproducible: true` in the file, under the script's rule at the time; the stricter rule added for
+v0.1.1 would refuse this image, which has no build label: see `docs/deployment.md` section 4b). Headless Chromium
+141.0.7390.37, Playwright 1.56.0, axe-core 4.13.0, Lighthouse 13.5.0.
 
 End-to-end flows: **5 of 5 passed**, with no unexpected console error or API error.
 
@@ -346,8 +353,8 @@ Screenshots from the measured run: [Studio results](../web/screenshots/e2e/studi
 ## 11. Known limitations
 
 - Studio results on mobile score 44 for Lighthouse performance (long main-thread work while the charts and the map
-  render), and the results page and the lender file shift layout on desktop (CLS above 0.1). Both are open frontend
-  issues.
+  render). The results page shifts layout on mobile and desktop, and the lender file on desktop (CLS above 0.1).
+  Both are open frontend issues.
 - One process: rate limits, the result cache and a generated session secret are per process, and a restart forgets
   them.
 - The image is large (2.57GB on disk) because it installs the project's full dependency set; a smaller `web`

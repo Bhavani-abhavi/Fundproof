@@ -107,7 +107,8 @@ jobs:
     name: deploy to the Hugging Face Space
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Room for the 60-minute wait below plus checkout, install, bundle, push and the smoke test (a design choice).
+    timeout-minutes: 90
     env:
       UV_LOCKED: "1"
     steps:
@@ -152,13 +153,16 @@ jobs:
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID || vars.HF_SPACE_ID || 'astra6/FundProof' }}
         run: uv run --no-dev python scripts/deploy_space.py push --bundle "${RUNNER_TEMP}/space" --git-sha "${GITHUB_SHA}"
 
+      # The Space builds the whole image after the push. With the CENSUS_API_KEY Space secret its studio-snapshots step
+      # alone may take up to 1710 s (STUDIO_SNAPSHOT_TIMEOUT_S 1500 + 180 + 30 in the Dockerfile), and the other
+      # stages come on top, so the wait is 3600 s (a design choice; the Space builder's speed is not measured).
       - name: Wait until the Space serves this commit
         id: wait
         if: steps.secrets.outputs.ready == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID || vars.HF_SPACE_ID || 'astra6/FundProof' }}
-        run: uv run --no-dev python scripts/deploy_space.py wait --git-sha "${GITHUB_SHA}" --timeout-s 1800
+        run: uv run --no-dev python scripts/deploy_space.py wait --git-sha "${GITHUB_SHA}" --timeout-s 3600
 
       - name: Smoke-test the Space
         if: steps.secrets.outputs.ready == 'true'

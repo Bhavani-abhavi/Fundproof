@@ -3,6 +3,7 @@
 The Hub is a fake object and the Space's health endpoint is an httpx.MockTransport: no network, no Docker.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -318,6 +319,48 @@ def test_dockerignore_starts_from_nothing_and_never_lets_secrets_or_data_back_in
         "scripts/build_studio_snapshots.py",
     }
     assert {"**/.env", "frontend/node_modules", "frontend/out", "frontend/mock-api"} <= set(rules)
+
+
+def dockerfile_copy_sources(dockerfile: str) -> list[str]:
+    """The sources of every COPY instruction that copies from the build context (a COPY --from=<stage> does not)."""
+    sources: list[str] = []
+    for line in dockerfile.replace("\\\n", " ").splitlines():
+        words = line.split()
+        if not words or words[0] != "COPY" or any(word.startswith("--from=") for word in words):
+            continue
+        paths = [word for word in words[1:] if not word.startswith("--")]
+        sources.extend(paths[:-1])  # the last one is the destination
+    return sources
+
+
+def test_every_file_the_dockerfile_copies_is_in_the_space_bundle() -> None:
+    # The Space builds from the bundle, but CI builds the repo root (filtered by .dockerignore): a COPY source left out
+    # of the bundle's allow-list would pass CI and fail only on Hugging Face.
+    sources = dockerfile_copy_sources((REPO_ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    # build_bundle adds the Space card as README.md (pyproject.toml names a README; any Markdown file works).
+    bundled = {path.as_posix() for path in deploy_space.bundle_file_list(REPO_ROOT)} | {"README.md"}
+    assert "scripts/build_studio_snapshots.py" in sources and "src" in sources
+    for source in sources:
+        name = source.rstrip("/")
+        assert name in bundled or any(path.startswith(name + "/") for path in bundled), source
+
+
+def test_the_deploy_job_waits_longer_than_the_snapshot_step_alone_can_take() -> None:
+    # Hugging Face builds the image after the push; with the CENSUS_API_KEY Space secret the studio-snapshots step
+    # may run up to STUDIO_SNAPSHOT_TIMEOUT_S + 180 s + the 30 s kill grace before the other stages finish.
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    limit = re.search(r"^ARG STUDIO_SNAPSHOT_TIMEOUT_S=(\d+)$", dockerfile, flags=re.MULTILINE)
+    outer = re.search(r'timeout --kill-after=(\d+) "\$\(\(STUDIO_SNAPSHOT_TIMEOUT_S \+ (\d+)\)\)"', dockerfile)
+    assert limit and outer
+    step_bound_s = int(limit.group(1)) + int(outer.group(2)) + int(outer.group(1))
+    workflow_text = (REPO_ROOT / ".github" / "workflows" / "deploy-space.yml").read_text(encoding="utf-8")
+    wait = re.search(r"deploy_space\.py wait [^\n]*--timeout-s (\d+)", workflow_text)
+    assert wait
+    wait_s = int(wait.group(1))
+    deploy_job = yaml.safe_load(workflow_text)["jobs"]["deploy"]
+    assert wait_s > step_bound_s  # the other stages must fit in the rest; their time on the Space is not measured
+    assert deploy_job["timeout-minutes"] * 60 > wait_s
+    assert deploy_space.DEFAULT_WAIT_TIMEOUT_S == wait_s
 
 
 def test_the_image_builds_the_lender_demo_assets_and_screens_with_ofac_only() -> None:

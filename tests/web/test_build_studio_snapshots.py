@@ -6,9 +6,12 @@ no Docker and no real key. The fake key values below are made up for these tests
 
 import base64
 import hashlib
+import inspect
+import io
 import json
 import re
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +21,16 @@ import build_studio_snapshots
 from build_studio_snapshots import (
     BUILD_SECRETS,
     REQUIRED_SECRET,
+    REQUIRED_STEPS,
     build_snapshots,
     child_environment,
     error_type_from,
+    guarded_emit,
     read_build_secrets,
     real_metro_ids,
     snapshot_problem,
 )
+from uwcopilot.studio.data.snapshot import build_snapshot
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CENSUS_VALUE = "census-test-value-0123456789abcdef"
@@ -62,6 +68,7 @@ def write_snapshot(
 
 
 STEPS = [
+    {"name": "tract_geography", "status": "ok", "detail": "1615 tracts"},
     {"name": "acs_tracts", "status": "ok", "detail": "ok detail"},
     {"name": "overture_places", "status": "failed", "detail": "Cannot reach host: secret-looking detail"},
     {"name": "enhancement:traffic_state:TX", "status": "not_available", "detail": "no dataset"},
@@ -217,8 +224,15 @@ def test_a_crash_is_reported_by_its_exception_name_only(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "leaked_form",
-    [CENSUS_VALUE, base64.b64encode(CENSUS_VALUE.encode()).decode()],
-    ids=["as-is", "base64"],
+    [
+        CENSUS_VALUE,
+        base64.b64encode(CENSUS_VALUE.encode()).decode(),
+        # inside a longer base64 blob, at byte offsets 2 and 1 of a 3-byte group, and in the URL-safe alphabet
+        base64.b64encode(b"k=" + CENSUS_VALUE.encode()).decode(),
+        base64.b64encode(b"key=" + CENSUS_VALUE.encode()).decode(),
+        base64.urlsafe_b64encode(b"?" + CENSUS_VALUE.encode() + b"&").decode(),
+    ],
+    ids=["as-is", "base64", "base64-offset-2", "base64-offset-1", "base64-url-safe"],
 )
 def test_a_secret_value_in_a_kept_file_removes_every_snapshot(tmp_path: Path, leaked_form: str) -> None:
     studio = tmp_path / "studio"
@@ -238,6 +252,105 @@ def test_error_type_needs_a_traceback() -> None:
     assert error_type_from(b"GET https://x failed (attempt 1)\n") is None
     assert error_type_from(b"Traceback (most recent call last):\nKeyError: 'x'\n") == "KeyError"
     assert error_type_from(None) is None
+
+
+@pytest.mark.parametrize(
+    ("last_line", "expected"),
+    [
+        ("KeyboardInterrupt", "KeyboardInterrupt"),
+        ("SystemExit: 1", "SystemExit"),
+        ("uwcopilot.studio.data.http.UpstreamError: HTTP 500", "uwcopilot.studio.data.http.UpstreamError"),
+        # A bare token is not an exception name: a key on a line of its own must never be echoed.
+        ("a3f90000000000000000000000000000000000ff", "unknown"),
+        ("A3F90000000000000000000000000000000000FF", "unknown"),
+        ("lowercase.name: message", "unknown"),
+        ("X" * 101 + "Error: too long", "unknown"),
+    ],
+)
+def test_error_type_accepts_only_exception_class_names(last_line: str, expected: str) -> None:
+    stderr = f'Traceback (most recent call last):\n  File "x.py", line 1\nValueError: county 48201:\n{last_line}\n'
+    assert error_type_from(stderr.encode()) == expected
+
+
+def test_a_printed_line_that_holds_a_secret_is_withheld() -> None:
+    lines: list[str] = []
+    emit = guarded_emit(lines.append, {"CENSUS_API_KEY": CENSUS_VALUE})
+
+    emit("houston_tx: snapshot 2026-10-14 kept")
+    emit(f"stopped with {CENSUS_VALUE}")
+    emit("blob " + base64.b64encode(b"key=" + CENSUS_VALUE.encode()).decode())
+
+    assert lines == [
+        "houston_tx: snapshot 2026-10-14 kept",
+        "(a line was withheld because it contained a value of CENSUS_API_KEY)",
+        "(a line was withheld because it contained a value of CENSUS_API_KEY)",
+    ]
+
+
+def test_a_crash_whose_name_is_the_secret_is_never_printed(tmp_path: Path) -> None:
+    # A made-up key shaped like a class name: error_type_from accepts it, and the guard still withholds the line.
+    shaped_like_a_class = "CensusKeyShapedLikeAClassName0123456789"
+    stderr = f"Traceback (most recent call last):\n{shaped_like_a_class}: boom\n".encode()
+
+    lines = run_step(tmp_path, {"CENSUS_API_KEY": shaped_like_a_class}, FakeRun(stderr=stderr))
+
+    assert shaped_like_a_class not in "\n".join(lines)
+    assert "(a line was withheld because it contained a value of CENSUS_API_KEY)" in lines
+
+
+@pytest.mark.parametrize(
+    ("steps", "reason"),
+    [
+        (
+            [{"name": "tract_geography", "status": "ok"}, {"name": "acs_tracts", "status": "failed"}],
+            "acs_tracts is failed",
+        ),
+        ([{"name": "tract_geography", "status": "ok"}], "acs_tracts is missing"),
+        (
+            [{"name": "tract_geography", "status": "not_available"}, {"name": "acs_tracts", "status": "ok"}],
+            "tract_geography is not available",
+        ),
+    ],
+    ids=["acs-failed", "acs-missing", "tracts-not-available"],
+)
+def test_a_snapshot_without_its_tracts_or_their_acs_values_is_removed(
+    tmp_path: Path, steps: list[dict[str, Any]], reason: str
+) -> None:
+    # A wrong or not yet active key: the keyless steps succeed, ACS fails. Such a snapshot would offer area
+    # suggestions and simulations that answer 409, so the metro stays at "no data snapshot" instead.
+    studio = tmp_path / "studio"
+
+    def builder() -> None:
+        write_snapshot(studio, "alpha_metro", [*steps, {"name": "lehd_daytime_workers", "status": "ok"}], {})
+        write_snapshot(studio, "beta_metro", STEPS, {})
+
+    lines = run_step(tmp_path, {"CENSUS_API_KEY": CENSUS_VALUE}, FakeRun(builder))
+
+    assert sorted(path.name for path in (studio / "snapshots").iterdir()) == ["beta_metro"]
+    assert f"removed incomplete snapshot alpha_metro/2026-10-14: required step {reason}" in lines
+    assert "  alpha_metro: no snapshot (runs in limited mode: no data snapshot)" in lines
+
+
+def test_the_required_steps_are_steps_the_snapshot_builder_runs() -> None:
+    source = inspect.getsource(build_snapshot)
+    for name in REQUIRED_STEPS:
+        assert f'run_step(build, "{name}"' in source, name
+
+
+def test_a_secret_inside_a_compressed_npz_member_removes_every_snapshot(tmp_path: Path) -> None:
+    studio = tmp_path / "studio"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("segments.npy", b"\x93NUMPY" + b"0" * 200 + CENSUS_VALUE.encode() + b"0" * 200)
+    assert CENSUS_VALUE.encode() not in buffer.getvalue()  # compressed: a raw search alone would miss it
+
+    def leaky_builder() -> None:
+        write_snapshot(studio, "alpha_metro", STEPS, {"roads.npz": buffer.getvalue()})
+
+    lines = run_step(tmp_path, {"CENSUS_API_KEY": CENSUS_VALUE}, FakeRun(leaky_builder))
+
+    assert list((studio / "snapshots").iterdir()) == []
+    assert "a value of CENSUS_API_KEY was found in the snapshot files: every snapshot was removed" in lines
 
 
 def test_snapshot_problem_accepts_a_complete_folder(tmp_path: Path) -> None:

@@ -1,7 +1,8 @@
 # Deployment: one container, a Hugging Face Docker Space
 
 > **Status: not deployed yet.** The owners created the Space `astra6/FundProof` and added the `HF_TOKEN` repository
-> secret on 2026-10-13; the first deploy runs once CI is green.
+> secret on 2026-10-13; the first deploy runs when an owner pushes a `v*` tag or starts the workflow by hand
+> (section 5).
 > There is no public URL. This page gets the URL only after a real deploy has run.
 
 Fundproof (working name; rename in `src/uwcopilot/web/settings.py` and `frontend/lib/config.ts`) is deployed as a
@@ -9,8 +10,10 @@ Fundproof (working name; rename in `src/uwcopilot/web/settings.py` and `frontend
 paid hardware or storage is requested (the deploy script calls `create_repo` without `space_hardware` or
 `space_storage`, so the Space gets whatever the account's default is; check it in the Space settings).
 
-Every number on this page is copied from `results/deployment_metrics.json`, which `scripts/smoke_deploy.py`
-writes; the file says which machine and which target each number comes from.
+Measured numbers on this page are copied from `results/deployment_metrics.json` (section 4, written by
+`scripts/smoke_deploy.py`) and `results/web_metrics.json` (section 4b, written by `scripts/web_metrics.py`); each file
+says which machine and which target each number comes from. Every other number is a design setting (a time limit, a
+wait) or a dated development check, and is labelled as such where it appears.
 
 ## 1. What runs where
 
@@ -67,7 +70,7 @@ The deploy pipeline (`.github/workflows/deploy-space.yml`):
               -> scripts/deploy_space.py push     create_repo(space, docker, exist_ok, public), set a fresh
                                                   UWC_SESSION_SECRET Space secret, upload_folder
               -> (the Space builds the same Dockerfile itself, with the Space's build secrets if set: section 5b)
-              -> scripts/deploy_space.py wait     until https://<host>/api/health names this commit
+              -> scripts/deploy_space.py wait     until https://<host>/api/health names this commit (at most 3600 s)
               -> scripts/smoke_deploy.py --target hf-space   results kept as the workflow artifact "space-smoke"
 ```
 
@@ -78,31 +81,38 @@ The deploy pipeline (`.github/workflows/deploy-space.yml`):
 | `Dockerfile` | Five stages: `node:22-slim` runs `npm ci` + `npm run build` (frontend/out); `python:3.11-slim` + uv runs `uv sync --locked --no-dev` into /app/.venv; `assets` downloads the OFAC SDN + alternate-name lists (required, two retries) and the public regulatory documents (optional), builds the Qdrant guideline index with `scripts/build_index.py` and runs one real guideline search, which also downloads the reranker (the build fails if it finds nothing); `studio-snapshots` runs `scripts/build_studio_snapshots.py` with the optional build secrets `CENSUS_API_KEY` and `FRED_API_KEY` (section 5b); the runtime stage copies only the virtualenv, `src/`, `config/`, `corpus/`, `frontend/out`, the SYNTHETIC demo applications, `results/kyc_metrics.json` (the screening threshold), the assets (lists, `checksums.jsonl`, fastembed models, index, index manifest) and `data/studio/snapshots/` (empty without the Census secret; read-only), compiles `src/` to bytecode, sets `UWC_SCREENING_LISTS=ofac`, and runs as `user` (uid 1000; only `data/` and `qdrant_storage/` are writable). Base images are pinned by digest. `HEALTHCHECK` calls `/api/health`. `CMD` is uvicorn on 0.0.0.0:7860 with `--no-access-log` (the app logs its own redacted line) and `--no-proxy-headers` (client IPs come only from the app's `UWC_TRUSTED_PROXY_HOPS` rule). |
 | `.dockerignore` | An allow-list: everything is excluded, then only `pyproject.toml`, `uv.lock`, `README.md`, `src/`, `config/`, `corpus/`, `frontend/`, `eval/applications/`, `eval/startup_applications/`, `results/kyc_metrics.json`, `scripts/download_data.py`, `scripts/build_index.py` and `scripts/build_studio_snapshots.py` come back, minus `node_modules`, `.next`, `out`, the mock API and screenshot helpers, caches and any `.env`. So `.env`, `data/`, the other results, `.venv` and the git history never reach the build. |
 | `deploy/space/README.md` | The Space card. Its YAML header is the Space configuration: `sdk: docker`, `app_port: 7860`, `hf_oauth: true` (Sign in with Hugging Face), title, colors, `short_description`. No `license` key (see Owner decisions). The body has the disclaimer and the SYNTHETIC note. It becomes `README.md` in the Space. |
-| `scripts/build_studio_snapshots.py` | Runs inside the `studio-snapshots` build step (section 5b): reads the build secrets from `/run/secrets` into the snapshot builder's environment only, runs it with a time limit, keeps only complete snapshot folders, deletes the HTTP cache, searches the kept files for the key values and prints the names of failed steps. Never fails the build. |
-| `scripts/deploy_space.py` | `bundle`: copies the allow-list (including the three build-time scripts) into an empty folder, puts the card in as `README.md`, writes the commit into `ARG UWC_GIT_SHA=`. `push`: creates the Space if missing and replaces its files (`delete_patterns="*"`; the Hub keeps `.gitattributes`). `wait`: waits until the Space's `/api/health` names the pushed commit, failing early on a build or runtime error. Reads `HF_TOKEN` and `HF_SPACE_ID` from the environment and never prints them. |
+| `scripts/build_studio_snapshots.py` | Runs inside the `studio-snapshots` build step (section 5b): reads the build secrets from `/run/secrets` into the snapshot builder's environment only, runs it with a time limit, keeps only complete snapshot folders whose tract and ACS steps succeeded, deletes the HTTP cache, searches the kept files (and the members of zip files) and its own printed lines for the key values, and prints the names of failed steps. Never fails the build. |
+| `scripts/deploy_space.py` | `bundle`: copies the allow-list (including the three build-time scripts) into an empty folder, puts the card in as `README.md`, writes the commit into `ARG UWC_GIT_SHA=`. `push`: creates the Space if missing and replaces its files (`delete_patterns="*"`; the Hub keeps `.gitattributes`). `wait`: waits (default 3600 s, the workflow's value) until the Space's `/api/health` names the pushed commit, failing early on a build or runtime error. Reads `HF_TOKEN` and `HF_SPACE_ID` from the environment and never prints them. |
 | `scripts/smoke_deploy.py` | Checks a running deployment and times it (see section 4). Writes `results/deployment_metrics.json`, one entry per target, each with a provenance block. |
-| `.github/workflows/deploy-space.yml` | The pipeline above. Manual or on tags `v*`; one deploy at a time. Every action is pinned to a full commit SHA (with its release in a comment, resolved 2026-10-13), uv is pinned to the Dockerfile's version (0.11.32), and checkouts do not keep the GitHub token (`persist-credentials: false`): the deploy job runs code with `HF_TOKEN` in its environment, so a moved tag must not be able to change that code. `ci.yml` uses the same pins. |
-| `scripts/web_metrics.py` | Drives a LOCAL server or container that runs WITH the dev login in headless Chromium (Playwright): the signed-out pages, the founder flow on the SYNTHETIC metro (wizard, results, edited targets, "Apply this change", delete), one Lender Desk DEMO decision and the error paths; axe-core scans of every page state in light and dark; Lighthouse (mobile and desktop presets) on the landing page, the results page and the lender file. Writes `results/web_metrics.json` (one entry per target, with a provenance block) and screenshots to `docs/web/screenshots/e2e/`. |
+| `.github/workflows/deploy-space.yml` | The pipeline above. Manual or on tags `v*`; one deploy at a time. The deploy job waits up to 3600 s for the Space build and has a 90-minute limit (design choices; section 5b). Every action is pinned to a full commit SHA (with its release in a comment, resolved 2026-10-13), uv is pinned to the Dockerfile's version (0.11.32), and checkouts do not keep the GitHub token (`persist-credentials: false`): the deploy job runs code with `HF_TOKEN` in its environment, so a moved tag must not be able to change that code. `ci.yml` uses the same pins. |
+| `scripts/web_metrics.py` | Drives a LOCAL server or container that runs WITH the dev login in headless Chromium (Playwright): the signed-out pages, the founder flow on the SYNTHETIC metro (wizard, results, edited targets, "Apply this change", delete), one Lender Desk DEMO decision, the error paths, a keyboard-only walk (`keyboard_only`) and 10 page states at 375 x 812 px (`small_screen_375`); axe-core scans of every page state in light and dark, per viewport; Lighthouse (mobile and desktop presets) on the landing page, the results page and the lender file. Before the browser starts it checks that the run is reproducible (section 4b) and records the server's Studio metro list (`server.studio_metros`). Writes `results/web_metrics.json` (one entry per target, with a provenance block) and screenshots to `docs/web/screenshots/e2e/`. |
 | `tools/web-metrics/` | `package.json` + `package-lock.json` pinning the Node tools the script uses: Lighthouse 13.5.0 (released 2026-09-18) and axe-core 4.13.0 (2026-08-05). Not part of the app or the image. |
 | `scripts/optimize_pngs.py` | Re-encodes PNGs losslessly (oxipng when installed, else Pillow) and keeps a file only when it is smaller and decodes to the same pixels. |
-| `Makefile` | `docker-build`, `docker-run`, `docker-smoke`, `space-bundle`, `docker-build-bundle` (build from the Space bundle, optionally with the Studio build secrets), `web-metrics-tools`, `web-metrics`. |
+| `Makefile` | `docker-build`, `docker-run`, `docker-smoke`, `space-bundle`; `docker-build-stamped` (stamped with HEAD, `-dirty` for an uncommitted tree), `docker-build-archive` (built from `git archive HEAD`) and `docker-build-bundle` (built from the Space bundle, optionally with the Studio build secrets, never reusing a cached snapshot step), each with the build-method label `web-metrics` checks; `web-metrics-tools`, `web-metrics`. |
 | `tests/web/test_deploy_space.py`, `tests/web/test_build_studio_snapshots.py`, `tests/web/test_smoke_deploy.py`, `tests/web/test_web_metrics_script.py`, `tests/web/test_optimize_pngs.py` | Offline tests: a fake Hub, `httpx.MockTransport`, a fake clock, a fake `docker`, hand-written axe and Lighthouse results, generated PNGs. |
 
 ## 3. Run it locally
 
 ```bash
-make docker-build     # docker build -t fundproof:dev .
+make docker-build     # docker build -t fundproof:dev .  (no build label: fine to run, refused by web-metrics)
 make docker-run       # http://127.0.0.1:7860, dev login OFF, data lost when the container stops
 make docker-smoke     # start the image, smoke-test it, stop it -> results/deployment_metrics.json (runs.local-container)
 make space-bundle     # write what the workflow would upload to build/space, to inspect it
 make docker-build-bundle                         # build DOCKER_IMAGE from that bundle, as the Space does (no Studio data)
 make docker-build-bundle STUDIO_BUILD_SECRETS=1  # ... with CENSUS_API_KEY and FRED_API_KEY from your shell as build
                                                  #     secrets: real-metro snapshots in the image (section 5b)
+make docker-build-archive  # build DOCKER_IMAGE from `git archive HEAD` (committed files only), stamped and labelled
 make web-metrics-tools  # once: npm ci in tools/web-metrics (Lighthouse + axe-core)
 make web-metrics      # start the image WITH the dev login on 127.0.0.1:7862, run scripts/web_metrics.py, stop it
                       # -> results/web_metrics.json (runs.local-container) + docs/web/screenshots/e2e/
 uv run --with pyoxipng==9.1.1 python scripts/optimize_pngs.py docs/web/screenshots   # lossless, smaller PNGs
 ```
+
+`make web-metrics` measures only an image that says how it was built: build it with `make docker-build-archive` (or
+`make docker-build-stamped` / `make docker-build-bundle` on a clean tree). A plain `make docker-build` image has no
+build label, and `scripts/web_metrics.py` refuses it (section 4b). `make docker-build-bundle` always rebuilds the
+`studio-snapshots` stage (`--no-cache-filter studio-snapshots`): BuildKit leaves secrets out of its cache key, so
+otherwise a build with `STUDIO_BUILD_SECRETS=1` right after one without them (same commit) reused the "skipped" step.
 
 The image needs network access while it builds (OFAC lists, regulatory documents, fastembed models from
 huggingface.co). At runtime it needs the internet only for Hugging Face sign-in, the Census Geocoder (real-metro
@@ -127,13 +137,17 @@ docker build --network=host --build-arg HTTPS_PROXY="$HTTPS_PROXY" --build-arg H
 ## 4. Measured: local container (NOT the Space)
 
 From `results/deployment_metrics.json`, entry `runs.local-container`, measured 2026-10-14T00:25:57Z by
-`scripts/smoke_deploy.py --url http://127.0.0.1:7860 --target local-container --docker-image fundproof:dev
---container fundproof-smoke` (run by `make docker-smoke`). **This is the v0.1 image running on the build machine,
-reached over 127.0.0.1, with the dev login OFF: no internet, no Space proxy, not Space hardware.** The image was built
-from commit `271ca4d` exactly (`git archive 271ca4d | docker build ... --build-arg UWC_GIT_SHA=271ca4d... -`, the
-proxy flags of section 3, so `/api/health` names that commit); the checkout itself had uncommitted result files while
-measuring (`git_dirty: true` in the provenance), which are not part of the image. A 4-CPU machine shared with other
-jobs (load average 3.41 at the start of the run).
+`scripts/smoke_deploy.py --url http://127.0.0.1:7860 --target local-container --docker-image fundproof:dev --container
+fundproof-smoke` (run by `make docker-smoke`). **This is the image of commit `271ca4d` running on the build machine,
+reached over 127.0.0.1, with the dev login OFF: no internet, no Space proxy, not Space hardware.** It is the app of
+`39da937` (between the two commits, the only file of the image that changed is
+`src/uwcopilot/governance/freeze_proof.py`, which the web app does not import), but NOT exactly the v0.1.0 deploy
+target `aa2260b`: that commit adds the "use a made-up plan" notice
+(`frontend/components/studio/prototype-data-notice.tsx` on the Studio home and new-plan pages), so those pages as
+deployed are **not measured**. The image was built from commit `271ca4d` exactly (`git archive 271ca4d | docker build
+... --build-arg UWC_GIT_SHA=271ca4d... -`, the proxy flags of section 3, so `/api/health` names that commit); the
+checkout itself had uncommitted result files while measuring (`git_dirty: true` in the provenance), which are not part
+of the image. A 4-CPU machine shared with other jobs (load average 3.41 at the start of the run).
 
 | What | Value | How it was measured |
 |---|---|---|
@@ -160,11 +174,19 @@ feature routers. Section 4b has the browser measurements of the same image.
 From `results/web_metrics.json`, entry `runs.local-container`, measured 2026-10-14T00:48:23Z by `make web-metrics`
 (`scripts/web_metrics.py` against the same image, id `sha256:20b3b04d9a69...`, started with `UWC_DEV_AUTH=1` on
 127.0.0.1:7862). **The dev login is on only because a script cannot sign in with Hugging Face; the Space refuses it,
-so none of this was measured on the Space.** The entry's `reproducibility` block says `reproducible: true`: the server
-names commit `271ca4d` (the script refuses to write results for an image that names no commit, or one stamped
-"-dirty" by `make docker-build-stamped`, unless `--allow-unreproducible` marks them so). Same machine as section 4,
-load average 3.43 at the start. Headless Chromium 141.0.7390.37 (Playwright 1.56.0), axe-core 4.13.0, Lighthouse
-13.5.0.
+so none of this was measured on the Space.** Like section 4, this is the image of `271ca4d`, without `aa2260b`'s
+notice. The entry's `reproducibility` block says `reproducible: true` under the rule the script had then: the server
+named commit `271ca4d`, not stamped "-dirty". The script's rule is stricter now. Before the browser starts it also
+requires the image's build-method label (`org.fundproof.build.method`, set by `make docker-build-stamped`, `make
+docker-build-archive`, or `make docker-build-bundle` on a clean tree), the server's stamp to equal the image's own
+`UWC_GIT_SHA` (and, for `git-archive`, its commit label), and a `--container` that runs the `--docker-image`; a
+`--target local-server` run has no image and is never reproducible. Otherwise it refuses to write results unless
+`--allow-unreproducible` marks them so. The `271ca4d` image has no label, so **this run would now be refused**: re-run
+`make web-metrics` on a labelled v0.1.1 image before quoting any v0.1.1 number. Since then the script also runs the
+`keyboard_only` and `small_screen_375` flows, records every axe scan's viewport (`axe.viewports` and
+`totals_by_viewport` replace `axe.viewport`) and records `server.studio_metros`; none of that is in the committed
+results file yet: **not measured**. Same machine as section 4, load average 3.43 at the start. Headless Chromium
+141.0.7390.37 (Playwright 1.56.0), axe-core 4.13.0, Lighthouse 13.5.0.
 
 End-to-end flows, all passed, with no unexpected console error or failed API answer (the expected ones are the 404s
 of the error paths):
@@ -204,10 +226,10 @@ Lighthouse, median of 3 runs per page and preset (scores as Lighthouse shows the
 | Lender file | desktop | 93 (93, 95, 93) | 100 | 100 | 1114 ms | 0 ms | 0.139 |
 
 "mobile" is Lighthouse's default configuration (simulated throttling of a mid-range phone); "desktop" is
-`--preset=desktop`. The HTTP cache was cleared before each run; the session cookie was kept. The results page is
-the slow one on mobile (long main-thread work while the charts and the map render), and the results page and the
-lender file shift layout on desktop (CLS above 0.1); both are open frontend issues. LCP, TBT and CLS values are
-rounded here for reading; the results file has the exact values. Screenshots of the run:
+`--preset=desktop`. The HTTP cache was cleared before each run; the session cookie was kept. The results page is the
+slow one on mobile (long main-thread work while the charts and the map render); the results page shifts layout on
+mobile and desktop, and the lender file on desktop (CLS above 0.1); both are open frontend issues. LCP, TBT and CLS
+values are rounded here for reading; the results file has the exact values. Screenshots of the run:
 `docs/web/screenshots/e2e/`.
 
 **Why the image is large.** The runtime installs the project's full dependency set from `uv.lock` (`uv sync
@@ -248,18 +270,24 @@ the build gets the Census key:
 1. **To turn it on** (an owner, once): in the Space settings, "Variables and secrets", add a **secret** (not a
    variable) named `CENSUS_API_KEY` with a free Census Data API key, and optionally a secret `FRED_API_KEY` (without
    it the keyless FRED CSV download gives the prime rate). Hugging Face passes Space *variables* to the build as
-   build arguments (same docs page, "Variables / Buildtime"), which the Dockerfile never declares for keys; a key
-   added as a variable is not used by the build.
+   build arguments (Docker Spaces docs, "Variables / Buildtime": source `docs/hub/spaces-sdks-docker.md` of
+   github.com/huggingface/hub-docs, read 2026-10-14), which the Dockerfile never declares for keys; a key added as a
+   variable is not used by the build.
    The snapshot builder reads no other key: the BLS, HUD and OpenRouteService keys are not build secrets.
 2. **Then rebuild**: deploy a new commit (the stage re-runs for every commit, because it uses the stamped
    `UWC_GIT_SHA`), or use "Factory rebuild" in the Space settings. BuildKit leaves secrets out of its cache key
    (checked locally on 2026-10-14: a rebuild with the same arguments reused the result of a build that had a
    different secret), so a plain rebuild of the same commit may reuse the earlier "skipped" step. Whether a Space
-   "Restart" rebuilds at all is not verified.
+   "Restart" rebuilds at all is not verified. (Locally, `make docker-build-bundle` passes `--no-cache-filter
+   studio-snapshots`, so it never reuses that step.)
 3. **Without the secret** the step prints `Studio snapshots skipped: the build secret CENSUS_API_KEY was not
    provided.`, builds nothing, and the image builds as before; every real metro runs in limited mode ("no data
-   snapshot"). Without the Census key a snapshot would have no ACS values, so demand would be UNKNOWN everywhere;
-   that is why the step does not run on the keyless sources alone.
+   snapshot"). Without the Census key a snapshot would have no ACS values, so demand would be UNKNOWN for most
+   business types; that is why the step does not run on the keyless sources alone. For the same reason a snapshot
+   whose `acs_tracts` (or `tract_geography`) step did not succeed is removed: a key the Census API refuses (wrong,
+   or not activated yet) or a Census outage during the build gives `removed incomplete snapshot <metro>/<date>:
+   required step acs_tracts is failed` in the log, and that metro stays at "no data snapshot" instead of offering
+   area suggestions and simulations that answer 409.
 
 What the step does (`scripts/build_studio_snapshots.py`, tests in `tests/web/test_build_studio_snapshots.py`):
 
@@ -269,31 +297,39 @@ What the step does (`scripts/build_studio_snapshots.py`, tests in `tests/web/tes
   --metro all`, what `make studio-data METRO=all` runs). They are never `ARG` or `ENV`, never printed, never written
   to a file, and never mounted into any other step; no runtime secret is ever mounted into the build.
 - The builder's own output is not shown (it can carry request details). The build log shows only: whether each
-  build secret was provided, and per real metro whether a snapshot was kept and the NAMES of the steps that failed
-  or were not available. Each step's detail stays in the snapshot's `manifest.json`, as for a local run.
+  build secret was provided, the exception class name if the builder crashed (a name that does not look like an
+  exception class is printed as "unknown"), and per real metro whether a snapshot was kept and the NAMES of the
+  steps that failed or were not available. Each step's detail stays in the snapshot's `manifest.json`, as for a
+  local run. Every printed line is checked for the key values first (the forms listed below); a line that holds one
+  is replaced by a notice that names the variable.
 - Time limit: `STUDIO_SNAPSHOT_TIMEOUT_S` seconds (default 1500, a design choice: see the checks below; a Space
-  variable of that name overrides it), and `timeout` bounds the whole step at that plus 180 s. The log prints when
-  the builder started, how long it ran and when each metro's manifest was written, to tune the limit. Metros finished before the limit are kept;
-  a folder that is incomplete or whose layer files do not match the SHA-256 in its manifest is deleted, so that
-  metro is honestly limited rather than half-filled. A failed source or a failed step never fails the image build;
-  if the script itself fails, `data/studio` is emptied.
+  variable of that name overrides it), and `timeout` bounds the whole step at that plus 180 s, then kills it 30 s
+  later: with the default, the step alone may take up to 1710 s. The log prints when the builder started, how long
+  it ran and when each metro's manifest was written, to tune the limit. Metros finished before the limit are kept;
+  a folder that is incomplete, whose layer files do not match the SHA-256 in its manifest, or whose `tract_geography`
+  or `acs_tracts` step did not succeed is deleted, so that metro is honestly limited rather than half-filled. A
+  failed source or a failed step never fails the image build; if the script itself fails, `data/studio` is emptied.
 - In the same `RUN`, everything under `data/studio` except `snapshots/` is deleted: the HTTP response cache
   (`data/studio/cache`, the largest part of a local `data/studio`) and DuckDB's extension download. Only
   `data/studio/snapshots/` is copied into the runtime image, owned by root and read-only for the app.
-- The script then searches every kept file for each secret value (as is, URL-encoded and base64-encoded). The data
-  fabric already keeps keys out of cache keys, stored URLs, `SourceRecord`s and error messages
-  (`studio/data/http.py`, `provenance.py`); this check verifies it on every build. On a hit every snapshot is deleted
-  and only the variable's name is printed.
+- The script then searches every kept file, and the members of every zip file (the `.npz` road layer is a
+  compressed zip), for each secret value: as is, URL-encoded, and base64 in the standard and URL-safe alphabets at
+  any byte position inside a longer encoded text. The data fabric already keeps keys out of cache keys, stored URLs,
+  `SourceRecord`s and error messages (`studio/data/http.py`, `provenance.py`); this check verifies it on every
+  build. On a hit every snapshot is deleted and only the variable's name is printed.
 
 What the app shows with the snapshots: each real metro's mode follows the existing rule (`metro_mode` in
 `studio/metros/models.py`): "full" only when the LOWEST data coverage across the six business types reaches the
 metro's `coverage_threshold` (0.80 in `config/studio/metros/*.yaml`). With the snapshots of 2026-10-13 that rule
-gives "limited" for all five real metros, because the short-term rental type has no comparable listings source
-(`results/studio_metro_coverage.json`, `min_coverage_share` and `by_business_type`). Limited with a snapshot is
-not limited without one: the city picker shows the coverage reason instead of "no data snapshot", sites are scored
-on factors with data (each with its source), and the simulation, the path to approval, area suggestions and the
-tract map run. `GET /api/config` computes its metro list without coverage and always says "limited" for a real
-metro; the wizard uses `GET /api/studio/options`.
+gives "limited" for all five real metros, because two business types stay below 0.80 in every one of them
+(`results/studio_metro_coverage.json`, `by_business_type`): short-term rental (0.6779 to 0.6826; it has no
+comparable listings source), which sets the metro-level minimum (`min_coverage_share`), and motel (0.745 to 0.7722).
+Adding a comparables source alone would therefore not make a metro "full". The other four types reach 0.80 in all
+five metros. Limited with a snapshot is not limited without one: the city picker shows the coverage reason instead
+of "no data snapshot", sites are scored on factors with data (each with its source), and the simulation, the path to
+approval, area suggestions and the tract map run. `GET /api/config` does not compute coverage (every page loads it):
+for a real metro with a snapshot it gives mode `null` and a reason that points to `GET /api/studio/options`, which
+the wizard uses; without a snapshot both say "no data snapshot".
 
 **Overture release pin.** The places step reads the ONE Overture release pinned in
 `config/studio/overture_places.yaml` (2026-09-23.1, released 2026-09-25). The code refuses it after its 60-day
@@ -311,30 +347,43 @@ GitHub repository secrets (`HF_TOKEN` for the deploy job) are a third, separate 
 handles the Studio keys.
 
 **Checked locally on 2026-10-14** (development checks on the build machine of section 3, through its proxy; not a
-results file), with two images built from the Space bundle of HEAD plus this change, the dev login on, local only:
+results file), with images built from the Space bundle of `git archive aa2260b` plus this change's files as they
+were then (HEAD moved on to `1d9f34a` and `3dca486` while the checks ran), the dev login on, local only:
 
 - Without the build secrets: the step printed the skip line. `/api/studio/options` listed every real metro as
   limited, "no data snapshot", with no tracts; a Houston plan's site factors were UNKNOWN, and the simulation, the
   path to approval and area suggestions answered 409 "limited mode".
 - With `CENSUS_API_KEY` and `FRED_API_KEY` passed from the shell (`--secret id=CENSUS_API_KEY,env=CENSUS_API_KEY`,
-  the same for FRED): the builder reached the default time limit while it was building New York, the last and
-  largest metro. Chicago, Dallas-Fort Worth, Houston and Los Angeles were kept with no failed step; New York had no
-  snapshot (the builder writes a metro's folder only when that metro is done, so nothing half-written was left).
-  `/api/studio/options` then gave those four metros the coverage reason (still "limited", by the rule above) with
-  their tracts, and New York "no data snapshot". A Houston restaurant/cafe plan scored its site on DATA factors with
-  their Census ACS, LODES and Overture sources, and the simulation (labelled "simulated, based on stated
+  the same for FRED) and the earlier limit of 1200 s: the builder reached the limit while it was building New York,
+  the last and largest metro. Chicago, Dallas-Fort Worth, Houston and Los Angeles were kept with no failed step and
+  New York had no snapshot (the builder writes a metro's folder only when that metro is done, so nothing
+  half-written was left). That is why the default is now 1500 s.
+- The same with the final files (default 1500 s): all five real metros were kept with no failed step.
+  `/api/studio/options` gave each of them the coverage reason (still "limited", by the rule above) with its tracts.
+  A Houston restaurant/cafe plan and a New York retail storefront plan scored their sites on DATA factors with their
+  Census ACS, LODES, HPMS and Overture sources, and the simulation (labelled "simulated, based on stated
   assumptions", with the disclaimer), the path to approval and area suggestions answered 200.
 - Every key value in the build machine's environment (`CENSUS_API_KEY`, `BLS_API_KEY`, `FRED_API_KEY`,
   `HUD_USER_TOKEN`, `ORS_API_KEY`, `KAGGLE_API_TOKEN`) was searched for, as is, URL-encoded and base64-encoded, in
-  the second image's file system (`docker export`), in all its layers and its configuration (`docker save`, the
-  compressed layers decompressed) and in its history: none was found. The two build logs and the local Studio HTTP
-  cache (`data/studio/cache`, filled by keyed runs on 2026-10-12 and 2026-10-13) were searched the same way: none
-  was found.
+  both images built with the secrets: their file systems (`docker export`), all their layers and their configuration
+  (`docker save`, the compressed layers decompressed) and their history. None was found. The build logs, the local
+  Studio HTTP cache (`data/studio/cache`, filled by keyed runs on 2026-10-12 and 2026-10-13) and the cache of a
+  keyed New York run made the same day were searched the same way: none was found.
+- The builds with the secrets above ran the script before the later fixes (the required `acs_tracts` step, the
+  wider search, the checked log lines). After them, one image was built from the Space bundle of `git archive
+  3dca486` plus the changed files, WITHOUT the build secrets: the step printed the skip lines, `/api/config` and
+  `/api/studio/options` both listed every real metro as limited, "no data snapshot", `scripts/smoke_deploy.py`
+  passed all its checks (its output kept outside `results/`), no key name appeared in the image's environment or
+  history, and no key value in its file system (`docker export`). A build of the fixed files WITH the secrets was not
+  run. Applied to copies of the local snapshots, the new check removed the five snapshots of 2026-10-12, whose
+  `acs_tracts` step had failed, and kept the five of 2026-10-13.
 
-So with the default limit, New York may stay limited in the Space too (the Space builder's speed is not measured).
-Raising `STUDIO_SNAPSHOT_TIMEOUT_S` makes the Space build longer, and the deploy job waits for the new version at
-most 30 minutes (`deploy_space.py wait --timeout-s 1800` in `.github/workflows/deploy-space.yml`); raise both
-together, or accept a "wait" timeout while the Space finishes building on its own.
+How long the step takes on the Space's builder is not measured. The deploy job waits for the new version at most
+3600 s (`deploy_space.py wait --timeout-s 3600` in `.github/workflows/deploy-space.yml`, inside a 90-minute job
+limit; both design choices): the snapshot step alone may take up to 1710 s with the default limit, and the other
+stages come on top (their time on the Space builder is not measured either). If you raise
+`STUDIO_SNAPSHOT_TIMEOUT_S`, raise the wait too (`tests/web/test_deploy_space.py` checks that the wait is longer
+than the step's own bound), or accept a "wait" timeout while the Space finishes building on its own.
 
 ## 6. Secrets and settings
 
@@ -355,7 +404,7 @@ the end of `.env.example`; the meaning of each is in `src/uwcopilot/web/settings
 | `UWC_DEV_AUTH` | never in a Space | no | dev login; startup refuses it when `SPACE_ID` is set |
 | `CENSUS_API_KEY` | Space secret, **build time** (section 5b) | for real-metro data; without it every real metro runs in limited mode | the Census Data API key the snapshot builder needs (ACS tracts, County Business Patterns); mounted only into the snapshot build step |
 | `FRED_API_KEY` | Space secret, **build time** | no | the FRED API for the prime rate; without it the keyless FRED CSV is used |
-| `STUDIO_SNAPSHOT_TIMEOUT_S` | Space variable, build time | no (default 1500) | the snapshot builder's time limit in seconds (a whole number) |
+| `STUDIO_SNAPSHOT_TIMEOUT_S` | Space variable, build time | no (default 1500) | the snapshot builder's time limit in seconds (a whole number); raise the deploy job's wait with it (section 5b) |
 | `SPACE_ID`, `SPACE_HOST`, `OAUTH_*`, `OPENID_PROVIDER_URL` | set by Hugging Face | - | never set them by hand |
 
 Without `UWC_STORE=hf_dataset`, everything users store lives on the container disk and is lost whenever the
@@ -411,8 +460,8 @@ None of these can be checked without a real Space:
   from the local container, which had no internet access) and then shows the limited-mode messages.
 - v0.1.1, with the `CENSUS_API_KEY` Space secret: the build log's `studio-snapshots` step says `build secret
   CENSUS_API_KEY: provided` and lists each real metro with a kept snapshot; how long the step takes on the Space's
-  builder, and whether it fits inside the deploy job's 30-minute wait, is not measured. Then `/api/studio/options`
-  shows the coverage reason for each real metro instead of "no data snapshot".
+  builder, and whether the whole build fits inside the deploy job's 3600 s wait, is not measured. Then
+  `/api/studio/options` shows the coverage reason for each real metro instead of "no data snapshot".
 - The browser flows of `scripts/web_metrics.py` need the dev login, so they cannot run against the Space; check the
   same pages there by hand after signing in with Hugging Face.
 
@@ -452,9 +501,10 @@ None of these can be checked without a real Space:
 | Space shows "Runtime error", log says `UWC_SESSION_SECRET is required in a Space` | the push ran with `--keep-session-secret` and the secret is missing: add it, then restart the Space |
 | Space log says `UWC_DEV_AUTH=1 is refused inside a Hugging Face Space` | remove `UWC_DEV_AUTH` from the Space settings |
 | Space log says `UWC_STORE=hf_dataset needs ...` | add `UWC_HF_DATASET_REPO`, `HF_TOKEN` and `UWC_FERNET_KEY` |
-| `wait` step times out | the Space build takes longer than 30 minutes or is queued; see the Space's build log |
+| `wait` step times out | the Space build takes longer than the 3600 s wait or is queued; see the Space's build log |
 | Build log: `build secret CENSUS_API_KEY: not provided` although the owners added it | added as a Space *variable* or under another name (it must be a secret named exactly `CENSUS_API_KEY`) |
 | Build log shows no `studio-snapshots` output at all, only `CACHED` | the step was reused from the build cache (secrets are not part of the cache key): deploy a new commit or use "Factory rebuild" |
-| A real metro still says "no data snapshot" after a build with the secret | the step's log says why: the time limit was reached before that metro (raise the Space variable `STUDIO_SNAPSHOT_TIMEOUT_S`), its folder was incomplete, or a key value was found in the files and every snapshot was removed (the log names the variable) |
+| A real metro still says "no data snapshot" after a build with the secret | the step's log says why: the time limit was reached before that metro (raise the Space variable `STUDIO_SNAPSHOT_TIMEOUT_S` and the deploy wait), its folder was incomplete, its `acs_tracts` step failed, or a key value was found in the files and every snapshot was removed (the log names the variable) |
+| Build log: `removed incomplete snapshot <metro>/<date>: required step acs_tracts is failed` for every metro | the Census API refused the key (wrong, or not activated yet) or was down during the build: check the key, then deploy a new commit or use "Factory rebuild" |
 | `overture_places` listed as not available | after 2026-11-24 the pinned Overture release is refused: move the pin in `config/studio/overture_places.yaml` |
 | Sign-in fails inside the Space page | use "open in a new tab" (section 7) |

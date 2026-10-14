@@ -15,15 +15,20 @@ Face docs "Docker Spaces", section "Secrets / Buildtime"). This script runs insi
    with a time limit. The builder's own output is NOT shown (it can carry request details); every step's status and
    detail are in each snapshot's manifest.json. Its exit status 1 (some step failed) is expected and does not fail
    the image build.
-4. It checks every snapshot folder: manifest.json and tracts.json parse, and every layer file the manifest lists
-   still matches its SHA-256. A folder that fails the check (for example cut off by the time limit) is deleted, so
-   its metro is honestly limited instead of half-filled.
+4. It checks every snapshot folder: manifest.json and tracts.json parse, every layer file the manifest lists still
+   matches its SHA-256, and the steps in REQUIRED_STEPS (the tracts and their ACS values) succeeded. A folder that
+   fails the check (cut off by the time limit, or built while the Census API refused the key) is deleted, so its
+   metro is honestly limited ("no data snapshot") instead of half-filled.
 5. It deletes everything under data/studio except snapshots/: the HTTP response cache (data/studio/cache, the
    largest part of a local data/studio) and anything else the run left there (DuckDB's extension download).
-6. It looks for every secret value (as is, URL-encoded and base64-encoded) in every file it keeps. If one is found,
-   every snapshot is deleted and the variable's NAME (never the value) is printed.
+6. It looks for every secret value in every file it keeps (secret_patterns: as is, URL-encoded, and base64 in the
+   standard and URL-safe alphabets at any byte position), also inside the members of zip files (.npz layers are
+   compressed zips). If one is found, every snapshot is deleted and the variable's NAME (never the value) is printed.
 7. It prints, per real metro, whether a snapshot is kept (with the time its manifest was written, to tune the time
    limit) and the NAMES of the steps that failed or were not available (no details).
+
+Every line it prints is first checked for the same forms of every secret value; a line that contains one is replaced
+by a notice naming the variable (guarded_emit), so "never printed" does not depend on the builder's own redaction.
 
 Exit code 0 in all of these cases: the image must build without the data. 2 only for bad arguments.
 """
@@ -38,6 +43,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import zipfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -57,13 +63,32 @@ OPTIONAL_SECRETS: tuple[str, ...] = ("FRED_API_KEY",)
 BUILD_SECRETS: tuple[str, ...] = (REQUIRED_SECRET, *OPTIONAL_SECRETS)
 # Real keys are long (a Census key has 40 characters); a shorter value is a mistake and too short to search for.
 MIN_SECRET_LENGTH = 8
-# DESIGN CHOICE: long enough for the five real metros on the machine this was built on (docs/deployment.md, 5b),
-# short enough that the whole Space build stays inside the deploy job's 30-minute wait. The Dockerfile passes its
-# own value (ARG STUDIO_SNAPSHOT_TIMEOUT_S); this default is for running the script by hand.
+# DESIGN CHOICE: long enough for the five real metros on the machine this was built on (docs/deployment.md, 5b).
+# It bounds the snapshot builder only: the Dockerfile adds 180 s for the rest of this script plus 30 s before a kill,
+# and the other build stages come on top, so the deploy job's wait for the whole Space build is set separately
+# (deploy_space.py wait --timeout-s in .github/workflows/deploy-space.yml). The Dockerfile passes its own value
+# (ARG STUDIO_SNAPSHOT_TIMEOUT_S); this default is for running the script by hand.
 DEFAULT_TIMEOUT_S = 1500.0
 SNAPSHOTS_FOLDER = "snapshots"
+# Steps of uwcopilot.studio.data.snapshot.build_snapshot that a kept snapshot must have finished with status "ok":
+# the metro's tracts (Census Gazetteer, keyless) and their ACS values (residents, households, renters, income; needs
+# the Census key). With a wrong or not yet active key, or a Census outage during the build, ACS fails while the
+# keyless steps succeed; such a snapshot has tracts but UNKNOWN demand for most business types, so the app would
+# offer area suggestions and simulations that then answer 409. It is removed instead, like a build without the key.
+REQUIRED_STEPS: tuple[str, ...] = ("tract_geography", "acs_tracts")
+# How a required step's status is printed (anything else is "not ok"); the step's detail is never printed.
+STATUS_WORDS: dict[str | None, str] = {None: "missing", "failed": "failed", "not_available": "not available"}
 # An exception class name on the last line of a traceback, e.g. "httpx.ConnectError: ..." -> "httpx.ConnectError".
-ERROR_TYPE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)(?::|$)")
+# Its last part must start with a capital letter, as class names do (a lowercase hex key does not), and it is at most
+# MAX_ERROR_TYPE_LENGTH characters. A last line without ": message" counts only when the name ends like an exception
+# class (KeyboardInterrupt, SystemExit); any other line gives "unknown".
+EXCEPTION_NAME = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Z][A-Za-z0-9_]*")
+BARE_EXCEPTION_SUFFIXES: tuple[str, ...] = ("Error", "Exception", "Exit", "Interrupt")
+MAX_ERROR_TYPE_LENGTH = 100
+# The base64 characters of a value at byte offset 0, 1 or 2 of an encoded blob start after this many characters of
+# its first 4-character group (the characters before mix in the bytes in front of the value).
+BASE64_SKIP_BY_OFFSET: tuple[int, ...] = (0, 2, 3)
+URL_SAFE_BASE64 = bytes.maketrans(b"+/", b"-_")
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
@@ -121,13 +146,19 @@ def builder_command() -> list[str]:
 
 
 def error_type_from(stderr: bytes | None) -> str | None:
-    """The exception class name of a crash (the last line of a traceback), or None when there was no traceback."""
+    """The exception class name of a crash (the last line of a traceback), "unknown" when that line does not look
+    like one (see EXCEPTION_NAME), or None when there was no traceback. The message after the name is never kept."""
     text = (stderr or b"").decode("utf-8", errors="replace")
     if "Traceback (most recent call last)" not in text:
         return None
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    match = ERROR_TYPE.match(lines[-1]) if lines else None
-    return match.group(1) if match else "unknown"
+    name, separator, _ = lines[-1].partition(":")
+    name = name.strip()
+    if len(name) > MAX_ERROR_TYPE_LENGTH or not EXCEPTION_NAME.fullmatch(name):
+        return "unknown"
+    if not separator and not name.endswith(BARE_EXCEPTION_SUFFIXES):
+        return "unknown"
+    return name
 
 
 def run_builder(environment: Mapping[str, str], timeout_s: float, run: Runner = subprocess.run) -> BuilderOutcome:
@@ -166,6 +197,16 @@ def snapshot_problem(folder: Path) -> str | None:
             checked_bytes(folder, manifest, name)
         except SnapshotFileError:
             return f"layer file {name} is missing or does not match its SHA-256"
+    return required_step_problem(manifest)
+
+
+def required_step_problem(manifest: dict[str, Any]) -> str | None:
+    """Why the manifest's REQUIRED_STEPS did not all succeed (step name and status word only), or None."""
+    statuses = {step.get("name"): step.get("status") for step in manifest.get("steps") or [] if isinstance(step, dict)}
+    for name in REQUIRED_STEPS:
+        status = statuses.get(name)
+        if status != "ok":
+            return f"required step {name} is {STATUS_WORDS.get(status, 'not ok')}"
     return None
 
 
@@ -208,11 +249,44 @@ def keep_only_snapshots(studio_dir: Path) -> list[str]:
     return deleted
 
 
+def base64_forms(raw: bytes) -> list[bytes]:
+    """The base64 text of raw wherever it sits inside a longer base64-encoded blob.
+
+    Base64 turns every 3 bytes into 4 characters, so raw can start at byte offset 0, 1 or 2 of a group. For each
+    offset this keeps only the characters that depend on raw alone: the first group's characters that mix in the
+    bytes before raw are skipped (BASE64_SKIP_BY_OFFSET), and so is the last partial group, which mixes in the bytes
+    after it. Each form also in the URL-safe alphabet ("-" and "_" instead of "+" and "/").
+    """
+    forms: list[bytes] = []
+    for offset, skip in enumerate(BASE64_SKIP_BY_OFFSET):
+        encoded = base64.b64encode(bytes(offset) + raw)
+        core = encoded[skip : 4 * ((offset + len(raw)) // 3)]
+        forms.extend([core, core.translate(URL_SAFE_BASE64)])
+    return forms
+
+
 def secret_patterns(value: str) -> list[bytes]:
-    """The forms a secret value could take in a file: as is, URL-encoded and base64-encoded."""
+    """The forms a secret value could take in a file or a printed line: as is, URL-encoded, and base64-encoded
+    (base64_forms: standard and URL-safe, at any byte position inside a longer encoded blob)."""
     raw = value.encode("utf-8")
-    forms = [raw, urllib.parse.quote(value, safe="").encode("ascii"), base64.b64encode(raw)]
-    return list(dict.fromkeys(forms))
+    forms = [raw, urllib.parse.quote(value, safe="").encode("ascii"), *base64_forms(raw)]
+    return [form for form in dict.fromkeys(forms) if form]
+
+
+def guarded_emit(emit: Callable[[str], None], secrets: Mapping[str, str]) -> Callable[[str], None]:
+    """emit() that never prints a secret value: a line holding any secret_patterns() form of one is replaced by a
+    notice that names the variable (never the value)."""
+    patterns = {name: secret_patterns(value) for name, value in secrets.items()}
+
+    def safe_emit(line: str) -> None:
+        data = line.encode("utf-8", errors="replace")
+        leaked = sorted(name for name, forms in patterns.items() if any(form in data for form in forms))
+        if leaked:
+            emit(f"(a line was withheld because it contained a value of {', '.join(leaked)})")
+        else:
+            emit(line)
+
+    return safe_emit
 
 
 def files_under(root: Path) -> Iterable[Path]:
@@ -224,15 +298,25 @@ def files_under(root: Path) -> Iterable[Path]:
                 yield path
 
 
+def zip_member_bodies(path: Path) -> list[bytes]:
+    """The uncompressed bytes of every member of a zip file (an .npz layer is one), or [] for any other file."""
+    if not zipfile.is_zipfile(path):
+        return []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return [archive.read(member) for member in archive.infolist() if not member.is_dir()]
+    except (zipfile.BadZipFile, OSError, RuntimeError, ValueError):
+        return []  # not a readable zip after all: its raw bytes are still searched
+
+
 def secrets_found(root: Path, secrets: Mapping[str, str]) -> list[str]:
-    """The NAMES of the secrets whose value appears in a file name or file under root."""
+    """The NAMES of the secrets whose value appears in a file name, a file, or a zip member under root."""
     patterns = {name: secret_patterns(value) for name, value in secrets.items()}
     found: set[str] = set()
     for path in files_under(root):
-        body = path.read_bytes()
-        name_bytes = str(path.relative_to(root)).encode("utf-8")
+        bodies = [path.read_bytes(), str(path.relative_to(root)).encode("utf-8"), *zip_member_bodies(path)]
         for name, forms in patterns.items():
-            if any(form in body or form in name_bytes for form in forms):
+            if any(form in body for body in bodies for form in forms):
                 found.add(name)
     return sorted(found)
 
@@ -294,10 +378,11 @@ def build_snapshots(
     run: Runner = subprocess.run,
     metro_ids: Sequence[str] | None = None,
 ) -> None:
-    """Steps 1 to 7 of the module docstring; emit() receives each line to print (never a secret value)."""
+    """Steps 1 to 7 of the module docstring; emit() receives each line to print, after guarded_emit's check."""
     snapshots_dir = studio_dir / SNAPSHOTS_FOLDER
     snapshots_dir.mkdir(parents=True, exist_ok=True)  # the Dockerfile copies this folder, even when it is empty
     secrets, statuses = read_build_secrets(secrets_dir, BUILD_SECRETS)
+    emit = guarded_emit(emit, secrets)
     for name in BUILD_SECRETS:
         emit(f"build secret {name}: {statuses[name]}")
     if REQUIRED_SECRET not in secrets:

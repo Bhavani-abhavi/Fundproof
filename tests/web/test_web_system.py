@@ -1,12 +1,15 @@
 """Tests for /api/health, /api/config, the OpenAPI docs and unknown API paths."""
 
+import json
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from uwcopilot.studio.metros import load_metro
 from uwcopilot.web.app import SWAGGER_CSS_SRI, SWAGGER_CSS_URL, SWAGGER_JS_SRI, SWAGGER_JS_URL, create_app
-from uwcopilot.web.routers.system import BUSINESS_TYPES_NOT_AVAILABLE, METROS_NOT_AVAILABLE
+from uwcopilot.web.routers.system import BUSINESS_TYPES_NOT_AVAILABLE, METROS_NOT_AVAILABLE, config_metro_mode
 from uwcopilot.web.settings import DISCLAIMER
 
 
@@ -45,9 +48,28 @@ def test_config_lists_studio_metros_when_they_load(client: TestClient) -> None:
     if body["metros_note"] is not None:  # the Studio package is still being built; covered by the next test
         pytest.skip("Studio metro configs do not load in this checkout")
     modes = {metro["mode"] for metro in body["metros"]}
-    assert modes <= {"full", "limited", "synthetic"}
+    assert modes <= {"limited", "synthetic", None}  # "full" needs coverage, which only /api/studio/options computes
     synthetic = [metro for metro in body["metros"] if metro["data_label"] == "SYNTHETIC"]
     assert all(metro["mode"] == "synthetic" for metro in synthetic)
+    # A real metro with a snapshot in this checkout points to /api/studio/options instead of guessing.
+    assert all("/api/studio/options" in metro["mode_reason"] for metro in body["metros"] if metro["mode"] is None)
+
+
+def test_config_never_says_no_data_snapshot_when_a_snapshot_is_there(tmp_path: Path) -> None:
+    houston = load_metro("houston_tx")
+    assert houston.data_label == "PUBLIC" and houston.verified
+
+    assert config_metro_mode(houston, tmp_path) == ("limited", "no data snapshot")
+
+    folder = tmp_path / "houston_tx" / "2026-10-13"
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text(json.dumps({"metro_id": "houston_tx", "snapshot_date": "2026-10-13"}))
+    (folder / "tracts.json").write_text(json.dumps({"tracts": {}}))
+    mode, reason = config_metro_mode(houston, tmp_path)
+    assert mode is None and "2026-10-13" in reason and "/api/studio/options" in reason
+
+    synthetic = load_metro("synthetic_metro")
+    assert config_metro_mode(synthetic, tmp_path)[0] == "synthetic"
 
 
 def test_config_falls_back_when_studio_is_not_importable(make_settings, monkeypatch: pytest.MonkeyPatch) -> None:

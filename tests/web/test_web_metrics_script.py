@@ -101,6 +101,8 @@ def test_check_arguments_accepts_a_loopback_url() -> None:
         ({"step_timeout_s": 0}, "--step-timeout-s"),
         ({"container": "fundproof-metrics"}, "--docker-image"),
         ({"url": "http://127.0.0.1:7862/studio"}, "base URL"),
+        ({"target": "local-server", "docker_image": "fundproof:dev"}, "runs no image"),
+        ({"target": "local-server", "docker_image": "fundproof:dev", "container": "x"}, "runs no image"),
     ],
 )
 def test_check_arguments_refuses_what_does_not_fit(overrides: dict[str, Any], message: str) -> None:
@@ -157,12 +159,24 @@ def test_lighthouse_command_keeps_the_session_and_picks_the_preset() -> None:
 # ---- the server check ---------------------------------------------------------------------------------------------
 
 
-def config_server(dev_auth: bool) -> httpx.MockTransport:
-    """A fake app answering /api/health and /api/config."""
+STUDIO_METRO = {
+    "id": "houston_tx",
+    "data_label": "PUBLIC",
+    "mode": "limited",
+    "mode_reason": "data coverage 0.68 is below the threshold 0.80",
+    "n_tracts": 1615,
+}
+
+
+def config_server(dev_auth: bool, options_status: int = 200) -> httpx.MockTransport:
+    """A fake app answering /api/health, /api/config and /api/studio/options."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/health":
             return httpx.Response(200, json={"status": "ok", "version": "0.1.0", "git_sha": None})
+        if request.url.path == "/api/studio/options":
+            metro = {**STUDIO_METRO, "coverage_note": "not copied", "prime_rate": {"value": 7.5}}
+            return httpx.Response(options_status, json={"metros": [metro], "levers": []})
         body = {"product_name": "Fundproof", "disclaimer": "Not advice.", "dev_auth": dev_auth, "is_space": False}
         return httpx.Response(200, json=body)
 
@@ -174,6 +188,13 @@ def test_read_server_config_needs_the_dev_login() -> None:
         read_server_config("http://127.0.0.1:7862", config_server(dev_auth=False))
     facts = read_server_config("http://127.0.0.1:7862", config_server(dev_auth=True))
     assert facts["dev_auth"] is True and facts["disclaimer"] == "Not advice."
+
+
+def test_the_studio_metros_the_image_has_are_recorded_and_nothing_else() -> None:
+    facts = read_server_config("http://127.0.0.1:7862", config_server(dev_auth=True))
+    assert facts["studio_metros"] == [STUDIO_METRO] and facts["studio_metros_note"] is None
+    broken = read_server_config("http://127.0.0.1:7862", config_server(dev_auth=True, options_status=500))
+    assert broken["studio_metros"] is None and broken["studio_metros_note"].endswith("HTTP 500")
 
 
 def test_read_server_config_reports_a_server_that_stays_down() -> None:
@@ -462,8 +483,19 @@ def test_an_image_stamped_with_a_commit_is_reproducible(monkeypatch: pytest.Monk
     assert checked["note"].startswith("Reproducible") and STAMPED in checked["note"]
     # An older commit is fine too, and later edits to the checkout do not change a committed image.
     monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, " M notes.md\n", commits=("c" * 40,)))
-    older = web_metrics.reproducibility("c" * 40, labelled_build("git-archive", "c" * 40, commit_label="c" * 40))
+    older_build = labelled_build("git-archive", "c" * 40, commit_label="c" * 40)
+    older = web_metrics.reproducibility("c" * 40, older_build, container_runs_image=True)
     assert older["reproducible"] is True and older["server_is_head"] is False and older["working_tree_dirty"] is True
+    assert "depend on the build date" in older["note"]
+
+
+def test_an_image_without_a_container_check_is_not_reproducible(monkeypatch: pytest.MonkeyPatch) -> None:
+    # --docker-image without --container: any server (a uvicorn process on a dirty tree started with
+    # UWC_GIT_SHA=<HEAD>) could be credited to a correctly labelled image.
+    monkeypatch.setattr(web_metrics, "git_output", fake_git("a" * 40, ""))
+    checked = web_metrics.reproducibility("a" * 40, labelled_build(STAMPED, "a" * 40))
+    assert checked["reproducible"] is False and checked["container_runs_image"] is None
+    assert any("no --container" in reason for reason in checked["reasons"])
 
 
 @pytest.mark.parametrize(

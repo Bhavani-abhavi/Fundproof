@@ -141,12 +141,14 @@ print(f'guideline search check: {len(result.hits)} hits')" \
 FROM python-deps AS studio-snapshots
 
 # BuildKit leaves secrets out of its cache key, so a build that gets the secrets could reuse the "skipped" result
-# of an earlier build that did not. Using the commit here re-runs this stage for every new commit.
+# of an earlier build that did not. Using the commit here re-runs this stage for every new commit. A local rebuild of
+# the SAME commit with other secrets needs `--no-cache-filter studio-snapshots` (make docker-build-bundle adds it).
 ARG UWC_GIT_SHA
 # The snapshot builder's time limit in seconds, a whole number (a Space VARIABLE of this name overrides it: Hugging
 # Face passes Space variables as build arguments). A design choice: long enough for the five real metros on the
-# machine this was built on, short enough for the deploy job's 30-minute wait (docs/deployment.md, section 5b).
-# The whole step is also bounded by `timeout` (this plus 180 s).
+# machine this was built on (docs/deployment.md, section 5b). The whole step is also bounded by `timeout` (this plus
+# 180 s, then killed 30 s later), so with the default this step alone may take up to 1710 s; the other stages come
+# on top. The deploy job's wait for the whole Space build is set separately (.github/workflows/deploy-space.yml).
 ARG STUDIO_SNAPSHOT_TIMEOUT_S=1500
 
 ENV PATH=/app/.venv/bin:$PATH \
@@ -160,10 +162,11 @@ COPY scripts/build_studio_snapshots.py ./scripts/
 # RUN only; required=false lets the build go on without them. scripts/build_studio_snapshots.py puts them into the
 # environment of the snapshot builder alone (`python -m uwcopilot.studio.data.snapshot --metro all`, what
 # `make studio-data METRO=all` runs), never prints them, keeps only complete snapshot folders, deletes the HTTP
-# response cache (data/studio/cache) and everything else under data/studio, searches the kept files for the values,
-# and prints the names of the steps that failed. Without CENSUS_API_KEY it builds nothing. If the script itself
-# fails or hits the outer time limit, data/studio is emptied, so no unchecked file is kept. The image build never
-# fails because of this step; a metro without a snapshot runs in limited mode and says so.
+# response cache (data/studio/cache) and everything else under data/studio, removes a snapshot whose tracts or ACS
+# step failed (a wrong key), searches the kept files and its own printed lines for the values, and prints the names
+# of the steps that failed. Without CENSUS_API_KEY it builds nothing. If the script itself fails or hits the outer
+# time limit, data/studio is emptied, so no unchecked file is kept. The image build never fails because of this
+# step; a metro without a snapshot runs in limited mode and says so.
 RUN --mount=type=secret,id=CENSUS_API_KEY,required=false \
     --mount=type=secret,id=FRED_API_KEY,required=false \
     --mount=type=secret,id=extra_ca_certs,required=false \

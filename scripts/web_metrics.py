@@ -47,7 +47,11 @@ the files inside it. Three things are checked before the browser starts:
   --build-arg UWC_GIT_SHA=...` has no label: its stamp could come from a dirty tree, so its build method is
   "unknown" and the run is not reproducible. Without --docker-image the method cannot be read at all;
 - the server's stamp equals the image's own UWC_GIT_SHA (and, for a git-archive build, the commit label), and the
-  --container runs that image.
+  --container runs that image (without --container that cannot be checked, so the run is not reproducible; a
+  --target local-server run has no image at all and refuses --docker-image and --container).
+The real metros' Studio data snapshots are the exception: the image downloads them while it builds (only with the
+CENSUS_API_KEY build secret), so they depend on the build date. The server's /api/studio/options metro list (mode,
+reason, tract count) is recorded as server.studio_metros before the browser starts.
 When any check fails the script REFUSES to write, unless --allow-unreproducible is given; the entry then says
 "reproducible": false with the reasons and a SHA-256 digest of the checkout's uncommitted changes (so the tree can at
 least be identified), and its numbers must not be quoted as the release's.
@@ -394,7 +398,12 @@ def build_problems(
             f"the image's {BUILD_COMMIT_LABEL} label ({build.get('commit_label')}) is not the server's commit stamp "
             f"({server_git_sha})"
         )
-    if container_runs_image is False:
+    if container_runs_image is None:
+        problems.append(
+            "no --container was given, so the script cannot check that the measured server runs the --docker-image "
+            "image (a server started from another image, or from the checkout, would be credited to it)"
+        )
+    elif container_runs_image is False:
         problems.append("the container named by --container does not run the --docker-image image")
     return problems
 
@@ -439,7 +448,9 @@ def reproducibility(
         "checked": "before the browser started",
         "note": (
             f"Reproducible: rebuilding commit {server_git_sha} with the Dockerfile ({build['method']}) gives the "
-            "measured app."
+            "measured app, except the real metros' Studio data snapshots: the image downloads them while it builds "
+            "(only with the CENSUS_API_KEY build secret), so they depend on the build date, and server.studio_metros "
+            "records what this image had. The founder flows use the SYNTHETIC metro; the city picker lists every metro."
             if not reasons and build
             else "UNREPRODUCIBLE: these numbers describe an uncommitted, unstamped or unlabelled build; rebuild from "
             "a commit (`make docker-build-stamped` on a clean tree, or `make docker-build-archive`) and run again "
@@ -462,6 +473,12 @@ def check_arguments(args: argparse.Namespace) -> str:
         raise MetricsConfigError("--step-timeout-s must be positive.")
     if args.container and not args.docker_image:
         raise MetricsConfigError("--container needs --docker-image (the image it must have been started from).")
+    if args.target == "local-server" and (args.docker_image or args.container):
+        raise MetricsConfigError(
+            "--target local-server measures a uvicorn process, which runs no image: --docker-image and --container "
+            "belong to --target local-container (a local server's run is never reproducible; it needs "
+            "--allow-unreproducible)."
+        )
     return base_url
 
 
@@ -800,13 +817,15 @@ def read_server_config(
     wait_s: float = DEFAULT_WAIT_S,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    """/api/health and /api/config of the target; MetricsConfigError when it stays down or has no dev login."""
+    """/api/health and /api/config of the target, and its Studio metro list (studio_metros_from); MetricsConfigError
+    when it stays down or has no dev login."""
     with httpx.Client(base_url=base_url, timeout=30, transport=transport) as client:
         health = wait_for_health(client, wait_s, sleep)
         try:
             config = client.get("/api/config")
         except httpx.HTTPError as error:
             raise MetricsConfigError(f"The server at {base_url} did not answer /api/config: {error}") from error
+        studio_metros, studio_metros_note = studio_metros_from(client)
     if config.status_code != 200:
         raise MetricsConfigError(f"/api/config answered HTTP {config.status_code}.")
     config_body = config.json()
@@ -824,7 +843,27 @@ def read_server_config(
         "dev_auth": config_body.get("dev_auth"),
         "is_space": config_body.get("is_space"),
         "payments_enabled": config_body.get("payments_enabled"),
+        "studio_metros": studio_metros,
+        "studio_metros_note": studio_metros_note,
     }
+
+
+# The fields of each /api/studio/options metro that say which data the image has (nothing else is copied).
+STUDIO_METRO_FIELDS: tuple[str, ...] = ("id", "data_label", "mode", "mode_reason", "n_tracts")
+
+
+def studio_metros_from(client: httpx.Client) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """(metros, note) from GET /api/studio/options: each metro's STUDIO_METRO_FIELDS, so a result names the data the
+    image was built with (the real metros' snapshots depend on the build date). (None, why) when it did not answer;
+    the flows then show what is wrong, so this is not an error here. The first call also loads the metro catalog."""
+    try:
+        response = client.get("/api/studio/options")
+    except httpx.HTTPError as error:
+        return None, f"GET /api/studio/options failed: {type(error).__name__}"
+    if response.status_code != 200:
+        return None, f"GET /api/studio/options answered HTTP {response.status_code}"
+    metros = response.json().get("metros") or []
+    return [{field: metro.get(field) for field in STUDIO_METRO_FIELDS} for metro in metros], None
 
 
 # ---------------------------------------------------------------------------------------------------------------------

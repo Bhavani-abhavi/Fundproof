@@ -16,7 +16,8 @@ GET /api/config -> 200
       "is_space": true,
       "space_url": "https://astra6-fundproof.hf.space" | null,   # direct (non-iframe) address, for "open in a new tab"
       "payments_enabled": false,
-      "metros": [{"id": "houston_tx", "name": "...", "data_label": "PUBLIC", "mode": "limited", "mode_reason": "..."}],
+      "metros": [{"id": "houston_tx", "name": "...", "data_label": "PUBLIC",
+                  "mode": "limited" | "synthetic" | null, "mode_reason": "..."}],
       "metros_note": null | "Metro configs are not available yet.",
       "business_types": [{"id": "car_wash", "display_name": "Car wash"}],
       "business_types_note": null | "Business types are not available yet."
@@ -24,12 +25,18 @@ GET /api/config -> 200
 
 Metros and business types come from the Studio loaders (uwcopilot.studio). Those are still being built, so they are
 loaded inside a function that returns [] and a "not available yet" note when the import or the YAML fails. The
-lists are loaded on the first request and kept for the life of the process. A metro's mode is computed without a
-coverage figure (none is computed at this level), so a real metro shows "limited" with the reason.
+lists are loaded on the first request and kept for the life of the process.
+
+A metro's mode here never computes data coverage, because every page loads this endpoint and coverage needs the
+whole snapshot (GET /api/studio/options computes it, once per process). So: the SYNTHETIC metro is "synthetic"; a
+real metro without a data snapshot in this container is "limited" ("no data snapshot"), as in /api/studio/options;
+a real metro WITH a snapshot has mode null and a reason that points to /api/studio/options, because its mode ("full"
+or "limited") depends on that coverage.
 """
 
 import logging
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -44,6 +51,10 @@ PUBLIC_LABEL = "PUBLIC"
 SIMULATION_LABEL = "simulated, based on stated assumptions"
 METROS_NOT_AVAILABLE = "Metro configs are not available yet."
 BUSINESS_TYPES_NOT_AVAILABLE = "Business types are not available yet."
+MODE_IN_STUDIO_OPTIONS = (
+    "a data snapshot of {date} is in this container; the metro's mode depends on its data coverage, which GET "
+    "/api/studio/options reports (this endpoint does not compute coverage)"
+)
 
 
 class HealthResponse(BaseModel):
@@ -60,7 +71,7 @@ class MetroItem(BaseModel):
     id: str
     name: str
     data_label: str
-    mode: str
+    mode: str | None  # None: decided by data coverage, see GET /api/studio/options
     mode_reason: str
 
 
@@ -90,14 +101,34 @@ class ConfigResponse(BaseModel):
     business_types_note: str | None
 
 
+def config_metro_mode(metro: Any, snapshots_dir: Path | None = None) -> tuple[str | None, str]:
+    """(mode or None, reason) of a metro config without computing data coverage (see the module docstring).
+
+    The SYNTHETIC metro, a real metro without a data snapshot in snapshots_dir (default: the app's
+    data/studio/snapshots) and a real metro whose county list is not verified get exactly what metro_mode gives
+    without coverage, which is also what GET /api/studio/options shows. A verified real metro with a snapshot gets
+    None and MODE_IN_STUDIO_OPTIONS.
+    """
+    from uwcopilot.studio.data.fabric_snapshot import latest_snapshot
+    from uwcopilot.studio.data.paths import SNAPSHOTS_DIR
+    from uwcopilot.studio.metros import metro_mode
+
+    snapshot = None
+    if metro.data_label != SYNTHETIC_LABEL:
+        snapshot = latest_snapshot(metro.id, snapshots_dir or SNAPSHOTS_DIR, pinned=metro.snapshot_date)
+    if snapshot is not None and metro.verified:
+        return None, MODE_IN_STUDIO_OPTIONS.format(date=snapshot.snapshot_date.isoformat())
+    return metro_mode(metro, coverage_share=None, snapshot_date=snapshot.snapshot_date if snapshot else None)
+
+
 def load_metro_items() -> tuple[list[MetroItem], str | None]:
     """Every metro config with its mode, or ([], note) if the Studio metro loader is not usable yet."""
     try:
-        from uwcopilot.studio.metros import load_all_metros, metro_mode
+        from uwcopilot.studio.metros import load_all_metros
 
         items = []
         for metro_id, metro in sorted(load_all_metros().items()):
-            mode, reason = metro_mode(metro, coverage_share=None)
+            mode, reason = config_metro_mode(metro)
             items.append(
                 MetroItem(id=metro_id, name=metro.name, data_label=metro.data_label, mode=mode, mode_reason=reason)
             )

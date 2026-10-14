@@ -352,7 +352,7 @@ web-screenshots-mock:  ## Feature-page screenshots on the mock API, 1280/375 px,
 
 # Web quality metrics on the LOCAL container (scripts/web_metrics.py, docs/deployment.md): Playwright end-to-end flows,
 # axe-core scans and Lighthouse. The container runs WITH the dev login, because a script cannot sign in with Hugging
-# Face; a Space refuses the dev login. Build the image first (make docker-build).
+# Face; a Space refuses the dev login. Build a labelled image first (make docker-build-archive; see below).
 
 .PHONY: web-metrics-tools web-metrics
 
@@ -435,3 +435,13 @@ PACKET ?= PKT-C-024
 
 run-evidence:  ## Run the Evidence-to-Action Engine on one packet (PACKET=PKT-C-024) and write its decision record
 	uv run python scripts/run_evidence.py --packet $(PACKET)
+
+# Website v0.1.1 verify-and-fix: docker-build-bundle never reuses a cached "studio-snapshots" step. BuildKit leaves
+# secrets out of its cache key and this target always stamps HEAD, so without this a STUDIO_BUILD_SECRETS=1 build
+# after a plain one of the same commit reused the "skipped" step (no snapshots, no "build secret" line in the log),
+# and a plain build after a secret one shipped snapshots nobody asked for. Without the Census secret the step only
+# prints its skip lines, so re-running it costs seconds; with it, the real-metro download runs again.
+# Note on web-metrics (above): scripts/web_metrics.py now refuses an image without a build label, which a plain
+# `make docker-build` image is. Build the image to measure with `make docker-build-archive` (or docker-build-stamped /
+# docker-build-bundle on a clean tree), then run `make web-metrics`.
+docker-build-bundle: override DOCKER_BUILD_FLAGS += --no-cache-filter studio-snapshots

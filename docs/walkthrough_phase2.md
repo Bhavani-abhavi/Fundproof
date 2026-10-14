@@ -27,9 +27,8 @@ institutions, made-up people and businesses, and the footer "SYNTHETIC - for dem
 - **Not measured:** rules extractor vs the hybrid (LLM) extractor. The results file says: "not measured (no
   --provider run has been done: this run used the rules extractor only; `scripts/eval_docintel.py --provider ollama`
   would measure it)". The LLM extractor exists and is tested with a fake LLM only.
-- **Not used:** Docling and Azure AI Document Intelligence, both named in the original build plan
-  (`docs/build_prompts.md`, Prompt 2). Neither ran in this repo. The pipeline uses pdfplumber for the text layer and
-  Tesseract for scanned pages.
+- **Not used:** Docling, named in the original build plan (`docs/build_prompts.md`, Prompt 2), did not run in this
+  repo. The pipeline uses pdfplumber for the text layer and Tesseract for scanned pages.
 - **Review history** (from the `5cb6b97` commit message): the code landed in WIP checkpoints `191e996` ... `271ca4d`.
   A review with three lenses (truth, fidelity, evaluation) followed. Of its findings, 25 were fixed with tests,
   1 was deferred and documented (see Limitations), and 1 is the clean-tree re-run above.
@@ -70,7 +69,10 @@ key-value documents after stage 4 (not measured, see above).
 
 ### The SYNTHETIC packet generator (`src/uwcopilot/docintel/synthetic/`)
 
-Only `scripts/make_packets.py`, `scripts/eval_*.py` and tests may import it. A test enforces this (below).
+The extraction pipeline never imports it: `tests/docintel/test_docintel_import_isolation.py` checks every docintel
+module outside `synthetic/`, `truth.py` and `evaluation.py` (below). The scripts that make and evaluate packets
+(`scripts/make_packets.py`, `scripts/eval_docintel.py`) and tests use it. No test limits which code outside
+`src/uwcopilot/docintel/` may import it.
 
 | File(s) | What it does | Why it is built this way |
 |---|---|---|
@@ -103,7 +105,7 @@ Only `scripts/make_packets.py`, `scripts/eval_*.py` and tests may import it. A t
 | `rules_common.py`, `rules_tables.py` | Shared helpers: label/value lines (exact on text layer, fuzzy prefix on OCR), citations, owner tables, two-slot premium rows. | Rows are parsed from word types (dates, amounts, Yes/No) more than fixed positions, so small OCR shifts do not break them. |
 | `rules_credit.py`, `rules_statements.py` | Readers for every credit document; bank statements with their transaction tables. | A deposit or withdrawal is decided by the running balance first (exact to the cent), then by column position. A lost minus sign is restored only when the arithmetic proves it. |
 | `rules_insurance.py`, `rules_schedule.py`, `rules_loss_runs.py` | Readers for the insurance documents, the property schedule, and each carrier's loss run. | Each carrier has its own layout, so claim amounts are matched to paid / reserve / incurred by the header order, or by arithmetic when no header was read. |
-| `extract_llm.py`, `extract_llm_answers.py`, `extract_llm_fields.py`, `extract_llm_specs.py` | The hybrid extractor: an LLM reads the key-value documents; rules keep the long tables. Document text goes in a delimited, escaped `<document>` block; answers must be JSON `{"value", "cite"}`; a value not printed on its cited line is rejected. | The extension point exists and is tested with a fake LLM. Its quality is **not measured**. The run's cost cap is never caught, so a run that would exceed it stops (ground rule 4). |
+| `extract_llm.py`, `extract_llm_answers.py`, `extract_llm_fields.py`, `extract_llm_specs.py` | The hybrid extractor: an LLM reads the key-value documents; rules keep the long tables. Document text goes in a delimited, escaped `<document>` block; answers must be JSON `{"value", "cite"}`; a value not printed on its cited line is rejected. | The extension point exists and is tested with a fake LLM. Its quality is **not measured**. The budget's `BudgetExceeded` error is never caught, so a run that would exceed the cost cap stops (ground rule 4). |
 
 ### Checks and contradictions (no LLM anywhere)
 
@@ -248,7 +250,7 @@ file, which says the timings "are not a stable product figure".
   date of birth (`coverage_notes.not_implemented`).
 - **Any real-world accuracy.** These are simulated documents. The numbers say how the pipeline handles this
   generator, not how it would handle real bank statements or loss runs.
-- **Docling, Azure AI Document Intelligence:** not run (see Honest status).
+- **Docling:** not run (see Honest status).
 
 ## Limitations
 

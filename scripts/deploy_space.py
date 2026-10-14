@@ -83,7 +83,9 @@ GIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{7,40}$")
 SPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 DOCKERFILE_SHA_LINE = re.compile(r"^ARG UWC_GIT_SHA=.*$", re.MULTILINE)
 ERROR_STAGES = frozenset({"BUILD_ERROR", "RUNTIME_ERROR", "CONFIG_ERROR", "NO_APP_FILE"})
-DEFAULT_WAIT_TIMEOUT_S = 1800.0
+# How long `wait` waits for the Space to serve the pushed commit (the deploy workflow passes the same value): the
+# whole image build, including the Studio snapshot step when the Space has the CENSUS_API_KEY secret. A design choice.
+DEFAULT_WAIT_TIMEOUT_S = 3600.0
 DEFAULT_POLL_S = 20.0
 # Right after a push the Hub can still report the PREVIOUS version's stage; errors count only after this.
 ERROR_GRACE_S = 120.0
