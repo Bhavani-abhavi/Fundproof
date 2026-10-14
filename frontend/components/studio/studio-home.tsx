@@ -8,6 +8,7 @@ import { ApiOfflineNotice } from "@/components/session/api-offline-notice";
 import { SessionErrorNotice } from "@/components/session/session-error-notice";
 import { SignInPrompt } from "@/components/session/sign-in-prompt";
 import { MetroModeBadge } from "@/components/studio/metro-mode-badge";
+import { PrototypeDataNotice } from "@/components/studio/prototype-data-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,6 +134,8 @@ export function StudioHome() {
           </div>
         ) : null}
       </PageIntro>
+
+      <PrototypeDataNotice />
 
       {status === "loading" ? <WorkspaceSkeleton /> : null}
       {status === "offline" ? <ApiOfflineNotice /> : null}

@@ -10,6 +10,7 @@ import { PageIntro } from "@/components/layout/page-intro";
 import { ApiOfflineNotice } from "@/components/session/api-offline-notice";
 import { SignInPrompt } from "@/components/session/sign-in-prompt";
 import { MetroModeBadge } from "@/components/studio/metro-mode-badge";
+import { PrototypeDataNotice } from "@/components/studio/prototype-data-notice";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -474,6 +475,7 @@ export function PlanWizard() {
           </p>
         }
       />
+      <PrototypeDataNotice />
       {status === "loading" ? <WorkspaceSkeleton /> : null}
       {status === "offline" ? <ApiOfflineNotice /> : null}
       {status === "ready" && !me.signed_in ? (

@@ -6,7 +6,10 @@
 > does it; what is not built yet is listed at the end. This is a demonstration prototype, not a compliance program:
 > whether any privacy law applies depends on who runs it and how, and this page does not claim compliance with any.
 
-The app shows the short version of this notice on its About page (section "Your information").
+The app shows the short version of this notice on its About page (section "Your information"). Until the owners
+approve this document, the Founder Studio pages also show a "Prototype: please use a made-up plan" notice
+(`frontend/components/studio/prototype-data-notice.tsx`) asking visitors to use invented figures and public addresses
+only; remove that notice when this document is approved.
 
 ## 1. What the app asks for, and what it refuses
 
