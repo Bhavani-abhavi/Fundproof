@@ -27,6 +27,7 @@ from uwcopilot.evidence.engine import EngineResult, run_engine
 from uwcopilot.evidence.evaluation import (
     claim_counts,
     expected_claims,
+    expected_patterns,
     mismatches,
     problem_claim_counts,
     score_claims,
@@ -114,6 +115,8 @@ def scenario_counts(result: EngineResult) -> Counter:
     for scenario in result.scenarios:
         counts[f"scenarios.{scenario.scenario_id}.{scenario.status}"] += 1
         counts[f"scenarios.{scenario.scenario_id}.changed"] += int(scenario.recommendation_changed)
+        if scenario.not_evaluated_code is not None:
+            counts[f"scenarios_not_tested.{scenario.not_evaluated_code}"] += 1
     return counts
 
 
@@ -137,7 +140,7 @@ def evaluate_case(case: SimCase, mode: str, reference: PolicyResult | None) -> d
     counts[f"recommendation.{result.recommendation or 'not_evaluable'}"] += 1
     reference_calcs = [] if reference is None else list(reference.calculations)
     predicted = {} if result.ledger is None else {claim.id: claim.status for claim in result.ledger.claims}
-    scores, excluded = score_claims(predicted, expected_claims(truth, reference_calcs))
+    scores, excluded = score_claims(predicted, expected_claims(truth, reference_calcs), expected_patterns(truth))
     counts.update(claim_counts(scores))
     counts.update(problem_claim_counts(truth, scores))
     page_docs = page_documents(truth)

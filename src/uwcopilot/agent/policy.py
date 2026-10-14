@@ -144,6 +144,22 @@ DOCUMENT_CHECK_RULES: dict[str, dict[str, DocumentCheckRule]] = {
     "startup_credit": NORTHWIND_DOCUMENT_CHECKS,
 }
 DOCUMENT_RULE_PREFIX = "document_"
+# Named indicators a check can carry (DocumentCheckFlag.indicators) that a guideline routes on top of the check's
+# own rule. NBC-9.1 lists "account numbers, names or addresses that differ between statements for the same account"
+# as a document integrity indicator: Fraud Operations, blocking (R-NBC-13). A name that differs between two bank
+# statements is therefore BOTH an identity verification failure (R-NBC-09, the name_consistency rule above) and an
+# integrity indicator. Harborline has no statements, so its table is empty.
+NAMES_DIFFER_BETWEEN_STATEMENTS = "names_differ_between_statements"
+NORTHWIND_DOCUMENT_INDICATORS: dict[str, DocumentCheckRule] = {
+    NAMES_DIFFER_BETWEEN_STATEMENTS: DocumentCheckRule(
+        section_ids=("NBC-9.1", "NBC-7.3"), trigger_id="R-NBC-13", refer_to=(FRAUD_OPERATIONS,), blocking=True
+    ),
+}
+DOCUMENT_INDICATOR_RULES: dict[str, dict[str, DocumentCheckRule]] = {
+    "credit": NORTHWIND_DOCUMENT_INDICATORS,
+    "insurance": {},
+    "startup_credit": NORTHWIND_DOCUMENT_INDICATORS,
+}
 
 
 class PolicyModel(BaseModel):
@@ -234,6 +250,9 @@ class DocumentCheckFlag(PolicyModel):
     status: Literal["confirmed", "resolved"]
     detail: str = ""
     evidence_ids: list[str] = Field(default_factory=list)
+    # Named indicators of this check that a guideline routes separately (DOCUMENT_INDICATOR_RULES), for example
+    # NAMES_DIFFER_BETWEEN_STATEMENTS. Empty by default.
+    indicators: list[str] = Field(default_factory=list)
 
 
 class PolicyInputs(PolicyModel):
@@ -439,8 +458,14 @@ def merged_document_checks(flags: list[DocumentCheckFlag]) -> dict[str, Document
         details = [text for text in (current.detail, flag.detail) if text]
         evidence = list(current.evidence_ids)
         evidence.extend(item for item in flag.evidence_ids if item not in evidence)
+        indicators = list(current.indicators)
+        indicators.extend(item for item in flag.indicators if item not in indicators)
         merged[flag.check_id] = DocumentCheckFlag(
-            check_id=flag.check_id, status=status, detail=" ".join(details), evidence_ids=evidence
+            check_id=flag.check_id,
+            status=status,
+            detail=" ".join(details),
+            evidence_ids=evidence,
+            indicators=indicators,
         )
     return merged
 
@@ -448,11 +473,13 @@ def merged_document_checks(flags: list[DocumentCheckFlag]) -> dict[str, Document
 def check_document_findings(application: AnyApplication, inputs: PolicyInputs, context: RuleContext) -> None:
     """Phase 2 document checks as policy rules (see DOCUMENT_CHECK_RULES for the sections and referrals).
 
-    A confirmed flag raises the finding "document_<check_id>"; a resolved flag is recorded as a passed check with
+    A confirmed flag raises the finding "document_<check_id>", plus "document_<check_id>_<indicator>" for every
+    indicator it carries that DOCUMENT_INDICATOR_RULES lists; a resolved flag is recorded as a passed check with
     the same rule name. Flags for check ids the table does not list are ignored on purpose (the policy evaluates
     those problems from the application). With no flags this adds nothing at all.
     """
     rules = DOCUMENT_CHECK_RULES[application.line]
+    indicator_rules = DOCUMENT_INDICATOR_RULES[application.line]
     for check_id, flag in merged_document_checks(inputs.document_checks).items():
         rule = rules.get(check_id)
         if rule is None:
@@ -470,6 +497,20 @@ def check_document_findings(application: AnyApplication, inputs: PolicyInputs, c
                 trigger_ids=[rule.trigger_id],
                 blocking=rule.blocking,
             )
+            for indicator in flag.indicators:
+                extra = indicator_rules.get(indicator)
+                if extra is None:
+                    continue
+                context.find(
+                    f"{name}_{indicator}",
+                    "refer",
+                    list(extra.section_ids),
+                    list(extra.refer_to),
+                    f"Document check {check_id} shows {indicator.replace('_', ' ')}{suffix}",
+                    list(flag.evidence_ids),
+                    trigger_ids=[extra.trigger_id],
+                    blocking=extra.blocking,
+                )
         else:
             context.passed(
                 name,

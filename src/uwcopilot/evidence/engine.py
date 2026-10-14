@@ -10,9 +10,10 @@ run_engine(source, ...) accepts:
 
 Steps: evaluate the reference policy (agent/policy.py, the clean screening assumption unless outcomes are given) ->
 build the evidence ledger -> run the stress scenarios and counterfactuals -> decision stability -> detect the open
-items -> rank the evidence requests by value of information -> build the decision record (appended to a DecisionLog
-only when one is passed). The engine prepares and explains; it never approves or declines. The recommendation is the
-reference policy's, and a person decides.
+items -> rank the evidence requests by value of information -> the supplementary calculations (display-only views,
+evidence/supplementary.py) -> build the decision record (appended to a DecisionLog only when one is passed). The
+engine prepares and explains; it never approves or declines. The recommendation is the reference policy's, and a
+person decides.
 
 A case whose application does not validate (the extraction could not read required values) is NOT guessed: the
 result says it is not evaluable, lists the reason, and the record says so too.
@@ -45,6 +46,7 @@ from uwcopilot.evidence.state import (
     from_packet,
     from_packet_result,
 )
+from uwcopilot.evidence.supplementary import supplementary_calculations
 from uwcopilot.evidence.voi import RankedRequest, rank_requests
 
 if TYPE_CHECKING:  # the pipeline imports the PDF and OCR stack; only its result type is needed here
@@ -68,6 +70,7 @@ class EngineResult:
     stability: DecisionStability | None = None
     open_items: list[OpenItem] = field(default_factory=list)
     next_best_evidence: list[RankedRequest] = field(default_factory=list)
+    supplementary: dict[str, Any] = field(default_factory=dict)
     record: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -157,6 +160,7 @@ def record_for(
         decision_stability=None if result.stability is None else result.stability.model_dump(mode="json"),
         open_items=[item.model_dump(mode="json") for item in result.open_items],
         next_best_evidence=[item.model_dump(mode="json") for item in result.next_best_evidence],
+        supplementary_calculations=result.supplementary,
         versions=versions_block(result.policy_result),
         clock=clock,
         not_evaluable_reason=result.not_evaluable_reason,
@@ -177,12 +181,21 @@ def run_engine(
     supersedes_record_id: str | None = None,
     correction_reason: str | None = None,
 ) -> EngineResult:
-    """Run the whole engine on one case (see the module docstring)."""
+    """Run the whole engine on one case (see the module docstring).
+
+    A correction (supersedes_record_id) needs a correction_reason and a record_log that holds the superseded record
+    (ValueError otherwise, raised before any work is done).
+    """
+    if supersedes_record_id is not None:
+        if not (correction_reason or "").strip():
+            raise ValueError("a record that supersedes another needs a correction reason")
+        if record_log is None or record_log.find(supersedes_record_id) is None:
+            raise ValueError(f"record {supersedes_record_id} is not in the record log, so it cannot be superseded")
     state, found, graph = resolve_source(source, context)
     line = state.application.get("line")
     case_id = state.case_id or str(state.application.get("application_id", ""))
     try:
-        application_of(state)
+        application = application_of(state)
     except IncompleteApplicationError as error:
         result = EngineResult(case_id=case_id, line=line, state=state, evaluable=False, not_evaluable_reason=str(error))
     else:
@@ -203,6 +216,7 @@ def run_engine(
             stability=decision_stability(scenarios, policy.recommendation),
             open_items=items,
             next_best_evidence=rank_requests(state, items, policy),
+            supplementary=supplementary_calculations(application, policy, ledger),
         )
     record = record_for(result, found, graph, packet_sha256, clock, supersedes_record_id, correction_reason)
     result.record = append_record(record, record_log) if record_log is not None else record

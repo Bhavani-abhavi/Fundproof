@@ -5,8 +5,10 @@ escaped and laid out. EVERY value is escaped, whatever its source: contradiction
 request params can carry document text (names, embedded instructions), which is untrusted data and must never become
 markup, a link or a script.
 - Markdown: &, < and > become HTML entities (so no raw HTML survives), Markdown punctuation that can start markup
-  (backslash, backtick, *, _, [, ], #, !, |, ~) is backslash-escaped, "://" is written as an entity so no URL is
-  auto-linked, and line breaks collapse to spaces (one value stays in one table cell).
+  (backslash, backtick, *, _, [, ], #, !, |, ~) is backslash-escaped, and line breaks collapse to spaces (one value
+  stays in one table cell). No text can become a link: GitHub-flavoured Markdown auto-links three shapes, and each
+  is broken with an HTML entity: "://" (scheme URLs), "@" (email addresses and mailto:) and the dot after "www"
+  (bare www. hosts, in any letter case).
 - HTML: html.escape with quotes, a Content-Security-Policy meta tag that forbids scripts, and inline CSS only.
 """
 
@@ -20,6 +22,8 @@ from uwcopilot.provenance.renderer import format_value
 MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\]#!|~])")
 URL_SCHEME = "://"
 URL_SCHEME_ENTITY = ":&#47;&#47;"
+AT_SIGN_ENTITY = "&#64;"
+WWW_DOT = re.compile(r"(www)\.", re.IGNORECASE)
 NOT_RECORDED = "not yet recorded"
 CSP = "default-src 'none'; style-src 'unsafe-inline'"
 STYLE = (
@@ -67,7 +71,8 @@ def escape_markdown(value: Any) -> str:
     """Text that renders as itself in Markdown (see the module docstring)."""
     text = html.escape(as_text(value), quote=False)
     text = MARKDOWN_SPECIAL.sub(r"\\\1", text)
-    return text.replace(URL_SCHEME, URL_SCHEME_ENTITY)
+    text = text.replace(URL_SCHEME, URL_SCHEME_ENTITY).replace("@", AT_SIGN_ENTITY)
+    return WWW_DOT.sub(r"\1&#46;", text)
 
 
 def escape_html(value: Any) -> str:
@@ -229,6 +234,30 @@ def calculations_section(record: dict[str, Any]) -> Section:
     return Section(title="Calculations", tables=[table] if table.rows else [])
 
 
+def flattened(value: Any, prefix: str = "") -> list[list[Any]]:
+    """[name, value] rows of a nested dict (names joined with " / "); a list of dicts is one row per item."""
+    if isinstance(value, dict):
+        rows: list[list[Any]] = []
+        for key, item in value.items():
+            rows += flattened(item, f"{prefix} / {key}" if prefix else str(key))
+        return rows
+    if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+        return [[f"{prefix} [{index}]", item] for index, item in enumerate(value, start=1)]
+    return [[prefix, value]]
+
+
+def supplementary_section(record: dict[str, Any]) -> Section:
+    """Display-only views (evidence/supplementary.py): not used by the policy and not citable in a memo."""
+    views = record.get("supplementary_calculations") or {}
+    rows = flattened(views)
+    paragraphs = [] if rows else ["None for this case."]
+    return Section(
+        title="Supplementary calculations (display only)",
+        paragraphs=paragraphs,
+        tables=[Table(["view", "value"], rows)] if rows else [],
+    )
+
+
 def reviewer_section(record: dict[str, Any]) -> Section:
     """The reviewer action fields (empty until a person acts; an action is recorded in a superseding record)."""
     reviewer = record.get("reviewer") or {}
@@ -246,6 +275,7 @@ def record_sections(record: dict[str, Any]) -> list[Section]:
         ledger_section(record),
         contradictions_section(record),
         calculations_section(record),
+        supplementary_section(record),
         reviewer_section(record),
     ]
 

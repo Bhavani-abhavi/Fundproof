@@ -17,6 +17,7 @@ from evidence_snapshot_helpers import (
 
 from uwcopilot.agent.applications import AnyApplication, canonical_json, inputs_sha256, parse_application
 from uwcopilot.agent.policy import (
+    NAMES_DIFFER_BETWEEN_STATEMENTS,
     DocumentCheckFlag,
     InjectionFlag,
     PolicyInputs,
@@ -222,3 +223,40 @@ def test_case_state_passes_document_checks_to_the_policy() -> None:
     result = evaluate(state)
     assert finding(result, "document_balance_continuity").trigger_ids == ["R-NBC-13"]
     assert parse_application(state.application).application_id == CREDIT_APPROVE
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Named indicators (review finding): a name that differs between two statements is also an NBC-9.1 indicator
+# --------------------------------------------------------------------------------------------------------------
+
+
+def test_names_differing_between_statements_also_refer_to_fraud_operations() -> None:
+    item, inputs = baseline(CREDIT_APPROVE)
+    flag = DocumentCheckFlag(
+        check_id="name_consistency",
+        status="confirmed",
+        evidence_ids=["CT-01"],
+        indicators=[NAMES_DIFFER_BETWEEN_STATEMENTS],
+    )
+    result = evaluate_policy(item, with_checks(inputs, flag))
+    # NBC-6.2 still applies (identity, KYC Operations), and NBC-9.1 adds the integrity referral.
+    assert finding(result, "document_name_consistency").trigger_ids == ["R-NBC-09"]
+    integrity = finding(result, "document_name_consistency_names_differ_between_statements")
+    assert integrity.trigger_ids == ["R-NBC-13"] and integrity.section_ids == ["NBC-9.1", "NBC-7.3"]
+    assert integrity.refer_to == [FRAUD_OPERATIONS] and integrity.blocking and integrity.evidence_ids == ["CT-01"]
+    assert result.recommendation == "refer"
+    # Without the indicator only the identity rule fires, exactly as before.
+    plain = evaluate_policy(item, with_checks(inputs, flag.model_copy(update={"indicators": []})))
+    assert [f.rule for f in plain.findings if f.rule.startswith("document_")] == ["document_name_consistency"]
+
+
+def test_insurance_has_no_statement_indicator_and_a_resolved_flag_raises_nothing() -> None:
+    item, inputs = baseline(INSURANCE_APPROVE)
+    flag = DocumentCheckFlag(
+        check_id="name_consistency", status="confirmed", indicators=[NAMES_DIFFER_BETWEEN_STATEMENTS]
+    )
+    rules = [f.rule for f in evaluate_policy(item, with_checks(inputs, flag)).findings]
+    assert rules == ["document_name_consistency"]
+    credit, credit_inputs = baseline(CREDIT_APPROVE)
+    resolved = flag.model_copy(update={"status": "resolved"})
+    assert evaluate_policy(credit, with_checks(credit_inputs, resolved)).findings == []

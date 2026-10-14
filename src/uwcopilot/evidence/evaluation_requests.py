@@ -52,7 +52,9 @@ REVEAL_DEFINITION = (
     "of the planted problems its items stand for (applied in the simulator's canonical order), the reference policy "
     "is re-run, and changed = the recommendation differs from the current one. Packets whose rank-1 request stands "
     "for no planted problem, and reveals whose levers could not be applied, are counted apart and are not in the "
-    "denominator."
+    "denominator. A reveal applies the generator's latent substitutions, which are not always the template option "
+    "the engine valued (insurance problems that change claims also rewrite the stated claim history: simulator "
+    "diagnostics 'coupling'), so 'changed when the top VOI is 0' is a measurement, not 0 by construction."
 )
 
 

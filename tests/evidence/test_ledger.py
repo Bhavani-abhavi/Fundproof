@@ -6,14 +6,16 @@ import json
 import re
 
 import pytest
-from evidence_case_helpers import application_dict, oracle_case, single_problem_packet
+from evidence_case_helpers import application_dict, generated_truth, oracle_case, single_problem_packet
 from pydantic import ValidationError
 
 from uwcopilot.agent.applications import AnyApplication, parse_application, screened_parties
 from uwcopilot.agent.policy import ScreeningOutcome
 from uwcopilot.agent.policy_insurance import coverage_lines
 from uwcopilot.docintel.check_models import Evidence
-from uwcopilot.docintel.contradictions import Contradiction
+from uwcopilot.docintel.checks import run_checks
+from uwcopilot.docintel.contradictions import Contradiction, build_contradictions
+from uwcopilot.docintel.schemas import parse_extraction
 from uwcopilot.evidence import ledger_tables as tables
 from uwcopilot.evidence.ledger import (
     CLAIM_STATUSES,
@@ -31,7 +33,7 @@ from uwcopilot.evidence.ledger import (
     unknown_claim,
     user_stated_claim,
 )
-from uwcopilot.evidence.state import MODEL_NOT_EVALUATED_REASON, CaseState, apply, from_application
+from uwcopilot.evidence.state import MODEL_NOT_EVALUATED_REASON, CaseState, apply, from_application, from_packet
 from uwcopilot.provenance.renderer import STATUS_SUFFIX, render, round_trip_audit
 
 
@@ -155,9 +157,11 @@ def test_a_contradiction_makes_its_facts_conflicting_and_marks_dependent_calcula
 def test_a_resolution_closes_the_contradiction() -> None:
     resolved = apply(conflicting_state(), {"check:revenue_vs_deposits": "resolved"})
     ledger = build_ledger(resolved, contradictions=[revenue_contradiction()])
+    # The document value stands and its disagreement is closed; the closing outcome came from a lever, not a page.
     assert claim(ledger, "APP-stated_annual_revenue").status == "VERIFIED"
     check = claim(ledger, "CHK-revenue_vs_deposits")
-    assert check.status == "VERIFIED" and check.value == "resolved"
+    assert check.status == "ASSUMPTION" and check.value == "resolved"
+    assert check.provenance.kind == "assumption" and "check:revenue_vs_deposits" in (check.provenance.source or "")
     assert claim(ledger, "CALC-revenue_gap_pct").depends_on_conflicting == ()
 
 
@@ -197,10 +201,19 @@ def test_an_unread_value_with_a_default_is_unknown_and_marked_imputed() -> None:
         field_provenance={"requested_amount": [{"doc_id": "D01", "page": 1, "line": 3}]},
         unknown_paths=["debt.existing_total_debt_balance"],
     )
-    unread = claim(build_ledger(state), "APP-debt.existing_total_debt_balance")
-    assert unread.status == "UNKNOWN" and unread.value == 0.0
+    ledger = build_ledger(state)
+    unread = claim(ledger, "APP-debt.existing_total_debt_balance")
+    # The default the policy used is kept OUT of the value (a memo prints "not available"), but it is recorded.
+    assert unread.status == "UNKNOWN" and unread.value is None
+    assert unread.provenance.details == {"imputed_value": 0.0} and unread.inputs["imputed_value"] == 0.0
     assert unread.imputed and unread.imputation_method == IMPUTED_DEFAULT_METHOD
     assert "could not read" in (unread.reason or "")
+    assert "not available[^c1]" in render("Debt {{claim:APP-debt.existing_total_debt_balance}}.", ledger).body
+    # Leverage reads that balance: the policy computed it on the default, so it is UNKNOWN, never VERIFIED.
+    leverage = claim(ledger, "CALC-leverage")
+    assert leverage.status == "UNKNOWN" and leverage.value is None and leverage.imputed
+    assert leverage.depends_on_unknown == ("APP-debt.existing_total_debt_balance",)
+    assert leverage.provenance.details["value_with_unread_inputs"] is not None
 
 
 def test_a_missing_required_document_is_an_unknown_doc_claim() -> None:
@@ -484,11 +497,19 @@ def test_each_status_carries_what_it_needs(changes: dict, message: str) -> None:
 def test_valid_claims_of_every_status() -> None:
     for status, extra in [
         ("VERIFIED", {"value": 1.0}),
-        ("USER_STATED", {"value": 1.0}),
+        ("USER_STATED", {"value": 1.0, "provenance": {"kind": "application", "ref": "c1"}}),
         ("CONFLICTING", {"value": 1.0, "conflict_ids": ["CT-01"]}),
         ("UNKNOWN", {"value": None, "reason": "absent"}),
         ("UNKNOWN", {"value": 2.0, "reason": "absent", "imputed": True, "imputation_method": "median"}),
-        ("ASSUMPTION", {"value": "clear", "provenance": {"kind": "assumption", "ref": "p", "source": "unsourced"}}),
+        (
+            "ASSUMPTION",
+            {
+                "value": "clear",
+                "display": "text",
+                "unit": "TEXT",
+                "provenance": {"kind": "assumption", "ref": "p", "source": "unsourced"},
+            },
+        ),
         (
             "MODEL_ESTIMATE",
             {
@@ -542,3 +563,191 @@ def test_a_model_estimator_replaces_the_unknown_model_claim() -> None:
         imputed.status == "UNKNOWN" and imputed.imputed and imputed.imputation_method == "median of a fake training set"
     )
     assert STATUS_SUFFIX["MODEL_ESTIMATE"] in render("PD {{claim:MODEL-pd}}.", ledger).body
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Values no document provided (review findings): imputed defaults, unread paths, undocumented location fields
+# --------------------------------------------------------------------------------------------------------------
+
+
+def oracle_state_without(packet_id: str, line: str, section: str) -> CaseState:
+    """The oracle state of a seed-4040 packet with one extracted section removed (as if the document were absent)."""
+    raw = dict(generated_truth(packet_id, line).oracle_extraction)
+    raw[section] = None
+    extraction = parse_extraction(raw)
+    checks = run_checks(extraction)
+    return from_packet(extraction, checks, build_contradictions(extraction, checks))
+
+
+def test_calculations_over_an_imputed_debt_schedule_are_unknown_not_verified() -> None:
+    # PKT-C-413 without its debt schedule: docintel writes 0.0 for the scheduled payment and the total balance.
+    # Leverage = (balance + requested) / NOI and DSCR = NOI / (12 x max(scheduled, observed) + proposed) were computed
+    # on those zeros, so neither may print as a VERIFIED figure.
+    state = oracle_state_without("PKT-C-413", "credit", "debt_schedule")
+    ledger = build_ledger(state)
+    for calc_id in ("CALC-annual_debt_service", "CALC-dscr", "CALC-leverage"):
+        found = claim(ledger, calc_id)
+        assert found.status == "UNKNOWN" and found.value is None and found.imputed
+        assert found.depends_on_unknown and all(item.startswith("APP-debt.") for item in found.depends_on_unknown)
+        assert found.provenance.details["value_with_unread_inputs"] is not None
+    assert "APP-debt.existing_total_debt_balance" in claim(ledger, "CALC-leverage").depends_on_unknown
+    assert "not available" in render("Leverage {{claim:CALC-leverage}}.", ledger).body
+    assert round_trip_audit(render(full_memo(ledger), ledger), ledger) == []
+
+
+def test_every_unread_path_has_a_ledger_claim() -> None:
+    # PKT-C-409 without its credit report: credit scores (None) and bankruptcy flags (default False) are unread.
+    state = oracle_state_without("PKT-C-409", "credit", "credit_report")
+    assert state.unknown_paths
+    ledger = build_ledger(state)
+    by_ref = {item.provenance.ref: item for item in ledger.claims if item.status == "UNKNOWN"}
+    for path in state.unknown_paths:
+        assert path in by_ref, path
+    flag = claim(ledger, "APP-owners.0.bankruptcy_within_7_years")
+    assert flag.status == "UNKNOWN" and flag.value is None and flag.imputed
+    assert flag.provenance.details == {"imputed_value": False}
+    score = claim(ledger, "APP-owners.0.credit_score")
+    assert score.status == "UNKNOWN" and not score.imputed
+    missing = claim(ledger, "CALC-min_principal_credit_score")
+    assert missing.status == "UNKNOWN" and "no credit score" in (missing.reason or "")
+
+
+def test_undocumented_location_defaults_are_unknown_and_passes_resting_on_them_are_not_shown() -> None:
+    case = oracle_case(single_problem_packet("insurance", "tiv_mismatch"))
+    ledger = build_ledger(case.state, contradictions=case.report)
+    wind = claim(ledger, "APP-locations.0.wind_tier")
+    assert wind.status == "UNKNOWN" and wind.value is None and wind.imputed
+    assert wind.provenance.details == {"imputed_value": 0}
+    for name in tables.UNDOCUMENTED_LOCATION_FIELDS:
+        assert ledger.claim(f"APP-locations.0.{name}") is not None, name
+    catastrophe = ledger.assertion("A-catastrophe_exposure")
+    assert catastrophe is not None and catastrophe.result is None
+    assert "APP-locations.0.wind_tier" in catastrophe.depends_on_unknown
+    assert "not evaluated" in catastrophe.detail
+    assert "could not be evaluated" in render("Exposure {{assert:A-catastrophe_exposure}}.", ledger).body
+    # An application the applicant typed states these fields itself: no such claims, and the pass stands.
+    typed = build_ledger(state_with("APP-I-001"))
+    assert typed.claim("APP-locations.0.wind_tier") is None
+    passed = typed.assertion("A-catastrophe_exposure")
+    assert passed is not None and passed.result is True and passed.depends_on_unknown == ()
+
+
+def test_an_annual_debt_service_left_out_with_the_dscr_rule_says_why() -> None:
+    ledger = build_ledger(without_last_statement_month("APP-C-004"))
+    service = claim(ledger, "CALC-annual_debt_service")
+    assert service.status == "UNKNOWN"
+    assert "only inside its DSCR rule" in (service.reason or "") and "does not need verified revenue" in (
+        service.reason or ""
+    )
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Values a resolution substituted (review findings): never VERIFIED, never cited to the old page
+# --------------------------------------------------------------------------------------------------------------
+
+
+def test_a_substituted_value_is_an_assumption_without_the_old_citation() -> None:
+    case = oracle_case(single_problem_packet("insurance", "tiv_mismatch"))
+    before = claim(build_ledger(case.state, contradictions=case.report), "APP-stated_tiv")
+    assert before.status == "CONFLICTING" and before.provenance.citations
+    changed = apply(case.state, {"stated_tiv": 1_234_567.0})
+    assert "stated_tiv" not in changed.field_provenance and changed.substituted_paths == {"stated_tiv": "stated_tiv"}
+    ledger = build_ledger(changed, contradictions=case.report)
+    after = claim(ledger, "APP-stated_tiv")
+    assert after.status == "ASSUMPTION" and after.value == 1_234_567.0
+    assert after.provenance.kind == "assumption" and after.provenance.citations == ()
+    assert "substituted" in (after.provenance.source or "") and after.inputs_sha256 != before.inputs_sha256
+    # The TIV contradiction compared the substituted value, so it is superseded (closed) and says why.
+    check = claim(ledger, "CHK-tiv_consistency")
+    assert check.status == "ASSUMPTION" and check.value == "superseded by a substituted value"
+    # The TIV difference reads the substituted TIV and the schedule TIV (which rests on the superseded check).
+    assert claim(ledger, "CALC-tiv_difference_pct").depends_on_assumption == ("APP-stated_tiv", "CHK-tiv_consistency")
+    assert "(assumption)" in render("TIV {{claim:APP-stated_tiv}}.", ledger).body
+
+
+def test_a_value_the_extraction_could_not_read_and_a_lever_filled_is_not_verified() -> None:
+    data = application_dict("APP-C-001")
+    data["debt"]["existing_total_debt_balance"] = 0.0
+    state = CaseState(
+        application=data,
+        field_provenance={"requested_amount": [{"doc_id": "D01", "page": 1, "line": 3}]},
+        unknown_paths=["debt.existing_total_debt_balance"],
+    )
+    filled = claim(
+        build_ledger(apply(state, {"debt.existing_total_debt_balance": 250_000.0})),
+        "APP-debt.existing_total_debt_balance",
+    )
+    assert filled.status == "ASSUMPTION" and filled.value == 250_000.0 and filled.provenance.kind == "assumption"
+    assert filled.value_range is not None and filled.value_range.low == filled.value_range.high == 250_000.0
+
+
+def test_fact_inputs_pin_the_value() -> None:
+    first = claim(build_ledger(state_with("APP-C-001")), "APP-requested_amount")
+    data = application_dict("APP-C-001")
+    data["requested_amount"] = first.value + 1_000.0
+    second = claim(build_ledger(from_application(data)), "APP-requested_amount")
+    assert first.inputs["value"] == first.value and first.inputs_sha256 != second.inputs_sha256
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Status, provenance and value rules (review findings): an assumption can never be presented as data
+# --------------------------------------------------------------------------------------------------------------
+
+STRICTER_INVALID_CLAIMS = [
+    ({"value": 5.0, "status": "VERIFIED", "provenance": {"kind": "assumption", "ref": "p", "source": "s"}}, "kind"),
+    ({"value": 5.0, "status": "VERIFIED", "provenance": {"kind": "user_input", "ref": "p"}}, "kind"),
+    ({"value": 5.0, "status": "VERIFIED", "provenance": {"kind": "public_data", "ref": "acs"}}, "needs its source"),
+    ({"value": 5.0, "status": "USER_STATED", "provenance": {"kind": "model", "ref": "m"}}, "kind"),
+    ({"value": "6,500", "status": "VERIFIED", "display": "usd0"}, "needs a number"),
+    ({"value": True, "status": "VERIFIED", "display": "int"}, "needs a number"),
+    ({"value": float("nan"), "status": "VERIFIED"}, "finite"),
+    ({"value": float("inf"), "status": "VERIFIED"}, "finite"),
+    ({"value": 0.62, "status": "VERIFIED", "unit": "PROBABILITY", "display": "pct1"}, "PROBABILITY"),
+    (
+        {
+            "value": 50.0,
+            "status": "ASSUMPTION",
+            "provenance": {"kind": "assumption", "ref": "p", "source": "unsourced"},
+            "value_range": {"low": 9.0, "high": 18.0},
+        },
+        "outside its own range",
+    ),
+]
+
+
+@pytest.mark.parametrize(("changes", "message"), STRICTER_INVALID_CLAIMS)
+def test_status_provenance_and_value_must_agree(changes: dict, message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Claim.model_validate({**BASE, **changes})
+
+
+def test_studio_helpers_refuse_text_figures_at_build_time() -> None:
+    with pytest.raises(ValidationError, match="needs a number"):
+        user_stated_claim("rent", "Rent quote", "6,500", "USD", "usd0", "plan.rent")
+    with pytest.raises(ValidationError, match="outside its own range"):
+        assumption_claim("ticket", "Ticket", 50.0, "USD", "usd2", source="unsourced", ref="p", low=9.0, high=18.0)
+    public = Claim.model_validate(
+        {**BASE, "value": 5.0, "status": "VERIFIED", "provenance": {"kind": "public_data", "ref": "acs", "source": "x"}}
+    )
+    assert public.status == "VERIFIED"
+
+
+def test_the_renderer_marks_an_imputed_value_another_ledger_prints() -> None:
+    imputed = Claim.model_validate(
+        {**BASE, "value": 2.0, "status": "UNKNOWN", "reason": "absent", "imputed": True, "imputation_method": "median"}
+    )
+    ledger = Ledger(claims=(imputed,))
+    body = render("Value {{claim:c1}}.", ledger).body
+    assert "$2.00 (imputed, not read from the documents)[^c1]" in body
+    assert round_trip_audit(render("Value {{claim:c1}}.", ledger), ledger) == []
+
+
+def test_a_ledger_checks_unknown_and_assumption_dependencies() -> None:
+    verified = Claim(
+        id="a", label="A", value=1.0, unit="USD", display="usd2", status="VERIFIED",
+        provenance=Provenance(kind="calculation", ref="a"),
+    )  # fmt: skip
+    with pytest.raises(ValidationError, match="non-UNKNOWN"):
+        Ledger(claims=(verified, verified.model_copy(update={"id": "b", "depends_on_unknown": ("a",)})))
+    with pytest.raises(ValidationError, match="non-ASSUMPTION"):
+        Ledger(claims=(verified, verified.model_copy(update={"id": "b", "depends_on_assumption": ("a",)})))

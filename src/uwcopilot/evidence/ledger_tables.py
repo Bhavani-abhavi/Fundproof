@@ -10,7 +10,15 @@
   besides the check's own claim "CHK-<check_id>".
 - CALC_INPUT_CLAIMS and CALC_EXTRA_DEPENDENCIES: which claims a calculation reads (its Calculation.inputs names,
   plus the claim lines a loss-run calculation reads without listing them). Used for depends_on_conflicting.
-- NOT_EVALUATED_CLAIMS: calculations that do not exist because the policy could not run a rule (UNKNOWN claims).
+- CALC_UNKNOWN_PATTERNS: claim-id patterns of values the extraction may list as unread (owners, statement months,
+  loss-run years) that a calculation reads. With CALC_INPUT_CLAIMS they give depends_on_unknown: a calculation
+  over a value no document provided is UNKNOWN, never VERIFIED.
+- NOT_EVALUATED_CLAIMS: calculations that do not exist because the policy could not run a rule (UNKNOWN claims),
+  and NOT_EVALUATED_REASONS: a more precise reason for a calculation that does not depend on the missing input.
+- UNDOCUMENTED_LOCATION_FIELDS: location fields no packet document prints (docintel to_application_insurance writes
+  the agent model's defaults); ASSERTION_UNKNOWN_PATTERNS: the unread values each passed rule rests on.
+- CONTRADICTION_APPLICATION_PATHS: the application paths each contradiction compares; a resolution that replaces
+  one of them supersedes the contradiction.
 - TOPIC_PHRASES and RULE_TOPIC: the expression and the three phrases of each rule's assertion. Phrases are what the
   renderer prints for {{assert:ID}}, so they contain no digits, number words, currency or percent signs. The
   expressions name no section: an assertion's section id is copied from the policy result it was built from.
@@ -247,6 +255,23 @@ CALC_EXTRA_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "CALC-claim_frequency": LOSS_RUN_CLAIMS,
 }
 
+# Calculation -> regular expressions over claim ids it reads besides CALC_INPUT_CLAIMS (ids built from application
+# paths: "owners[0].credit_score" -> "APP-owners.0.credit_score", "loss_runs.years[2024-03-01]" ->
+# "APP-loss_runs.years.2024-03-01"). Only UNKNOWN claims can match: these ids exist only for unread values.
+STATEMENT_MONTH_PATTERN = r"^APP-bank_statements\.months\.\d+$"
+LOSS_RUN_PATTERNS = (r"^APP-loss_runs\.years\.", r"^APP-loss_runs\.current_term_claims$")
+CALC_UNKNOWN_PATTERNS: dict[str, tuple[str, ...]] = {
+    "CALC-verified_annual_revenue": (STATEMENT_MONTH_PATTERN,),
+    "CALC-min_principal_credit_score": (r"^APP-owners\.\d+\.credit_score$", r"^APP-owners\.\d+\.is_control_person$"),
+    "CALC-loss_ratio_5yr_property": LOSS_RUN_PATTERNS,
+    "CALC-loss_ratio_5yr_general_liability": LOSS_RUN_PATTERNS,
+    "CALC-max_annual_loss_ratio_property": LOSS_RUN_PATTERNS,
+    "CALC-max_annual_loss_ratio_general_liability": LOSS_RUN_PATTERNS,
+    "CALC-claim_frequency": LOSS_RUN_PATTERNS,
+    "CALC-incurred_difference_pct": LOSS_RUN_PATTERNS,
+    "CALC-unbalanced_claim_lines": LOSS_RUN_PATTERNS,
+}
+
 # NotEvaluated rule -> calculations that are missing because of it: (calc id, label, agent CalcUnit).
 NOT_EVALUATED_CLAIMS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "verified_revenue_minimum": (
@@ -262,11 +287,62 @@ NOT_EVALUATED_CLAIMS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "stress_tests": (("CALC-stressed_dscr_revenue", "DSCR after a 20% revenue stress", "ratio"),),
     "projected_dscr": (("CALC-startup_projected_dscr", "Projected DSCR (year 2)", "ratio"),),
 }
+# A calculation the policy computes only inside a rule that did not run, although it does not need the missing
+# input: its own reason ({reason} is the policy's reason for the rule).
+NOT_EVALUATED_REASONS: dict[str, str] = {
+    "CALC-annual_debt_service": "not computed: the reference policy computes annual debt service only inside its "
+    "DSCR rule (NBC-4.1), which did not run ({reason}); the debt service itself does not need verified revenue",
+}
+# Finding rule -> calculations the policy skips when it raises that finding (calc id, label, CalcUnit, reason).
+FINDING_MISSING_CALCS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    "principal_credit_score_missing": (
+        (
+            "CALC-min_principal_credit_score",
+            "Lowest principal credit score",
+            "score",
+            "not computed: no credit score was read for any principal (NBC-2.1)",
+        ),
+    ),
+}
 RATE_STRESS_CALC = ("CALC-stressed_dscr_rate", "DSCR with the note rate plus 2.00 percentage points", "ratio")
 # Insurance: "loss_ratios_and_frequency" and "loss_ratio_<line>" are handled in ledger.py (they depend on the
 # lines being quoted).
 LOSS_RATIO_CALC = "CALC-loss_ratio_5yr_{line}"
 CLAIM_FREQUENCY_CALC = ("CALC-claim_frequency", "Claim frequency checks (counts)", "count")
+
+# Location fields no packet document prints: docintel/to_application_insurance.py writes the agent Location model's
+# defaults (wind tier 0, flood zone X, low wildfire hazard, 0 vacant days, no knob-and-tube wiring; no systems
+# update year). Every default except the systems year is the permissive one, so a rule can pass on it.
+UNDOCUMENTED_LOCATION_FIELDS: tuple[str, ...] = (
+    "wind_tier",
+    "flood_zone",
+    "wildfire_hazard",
+    "vacant_days",
+    "knob_and_tube_or_fuse_box",
+    "systems_updated_year",
+)
+# Rule -> patterns of the UNKNOWN claims a PASSED rule rests on. A pass that rests on one is shown as not evaluated.
+ASSERTION_UNKNOWN_PATTERNS: dict[str, tuple[str, ...]] = {
+    "catastrophe_exposure": (r"^APP-locations\.\d+\.(wind_tier|wildfire_hazard)$",),
+    "building_eligibility": (r"^APP-locations\.\d+\.knob_and_tube_or_fuse_box$",),
+    "class_eligible": (r"^APP-locations\.\d+\.vacant_days$",),
+    "documents_complete": (r"^APP-locations\.\d+\.flood_zone$",),  # HM-6.2: flood zones A/V need a certificate
+    "principal_credit_scores": (r"^APP-owners\.\d+\.(credit_score|is_control_person)$",),
+    "ownership": (r"^APP-owners\.\d+\.is_control_person$",),
+}
+
+# Contradiction check -> the application paths it compares. A resolution that substitutes one of them supersedes the
+# contradiction (the documented disagreement is no longer in the application; the policy re-evaluates the values).
+CONTRADICTION_APPLICATION_PATHS: dict[str, tuple[str, ...]] = {
+    "revenue_vs_deposits": ("stated_annual_revenue", "bank_statements.months"),
+    "tax_return_vs_pnl": ("debt.ttm_pnl_revenue",),
+    "debt_payment_consistency": (
+        "debt.existing_monthly_payment_schedule",
+        "debt.existing_monthly_payment_observed",
+    ),
+    "tiv_consistency": ("stated_tiv", "locations"),
+    "claims_history_consistency": ("stated_claim_count", "stated_total_incurred", "loss_runs.current_term_claims"),
+}
 
 # Assertion phrases: topic -> (expression, phrase_true, phrase_false, phrase_unknown).
 TOPIC_PHRASES: dict[str, tuple[str, str, str, str]] = {

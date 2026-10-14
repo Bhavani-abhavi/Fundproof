@@ -5,8 +5,18 @@ missing required documents, before the engine is run on the test packets. The ta
 definitions (docintel/truth.py) and the ledger's claim id scheme (evidence/ledger.py); it is not computed from the
 engine's output. It was checked and finalized on the dev split; the test split is evaluated once with it
 (EXPECTED_TABLE_VERSION and expected_table_sha256() are written into the results so a later change is visible).
-Caveat: the problem -> claim id table and the ledger's contradiction -> claim table were written by the same author,
-so agreement measures whether problems are detected and propagated to the right claims, not an independent taxonomy.
+
+LABEL (CLAIM_STATUS_LABEL): this is agreement with the documented status rules, written by the same author as the
+ledger. The problem -> claim id table restates the ledger's contradiction -> claim table, so agreement measures
+whether problems are detected and propagated to the right claims, not an independent taxonomy, and a status rule
+that is wrong in BOTH tables is scored as correct.
+
+Version history: v1 (the first test run) expected a calculation over a value no document provided (the debt
+schedule's payments and balance when the schedule is missing) to be VERIFIED, because it copied the ledger's rule;
+a review found that the ledger then printed numbers computed on imputed $0 defaults as VERIFIED. v2 (this table)
+adds DEPENDENCY-AWARE expectations, written from the guideline formulas: NBC-4.1 annual debt service uses the
+scheduled payment, NBC-4.4 leverage the schedule's total balance, NBC-2.1 the principals' credit scores and
+bankruptcy flags (credit report). The v2 table was checked on the dev split before the test split was re-run.
 
 Expected status of a claim (expected_claims):
 1. CONFLICTING for the claims of each injected contradiction problem (CONFLICT_CLAIMS_BY_PROBLEM): the document
@@ -16,7 +26,9 @@ Expected status of a claim (expected_claims):
 2. UNKNOWN for every checklist code in truth.missing_required_documents: "DOC-<code>" and "CHK-required_documents",
    plus the claims that cannot exist without that document (MISSING_DOCUMENT_CLAIMS; for a missing statement month
    the code is bank_statements_12_months, and NBC-3.2 then leaves verified revenue and everything computed from it
-   unavailable).
+   unavailable). v2: also UNKNOWN (conditional) for the claims a planted problem leaves unverifiable
+   (PROBLEM_UNKNOWN_CLAIMS): a loss run whose summary does not equal its claim lines (loss_run_total_mismatch) cannot
+   show which side is right, so its policy years and every loss-run calculation are unverifiable (HM-3.3, HM-11.1).
 3. UNKNOWN for a calculation the reference formulas cannot compute even on truth.application_as_documented
    (value None: for example a percentage of a zero denominator).
 4. VERIFIED for every other claim (the spec: "everything else VERIFIED").
@@ -28,8 +40,9 @@ only for some requests (a stress test applies above a loan amount; a loss ratio 
 are scored only when the ledger has them.
 
 Excluded by design (counted, not scored): MODEL-* and FEATURE-* claims are UNKNOWN by the honesty rule (no Phase 1
-model applies to these commercial packets), and ASSUME-* claims are the clean screening assumption. Their status is
-a property of the engine's design, not of the packet.
+model applies to these commercial packets), ASSUME-* claims are the clean screening assumption, and the location
+fields no packet document prints (APP-locations.<i>.wind_tier and the like) are UNKNOWN for every insurance packet.
+Their status is a property of the engine's or the generator's design, not of the packet.
 
 The truth is read by attribute only (a docintel.truth.PacketTruth works); like docintel/evaluation.py, this module
 does not import truth.py, so nothing at run time can reach the ground truth through it.
@@ -37,12 +50,17 @@ does not import truth.py, so nothing at run time can reach the ground truth thro
 
 import hashlib
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-EXPECTED_TABLE_VERSION = "evidence-claim-status-table-v1"
+EXPECTED_TABLE_VERSION = "evidence-claim-status-table-v2"
+CLAIM_STATUS_LABEL = (
+    "agreement with the documented status rules (same author): the expected table restates the ledger's own "
+    "status rules, so a rule that is wrong in both is scored as correct"
+)
 
 VERIFIED = "VERIFIED"
 CONFLICTING = "CONFLICTING"
@@ -65,6 +83,16 @@ BY_DESIGN_PREFIXES: dict[str, str] = {
     "MODEL-": "UNKNOWN by the honesty rule: no Phase 1 model is trained on these commercial packets",
     "FEATURE-": "model feature claims: only produced by a model estimator, none applies here",
     "ASSUME-": "ASSUMPTION by design: the clean screening assumption (KYC lists not used in this evaluation)",
+}
+# Claim-id patterns excluded by design, keyed by a readable name (counted under that name).
+LOCATION_DEFAULTS_KEY = "APP-locations.<i>.<undocumented field>"
+BY_DESIGN_PATTERNS: dict[str, tuple[str, str]] = {
+    LOCATION_DEFAULTS_KEY: (
+        r"^APP-locations\.\d+\.(wind_tier|flood_zone|wildfire_hazard|vacant_days|knob_and_tube_or_fuse_box|"
+        r"systems_updated_year)$",
+        "UNKNOWN by the packet design: no packet document prints these location fields (docintel "
+        "to_application_insurance writes the agent model's defaults)",
+    ),
 }
 
 # 1. Contradiction problems -> the claims a correct ledger shows as CONFLICTING (all required).
@@ -99,10 +127,12 @@ PROBLEM_NEEDS_DOCUMENTS: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class MissingDocumentClaims:
-    """The claims that are UNKNOWN because one checklist document is missing (besides DOC-<code>)."""
+    """The claims that are UNKNOWN because one checklist document is missing (besides DOC-<code>). patterns are
+    regular expressions over claim ids built from application paths (one claim per owner); they are conditional."""
 
     required: tuple[str, ...] = ()
     conditional: tuple[str, ...] = ()
+    patterns: tuple[str, ...] = ()
 
 
 ALWAYS_FOR_MISSING_DOCUMENTS: tuple[str, ...] = ("CHK-required_documents",)
@@ -122,13 +152,27 @@ MISSING_DOCUMENT_CLAIMS: dict[str, MissingDocumentClaims] = {
             "CALC-stressed_dscr_rate",
         ),
     ),
-    # The scheduled payments and balances are printed only on the debt schedule.
+    # The scheduled payments and balances are printed only on the debt schedule. v2 (dependency-aware): NBC-4.1
+    # annual debt service uses the scheduled payment (the higher of scheduled and observed), so it and every ratio
+    # over it (DSCR, the stated-revenue DSCR, both stress DSCRs) cannot be verified; NBC-4.4 leverage divides the
+    # schedule's total balance.
     "debt_schedule": MissingDocumentClaims(
         conditional=(
             "APP-debt.existing_monthly_payment_schedule",
             "APP-debt.existing_total_debt_balance",
             "APP-debt.refinanced_monthly_payment",
+            "CALC-annual_debt_service",
+            "CALC-dscr",
+            "CALC-dscr_stated_revenue",
+            "CALC-stressed_dscr_revenue",
+            "CALC-stressed_dscr_rate",
+            "CALC-leverage",
         ),
+    ),
+    # v2: NBC-2.1 reads each principal's credit score and bankruptcy flag from the credit report.
+    "credit_report": MissingDocumentClaims(
+        conditional=("CALC-min_principal_credit_score",),
+        patterns=(r"^APP-owners\.\d+\.(credit_score|bankruptcy_within_7_years)$",),
     ),
     # HM-3.1 / HM-3.2: without every carrier's loss run the experience period is incomplete, so no loss ratio.
     "loss_runs": MissingDocumentClaims(
@@ -140,6 +184,22 @@ MISSING_DOCUMENT_CLAIMS: dict[str, MissingDocumentClaims] = {
             "CALC-max_annual_loss_ratio_general_liability",
             "CALC-claim_frequency",
         ),
+    ),
+}
+# v2: planted problems that leave claims unverifiable (UNKNOWN, conditional), with claim-id patterns.
+LOSS_RUN_CALCS: tuple[str, ...] = (
+    "CALC-loss_ratio_5yr_property",
+    "CALC-loss_ratio_5yr_general_liability",
+    "CALC-max_annual_loss_ratio_property",
+    "CALC-max_annual_loss_ratio_general_liability",
+    "CALC-claim_frequency",
+    "CALC-incurred_difference_pct",
+    "CALC-unbalanced_claim_lines",
+)
+PROBLEM_UNKNOWN_CLAIMS: dict[str, MissingDocumentClaims] = {
+    "loss_run_total_mismatch": MissingDocumentClaims(
+        conditional=LOSS_RUN_CALCS,
+        patterns=(r"^APP-loss_runs\.years\.", r"^APP-loss_runs\.current_term_claims$"),
     ),
 }
 NOT_COMPUTABLE_SOURCE = "not computable on the truth's as-documented application"
@@ -177,17 +237,29 @@ def expected_table() -> dict[str, Any]:
     """The whole expected-status table as plain JSON (written into the results next to its hash)."""
     return {
         "version": EXPECTED_TABLE_VERSION,
+        "label": CLAIM_STATUS_LABEL,
         "conflict_claims_by_problem": {key: list(value) for key, value in CONFLICT_CLAIMS_BY_PROBLEM.items()},
         "problem_needs_documents": {key: list(value) for key, value in PROBLEM_NEEDS_DOCUMENTS.items()},
         "always_for_missing_documents": list(ALWAYS_FOR_MISSING_DOCUMENTS),
         "missing_document_claims": {
-            code: {"required": list(claims.required), "conditional": list(claims.conditional)}
+            code: {
+                "required": list(claims.required),
+                "conditional": list(claims.conditional),
+                "patterns": list(claims.patterns),
+            }
             for code, claims in MISSING_DOCUMENT_CLAIMS.items()
+        },
+        "problem_unknown_claims": {
+            kind: {"conditional": list(claims.conditional), "patterns": list(claims.patterns)}
+            for kind, claims in PROBLEM_UNKNOWN_CLAIMS.items()
         },
         "not_computable_rule": NOT_COMPUTABLE_SOURCE + " -> UNKNOWN (conditional)",
         "default": VERIFIED,
         "precedence": list(STATUS_PRECEDENCE),
-        "excluded_by_design": dict(BY_DESIGN_PREFIXES),
+        "excluded_by_design": {
+            **BY_DESIGN_PREFIXES,
+            **{key: f"{pattern}: {reason}" for key, (pattern, reason) in BY_DESIGN_PATTERNS.items()},
+        },
     }
 
 
@@ -197,12 +269,44 @@ def expected_table_sha256() -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def by_design_key(claim_id: str) -> str | None:
+    """The by-design exclusion a claim falls under (a prefix or a BY_DESIGN_PATTERNS name), or None when scored."""
+    for prefix in BY_DESIGN_PREFIXES:
+        if claim_id.startswith(prefix):
+            return prefix
+    for key, (pattern, _) in BY_DESIGN_PATTERNS.items():
+        if re.search(pattern, claim_id):
+            return key
+    return None
+
+
 def by_design_reason(claim_id: str) -> str | None:
     """Why a claim is excluded from scoring, or None when it is scored."""
-    for prefix, reason in BY_DESIGN_PREFIXES.items():
-        if claim_id.startswith(prefix):
-            return reason
-    return None
+    key = by_design_key(claim_id)
+    if key is None:
+        return None
+    if key in BY_DESIGN_PREFIXES:
+        return BY_DESIGN_PREFIXES[key]
+    return BY_DESIGN_PATTERNS[key][1]
+
+
+def expected_patterns(truth: Any) -> list[tuple[str, str]]:
+    """(claim-id pattern, source) of the conditional UNKNOWN expectations of the truth's missing documents and of
+    its planted problems (PROBLEM_UNKNOWN_CLAIMS)."""
+    found = []
+    for code in truth.missing_required_documents:
+        for pattern in MISSING_DOCUMENT_CLAIMS.get(code, MissingDocumentClaims()).patterns:
+            found.append((pattern, f"missing document {code}"))
+    for problem in truth.problems:
+        for pattern in PROBLEM_UNKNOWN_CLAIMS.get(problem.problem_type, MissingDocumentClaims()).patterns:
+            found.append((pattern, f"{problem.problem_id} {problem.problem_type}"))
+    return found
+
+
+def pattern_expectation(claim_id: str, patterns: list[tuple[str, str]]) -> ExpectedClaim | None:
+    """The conditional UNKNOWN expectation of a claim that matches a missing document's pattern (None otherwise)."""
+    sources = tuple(source for pattern, source in patterns if re.search(pattern, claim_id))
+    return ExpectedClaim(claim_id, UNKNOWN, False, sources) if sources else None
 
 
 def merge_expectation(table: dict[str, ExpectedClaim], claim_id: str, status: str, required: bool, source: str) -> None:
@@ -256,6 +360,9 @@ def expected_claims(truth: Any, reference_calculations: Iterable[Any] = ()) -> d
             merge_expectation(table, claim_id, UNKNOWN, True, source)
         for claim_id in claims.conditional:
             merge_expectation(table, claim_id, UNKNOWN, False, source)
+    for problem in truth.problems:
+        for claim_id in PROBLEM_UNKNOWN_CLAIMS.get(problem.problem_type, MissingDocumentClaims()).conditional:
+            merge_expectation(table, claim_id, UNKNOWN, False, f"{problem.problem_id} {problem.problem_type}")
     for calculation in reference_calculations:
         if calculation.value is None:
             merge_expectation(table, calculation.calc_id, UNKNOWN, False, NOT_COMPUTABLE_SOURCE)
@@ -263,20 +370,22 @@ def expected_claims(truth: Any, reference_calculations: Iterable[Any] = ()) -> d
 
 
 def score_claims(
-    predicted: dict[str, str], expected: dict[str, ExpectedClaim]
+    predicted: dict[str, str], expected: dict[str, ExpectedClaim], patterns: list[tuple[str, str]] | None = None
 ) -> tuple[list[ClaimScore], dict[str, int]]:
-    """Score a ledger (claim id -> status; {} when the case has no ledger) against the expected table.
+    """Score a ledger (claim id -> status; {} when the case has no ledger) against the expected table and the
+    conditional patterns (expected_patterns).
 
     Returns the scored claims (ledger claims except the by-design ones, plus required expected claims the ledger
-    lacks, as ABSENT) and the number of excluded claims per by-design prefix.
+    lacks, as ABSENT) and the number of excluded claims per by-design key.
     """
     scores: list[ClaimScore] = []
     excluded: Counter = Counter()
     for claim_id, status in predicted.items():
-        if by_design_reason(claim_id) is not None:
-            excluded[claim_id.split("-", 1)[0] + "-"] += 1
+        key = by_design_key(claim_id)
+        if key is not None:
+            excluded[key] += 1
             continue
-        entry = expected.get(claim_id)
+        entry = expected.get(claim_id) or pattern_expectation(claim_id, patterns or [])
         if entry is None:
             scores.append(ClaimScore(claim_id, VERIFIED, status, False))
         else:

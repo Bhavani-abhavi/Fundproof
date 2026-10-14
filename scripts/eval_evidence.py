@@ -86,7 +86,13 @@ DEVELOPMENT_NOTE = (
     "The expected claim-status table (src/uwcopilot/evidence/evaluation.py) and every metric definition were "
     "developed on the dev split (240 packets) and frozen before the first test-split run of this script. An "
     "earlier, interrupted attempt at this evaluation printed the test split's problem-type and resolving-request "
-    "counts (truth composition only; the engine was not run on test packets) before the table was written."
+    "counts (truth composition only; the engine was not run on test packets) before the table was written. "
+    "TABLE v2: after the first test run (table v1), an independent review found that the ledger showed "
+    "calculations over imputed values as VERIFIED and that v1 copied that rule. The ledger was fixed and table v2 "
+    "adds dependency-aware expectations written from the guideline formulas (NBC-4.1, NBC-4.4, NBC-2.1; HM-3.3 / "
+    "HM-11.1 for a loss run whose summary disagrees with its lines). v2 was checked on the dev split (oracle mode) "
+    "before this test-split re-run; the v1 test numbers were seen before v2 was written, so the test split is no "
+    "longer untouched for the table."
 )
 NOT_CLAIMABLE = [
     "real-world accuracy of the engine or of the extraction (SYNTHETIC packets written by the project author)",

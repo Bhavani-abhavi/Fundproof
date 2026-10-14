@@ -7,12 +7,14 @@ from pydantic import ValidationError
 from uwcopilot.agent.applications import parse_application, screened_parties
 from uwcopilot.agent.injection import screen_application
 from uwcopilot.agent.policy import (
+    NAMES_DIFFER_BETWEEN_STATEMENTS,
     DocumentCheckFlag,
     InjectionFlag,
     PolicyInputs,
     ScreeningOutcome,
     evaluate_policy,
 )
+from uwcopilot.docintel.check_models import CheckIssue, CheckResult, Evidence
 from uwcopilot.docintel.injection_scan import DocumentInjectionHit
 from uwcopilot.docintel.levers import LeverError
 from uwcopilot.evidence import state as case_state
@@ -232,3 +234,100 @@ def test_injection_hits_are_used_when_the_check_is_absent() -> None:
         InjectionFlag(field="doc:D01:p2", patterns=["approval_claim", "role_change"])
     ]
     assert case_state.document_injection_flags([], None) == []
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Substituted values lose their document provenance (review finding)
+# --------------------------------------------------------------------------------------------------------------
+
+
+def packet_like_state() -> CaseState:
+    """APP-I-008 with document provenance on a few paths, as from_packet would record it (SYNTHETIC)."""
+    state = from_application(application_dict("APP-I-008"))
+    provenance = {
+        "stated_tiv": [{"doc_id": "D01", "page": 1, "line": 15}],
+        "loss_runs.years[2022-11-01]": [{"doc_id": "D05", "page": 2, "line": 4}],
+        "loss_runs.years[2023-11-01]": [{"doc_id": "D05", "page": 2, "line": 9}],
+        "locations[0].building_value": [{"doc_id": "D02", "page": 1, "line": 7}],
+    }
+    return CaseState.model_validate({**state.model_dump(), "field_provenance": provenance})
+
+
+def test_apply_removes_the_provenance_of_a_substituted_value_and_records_the_lever() -> None:
+    changed = apply(packet_like_state(), {"stated_tiv": 1_000_000.0})
+    assert "stated_tiv" not in changed.field_provenance
+    assert "locations[0].building_value" in changed.field_provenance
+    assert changed.substituted_paths == {"stated_tiv": "stated_tiv"}
+
+
+def test_a_loss_run_year_index_is_mapped_to_the_dated_provenance_key() -> None:
+    # years[2] of APP-I-008 starts on 2022-11-01; field_provenance keys loss-run years by that date.
+    changed = apply(packet_like_state(), {"loss_runs.years[2].claims[0].incurred": 2_130.0})
+    assert "loss_runs.years[2022-11-01]" not in changed.field_provenance
+    assert "loss_runs.years[2023-11-01]" in changed.field_provenance
+    assert changed.substituted_paths == {
+        "loss_runs.years[2022-11-01].claims[0].incurred": "loss_runs.years[2].claims[0].incurred"
+    }
+
+
+def test_special_levers_name_the_values_they_change() -> None:
+    state = packet_like_state()
+    changed = apply(state, {"@schedule_tiv": 3_000_000.0})
+    assert "locations[0].building_value" not in changed.field_provenance
+    assert changed.substituted_paths == {"locations": "@schedule_tiv"}
+    assert case_state.substituted_path("@verified_annual_revenue", {}) == "bank_statements.months"
+    assert case_state.substituted_path("+bank_statements.months", {}) == "bank_statements.months"
+    assert case_state.substituted_path("bank_statements.months[3].total_deposits", {}) == "bank_statements.months"
+    assert case_state.substituted_path("documents_provided+", {}) == "documents_provided"
+
+
+def test_paths_overlap_when_one_contains_the_other() -> None:
+    assert case_state.paths_overlap("owners", "owners[0].name")
+    assert case_state.paths_overlap("loss_runs.years[2024-01-01].claims[0]", "loss_runs.years[2024-01-01]")
+    assert not case_state.paths_overlap("stated_tiv", "stated_total_incurred")
+    assert not case_state.paths_overlap("owners", "owners_extra")
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Named check indicators (review finding: NBC-9.1, names that differ between statements)
+# --------------------------------------------------------------------------------------------------------------
+
+
+def name_check(*sides: tuple[str, str]) -> CheckResult:
+    """A failing name_consistency result with one issue: side_a and side_b hold the given (doc id, field) pairs."""
+
+    def evidence(doc_id: str, field: str) -> Evidence:
+        return Evidence(doc_id=doc_id, page=1, line=1, field=field, value="SYNTHETIC NAME")
+
+    side_a, side_b = sides
+    issue = CheckIssue(
+        issue="value_differs",
+        entity="business",
+        fields=[side_a[1], side_b[1]],
+        side_a=[evidence(*side_a)],
+        side_b=[evidence(*side_b)],
+        message="hand-built",
+    )
+    return CheckResult(
+        check_id="name_consistency",
+        title="Name",
+        status="fail",
+        severity="high",
+        guideline_refs=["NBC-6.2"],
+        message="hand-built",
+        issues=[issue],
+    )
+
+
+def test_a_name_differing_between_two_statements_carries_the_nbc_9_1_indicator() -> None:
+    between = name_check(("D02", "statement.account_holder"), ("D03", "statement.account_holder"))
+    assert case_state.check_indicators(between) == [NAMES_DIFFER_BETWEEN_STATEMENTS]
+    flags = case_state.document_check_flags([between], [])
+    assert flags[0].indicators == [NAMES_DIFFER_BETWEEN_STATEMENTS]
+    application_only = name_check(("D01", "application.legal_name"), ("D03", "statement.account_holder"))
+    assert case_state.check_indicators(application_only) == []
+    resolved = apply(
+        CaseState(application=application_dict("APP-C-001"), document_checks=flags),
+        {"check:name_consistency": "resolved"},
+    )
+    assert resolved.document_checks == [] and evaluate(resolved).recommendation == "approve"

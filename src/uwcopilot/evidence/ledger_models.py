@@ -3,18 +3,27 @@
 This module holds the shapes and their validation rules only; uwcopilot.evidence.ledger re-exports everything here
 and adds build_ledger (a lender case). See ledger.py for the six claim statuses and how the ledger is used.
 
-Validation rules (Claim.status_rules):
+Validation rules (Claim.status_rules and Claim.value_rules):
 - inputs_sha256 is SHA-256 of agent.applications.canonical_json(inputs), computed when not given and checked;
-- UNKNOWN needs a reason; it may carry a value only when imputed, and an imputed claim names its method;
+- UNKNOWN needs a reason; it may carry a value only when imputed, and an imputed claim names its method (the
+  lender ledger never does this: build_ledger keeps an imputed default out of value, in provenance.details, so a
+  memo prints "not available"; the renderer marks any other imputed value it prints);
 - VERIFIED, USER_STATED and MODEL_ESTIMATE need a value;
+- status and provenance kind agree, so an assumption can never be presented as data: VERIFIED only with kind
+  document, calculation, policy or public_data (public_data also needs its source); USER_STATED only with
+  user_input or application; ASSUMPTION only with assumption;
 - CONFLICTING links its conflicts (contradiction ids such as CT-01, or other claim ids);
 - MODEL_ESTIMATE names the model and version and states its uncertainty ("not measured" is allowed);
-- ASSUMPTION names its source or "unsourced", and a numeric assumption carries its range;
-- display is one of the renderer's formats; ids fit the memo slot grammar {{claim:ID}}.
-Ledger checks that ids are unique and that every depends_on_conflicting id is a CONFLICTING claim of the ledger.
+- ASSUMPTION names its source or "unsourced", a numeric assumption carries its range, and the value lies in it;
+- display is one of the renderer's formats; a numeric display (usd, ratio, pct, int, months, years) needs a finite
+  number (not a bool, not text such as "6,500"); a PROBABILITY is never shown as pct1 (0.62 would print "0.6%");
+- ids fit the memo slot grammar {{claim:ID}}.
+Ledger checks that ids are unique and that every depends_on_conflicting / depends_on_unknown /
+depends_on_assumption id is a CONFLICTING / UNKNOWN / ASSUMPTION claim of the ledger.
 """
 
 import hashlib
+import math
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -52,6 +61,28 @@ KNOWN_UNITS: tuple[str, ...] = (
 UNSOURCED = "unsourced"
 SYNTHETIC = "SYNTHETIC"
 HASH_PREFIX_CHARS = 12
+# Which provenance kinds each status may have (statuses not listed accept any kind).
+KINDS_BY_STATUS: dict[str, frozenset[str]] = {
+    "VERIFIED": frozenset({"document", "calculation", "policy", "public_data"}),
+    "USER_STATED": frozenset({"user_input", "application"}),
+    "ASSUMPTION": frozenset({"assumption"}),
+}
+NUMERIC_DISPLAYS: frozenset[str] = frozenset({"usd0", "usd2", "ratio2", "ratio2x", "pct1", "int", "months", "years"})
+PROBABILITY_UNIT = "PROBABILITY"
+PERCENT_DISPLAY = "pct1"
+
+
+# (claim field, the status every id it lists must have)
+DEPENDENCY_FIELDS: tuple[tuple[str, str], ...] = (
+    ("depends_on_conflicting", "CONFLICTING"),
+    ("depends_on_unknown", "UNKNOWN"),
+    ("depends_on_assumption", "ASSUMPTION"),
+)
+
+
+def is_number(value: Any) -> bool:
+    """True for an int or float that is not a bool."""
+    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 def inputs_hash(inputs: dict[str, Any]) -> str:
@@ -135,6 +166,8 @@ class Claim(LedgerModel):
     imputation_method: str | None = None
     conflict_ids: tuple[str, ...] = ()
     depends_on_conflicting: tuple[str, ...] = ()
+    depends_on_unknown: tuple[str, ...] = ()
+    depends_on_assumption: tuple[str, ...] = ()
     uncertainty: str | None = None
     value_range: ValueRange | None = None
 
@@ -180,8 +213,29 @@ class Claim(LedgerModel):
         if self.status == "ASSUMPTION":
             if not self.provenance.source:
                 raise ValueError(f"{self.id}: an ASSUMPTION needs its source or the word 'unsourced'")
-            if isinstance(self.value, int | float) and not isinstance(self.value, bool) and self.value_range is None:
+            if is_number(self.value) and self.value_range is None:
                 raise ValueError(f"{self.id}: a numeric ASSUMPTION needs its range")
+        allowed = KINDS_BY_STATUS.get(self.status)
+        if allowed is not None and self.provenance.kind not in allowed:
+            raise ValueError(f"{self.id}: a {self.status} claim cannot have provenance kind {self.provenance.kind}")
+        if self.status == "VERIFIED" and self.provenance.kind == "public_data" and not self.provenance.source:
+            raise ValueError(f"{self.id}: a VERIFIED public_data claim needs its source")
+        return self
+
+    @model_validator(mode="after")
+    def value_rules(self) -> "Claim":
+        """A value the renderer can print as its display says (module docstring)."""
+        if self.value is not None and self.display in NUMERIC_DISPLAYS:
+            if not is_number(self.value):
+                raise ValueError(f"{self.id}: display {self.display} needs a number, not {type(self.value).__name__}")
+            if not math.isfinite(float(self.value)):
+                raise ValueError(f"{self.id}: display {self.display} needs a finite number")
+        if self.unit == PROBABILITY_UNIT and self.display == PERCENT_DISPLAY:
+            raise ValueError(f"{self.id}: a PROBABILITY is a share; pct1 would print it 100 times too small")
+        if self.status == "ASSUMPTION" and is_number(self.value) and self.value_range is not None:
+            value = float(self.value)
+            if not self.value_range.low <= value <= self.value_range.high:
+                raise ValueError(f"{self.id}: the assumption {value:g} is outside its own range")
         return self
 
     def provenance_note(self) -> str:
@@ -207,6 +261,10 @@ class Claim(LedgerModel):
             parts.append(f"conflicts: {', '.join(self.conflict_ids)}")
         if self.depends_on_conflicting:
             parts.append(f"depends on conflicting: {', '.join(self.depends_on_conflicting)}")
+        if self.depends_on_unknown:
+            parts.append(f"depends on unread values: {', '.join(self.depends_on_unknown)}")
+        if self.depends_on_assumption:
+            parts.append(f"depends on assumptions: {', '.join(self.depends_on_assumption)}")
         if self.imputed:
             parts.append(f"imputed ({self.imputation_method})")
         if self.reason:
@@ -232,6 +290,9 @@ class Assertion(LedgerModel):
     evidence_ids: tuple[str, ...] = ()
     outcome: str | None = None
     blocking: bool = False
+    # UNKNOWN claims (values no document provided) the rule's outcome rests on. A rule that PASSED on such a value
+    # is not shown as passed: build_ledger sets its result to None (not evaluated).
+    depends_on_unknown: tuple[str, ...] = ()
 
 
 class Ledger(LedgerModel):
@@ -245,18 +306,23 @@ class Ledger(LedgerModel):
 
     @model_validator(mode="after")
     def consistent(self) -> "Ledger":
-        """Ids are unique, and every depends_on_conflicting id is a CONFLICTING claim of this ledger."""
+        """Ids are unique, and every depends_on_* id names a claim of this ledger with the matching status."""
         claim_ids = [claim.id for claim in self.claims]
         if len(claim_ids) != len(set(claim_ids)):
             raise ValueError("claim ids must be unique")
         assertion_ids = [assertion.id for assertion in self.assertions]
         if len(assertion_ids) != len(set(assertion_ids)):
             raise ValueError("assertion ids must be unique")
-        conflicting = {claim.id for claim in self.claims if claim.status == "CONFLICTING"}
+        by_status = {status: {c.id for c in self.claims if c.status == status} for status in CLAIM_STATUSES}
         for claim in self.claims:
-            missing = [item for item in claim.depends_on_conflicting if item not in conflicting]
+            for field_name, status in DEPENDENCY_FIELDS:
+                missing = [item for item in getattr(claim, field_name) if item not in by_status[status]]
+                if missing:
+                    raise ValueError(f"{claim.id}: {field_name} names non-{status} claims {missing}")
+        for assertion in self.assertions:
+            missing = [item for item in assertion.depends_on_unknown if item not in by_status["UNKNOWN"]]
             if missing:
-                raise ValueError(f"{claim.id}: depends_on_conflicting names non-CONFLICTING claims {missing}")
+                raise ValueError(f"{assertion.id}: depends_on_unknown names non-UNKNOWN claims {missing}")
         return self
 
     @classmethod

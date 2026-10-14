@@ -7,6 +7,7 @@ plan is in `docs/innovations.md`. Each innovation also has a longer walkthrough 
 |---|---|---|
 | S1: local-model generation eval and LLM migration gate | `docs/walkthrough_innovations_s1.md` | see that file |
 | S2: containment over detection (injection attack success by layer) | `docs/walkthrough_innovations_s2.md` | attack success not measured yet (run R4 has not run) |
+| Innovation S5: decision-value evidence requests (this file, below; Phase 4 files in `docs/walkthrough_phase4.md`) | `docs/walkthrough_phase4.md` | measured on SYNTHETIC simulated cases (`results/evidence_metrics.json`, section `simulator`) |
 
 No number in this file comes from memory. Every number is copied from a results file named next to it. Any
 attack-success number will only exist in `results/injection_metrics.json` after the full run (R4).
@@ -134,3 +135,94 @@ written by `make injection-detector`. The tripwire (`agent.injection.detect`) fl
 
     If L0 attack success is already low, that mostly reflects the 3B model's weak instruction-following. How a
     stronger model would behave was not measured: it could follow the injections more, the rules more, or both.
+
+## Innovation S5: decision-value evidence requests
+
+("Innovation S5" here; Founder Studio has its own "Studio S5", the path to approval. The two are different.)
+
+**In one paragraph.** When a file has open problems (a missing statement month, a revenue gap, a TIV mismatch), an
+underwriter asks for evidence. A checklist asks for everything. S5 asks only for evidence that could change the
+decision: for each request, the engine applies every plausible answer (from documented templates with prior weights),
+re-runs the same deterministic reference policy, and scores the request by how likely and how much the
+recommendation would change, divided by a cost weight. A request whose every answer keeps the recommendation scores
+exactly 0 and is not made. To evaluate this without circularity, a simulator plants problems with a hidden true
+answer in SYNTHETIC cases, lets each policy (VOI, checklist, random, an oracle) ask for evidence, reveals the true
+answer of each request, and compares the final recommendation with the one the policy gives when everything is
+revealed (the full-information recommendation).
+
+**Numbers** (copied from `results/evidence_metrics.json`, section `simulator`; 370 test cases without the held-out
+family, documented priors; case-level bootstrap, 1,000 resamples, seed 42):
+- requests per case: VOI 0.3838 [0.3243, 0.4405], checklist 1.0703 [0.9703, 1.173];
+- cost-weighted requests, VOI minus checklist (paired): -1.2689 [-1.4515, -1.0932];
+- zero-value requests per case (VOI 0 and no change after the reveal), VOI minus checklist: -0.6568
+  [-0.7486, -0.573]; the VOI policy's own count is 0 by construction (it only asks when VOI is above 0);
+- decision error vs the full-information recommendation: VOI 0.027 [0.0135, 0.0432], checklist 0.0135
+  [0.0027, 0.0243]; paired difference +0.0135 [0.0, 0.027]. VOI's 10 errors: 4 undetected planted problems (no
+  policy can request them) and 6 stops with every open request at VOI 0;
+- the oracle (cheapest request sequence that reaches the full-information recommendation, brute force) was
+  computed on 368 of 370 cases (2 had 5 open requests, above its limit of 4) and reached the target on all 368;
+- held-out family (claims_history_mismatch, 30 cases, chosen before any simulation): VOI decision error 0.1667
+  [0.0667, 0.3333], checklist 0.0; VOI with lookahead 0.0333 [0.0, 0.1].
+
+**Read the diagnostics first** (`diagnostics` in the same section). The generator does not draw each problem's
+true answer from the template priors: it takes the answer the cause implies, or the one nearest the hidden value.
+On the main test split, missing statement months were "typical" 24 of 24 times (prior 0.6), embedded instructions
+were "confirmed" 35 of 35 times (prior 0.7), and a missing document never arrived "inconsistent" (0 of 56, prior
+0.1). So the documented priors are not the truth's distribution, and the x0.5 / x1.5 robustness rows scale the
+prior of the generator's own latent answer, not of a draw. Two more effects are measured and reported: insurance
+problems that change claims also rewrite the stated claim history when revealed (in 5 of the 30 held-out cases one
+such reveal alone removes the claims-history finding: PKT-I-026, PKT-I-129, PKT-I-191, PKT-I-226, PKT-I-238), and
+the held-out cases carry more co-planted problems (1.7333 per case against 1.1162 on the main split).
+
+### Interview questions and answers
+
+1. **What is the value-of-information score, exactly?**
+   - VOI(request) = sum over plausible answers r of p(r) x 1[recommendation(r) differs from now] x size(r) / cost
+     weight, with size(r) = 1 + min(|change in the decision metric|, 1.0).
+   - The decision metric is the decision DSCR for a loan and the highest 5-year loss ratio (as a fraction) for
+     insurance.
+   - It is exactly 0 when no plausible answer changes the recommendation. It is a rules-based, scenario-based score,
+     not an optimal or economic model.
+
+2. **Why is the old "next-best evidence matches the resolving document" metric circular?**
+   - The generator writes which request resolves each problem, and the engine's request rules were written by the
+     same author. A 100% match shows that two hand-written tables agree, nothing more.
+   - S5 replaces it with outcomes: does asking in this order reach the decision you would make with all the facts,
+     and at what cost? The circular number is still reported, labeled CIRCULAR.
+
+3. **Why does VOI ask for so much less than the checklist, and is that just stopping early?**
+   - Many open problems cannot change the decision: a debt-payment mismatch never moves the DSCR (the policy already
+     uses the higher payment), and a second missing document cannot help while a blocking referral is open.
+   - It is partly stopping early, and the cost is measured: VOI's decision error is 0.027 against the checklist's
+     0.0135, a paired difference of +0.0135 [0.0, 0.027]. VOI makes fewer requests at a small, measured error cost.
+
+4. **What kinds of mistakes does VOI make?**
+   - Undetected problems: a planted problem no open item stands for (an embedded instruction the scanner misses)
+     cannot be requested by any policy (4 of VOI's 10 test errors).
+   - Myopia: when two problems each keep the recommendation alone (two blocking referrals), each request scores 0
+     and VOI stops (6 of 10). The lookahead variant, an addition, scores a request as if the others were resolved
+     as most likely; it cuts the held-out error from 0.1667 to 0.0333.
+
+5. **What does the held-out family show, and what does it not?**
+   - claims_history_mismatch was chosen and written down before any simulation and never used in development.
+   - Its larger VOI error is mostly myopia on cases with more co-planted problems (1.7333 per case vs 1.1162), not a
+     family-specific weakness, and in 5 of its 30 cases another problem's reveal also fixes the stated history.
+     Both are reported next to the number, so it is not read as more than it is.
+
+6. **How robust is the ranking to wrong priors?**
+   - Scaling the true answer's prior by 0.5 or 1.5 changed nothing in the headline rows: positive priors stay
+     positive, so the same requests keep a nonzero VOI.
+   - Removing the true answer from the option set does change things: the VOI-minus-checklist decision error
+     becomes 0.0919 [0.0622, 0.1243]. Caveat: the documented priors are not the truth's distribution to begin with.
+
+7. **Why is the oracle useful if it cheats?**
+   - It knows the hidden truth and searches every order of requests for the cheapest one that reaches the
+     full-information recommendation, so it is a lower bound on cost, not a policy anyone could run.
+   - It shows how far VOI is from the best possible order on the same cases. A toy test proves the oracle pays cost
+     weights, not request counts (a longer but cheaper path wins).
+
+8. **What can and cannot be claimed?**
+   - Can: on SYNTHETIC cases with a planted truth, the VOI policy made fewer and cheaper requests than a checklist,
+     with the decision-error difference and its interval stated next to it.
+   - Cannot: real time or cost savings (cost weights and priors are the author's assumptions), that the score is
+     optimal or economic, or anything about extraction accuracy (the simulator uses the perfect extraction).

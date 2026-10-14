@@ -1,16 +1,20 @@
 """Evidence decision records (Phase 4 E): one append-only, hash-chained record per engine recommendation.
 
 A record holds everything needed to explain the engine's output later: the packet hash, the application inputs hash,
-the evidence ledger, the contradiction graph, the calculations, the scenarios and decision stability, the open
-items and the next-best-evidence ranking, model versions ("not evaluated": no Phase 1 model applies), prompt
-versions (none: no LLM runs in this phase), the policy, engine, catalog and template versions, the reference
-recommendation, the reviewer action fields (None until a person acts), timestamps, and supersedes_record_id.
+the evidence ledger, the contradiction graph, the calculations (and the display-only supplementary calculations of
+evidence/supplementary.py), the scenarios and decision stability, the open items and the next-best-evidence
+ranking, model versions ("not evaluated": no Phase 1 model applies), prompt versions (none: no LLM runs in this
+phase), the policy, engine, catalog and template versions, the reference recommendation, the reviewer action fields
+(None until a person acts), timestamps, and supersedes_record_id.
 
 Records are appended with agent.decision_record.DecisionLog (unchanged): JSON Lines, every record chained to the one
 before by SHA-256, so an edit or a deletion is detected by verify_chain(). A record is never edited after it is
 written. A correction, or a reviewer's action, is a NEW record (supersede) that names the record it replaces in
-supersedes_record_id, with the reason. The default log is data/processed/evidence/decision_records.jsonl, which is
-gitignored (data/ is never committed).
+supersedes_record_id, with the reason. The correction contract is enforced: a record that supersedes another must
+give a non-empty correction_reason (build_decision_record), the superseded record must already be in the log it is
+appended to (append_record), and supersede() refuses updates to identity fields (record id, case id, record type,
+supersedes_record_id, correction_reason, recorded_at and the chain fields). The default log is
+data/processed/evidence/decision_records.jsonl, which is gitignored (data/ is never committed).
 
 record_id = "EV-" + the first 24 hex characters of SHA-256 over the record's canonical JSON without its timestamp,
 so writing the same engine output twice is a no-op (DecisionLog.append is idempotent by record_id), while a
@@ -33,7 +37,7 @@ from uwcopilot.agent.decision_record import DecisionLog
 from uwcopilot.common.paths import DATA_DIR
 from uwcopilot.evidence.record_views import render_html, render_markdown
 
-ENGINE_VERSION = "evidence-engine-v1"
+ENGINE_VERSION = "evidence-engine-v1.1"
 RECORD_TYPE = "evidence_engine_recommendation"
 DEFAULT_RECORDS_PATH = DATA_DIR / "processed" / "evidence" / "decision_records.jsonl"
 DEFAULT_VIEWS_DIR = DATA_DIR / "processed" / "evidence" / "records"
@@ -46,6 +50,16 @@ NOTICE = (
 # Fields DecisionLog adds when it appends; a superseding record starts without them.
 CHAIN_FIELDS: tuple[str, ...] = ("schema_version", "previous_record_sha256", "record_sha256")
 TIMESTAMP_FIELD = "recorded_at"
+# Fields a correction may never change through supersede(updates=...): they say WHICH record this is.
+IDENTITY_FIELDS: tuple[str, ...] = (
+    "record_id",
+    "record_type",
+    "case_id",
+    "supersedes_record_id",
+    "correction_reason",
+    TIMESTAMP_FIELD,
+    *CHAIN_FIELDS,
+)
 EMPTY_REVIEWER: dict[str, Any] = {
     "action": None,
     "reviewer_id": None,
@@ -98,11 +112,17 @@ def build_decision_record(
     next_best_evidence: list[dict[str, Any]],
     versions: dict[str, Any],
     clock: Callable[[], datetime] = utc_now,
+    supplementary_calculations: dict[str, Any] | None = None,
     not_evaluable_reason: str | None = None,
     supersedes_record_id: str | None = None,
     correction_reason: str | None = None,
 ) -> dict[str, Any]:
-    """One decision record as plain JSON (see the module docstring); every part is passed already dumped."""
+    """One decision record as plain JSON (see the module docstring); every part is passed already dumped.
+
+    Raises ValueError when supersedes_record_id is set without a non-empty correction_reason.
+    """
+    if supersedes_record_id is not None and not (correction_reason or "").strip():
+        raise ValueError("a record that supersedes another needs a correction reason")
     record: dict[str, Any] = {
         "record_type": RECORD_TYPE,
         "data_label": data_label,
@@ -117,6 +137,7 @@ def build_decision_record(
         "not_evaluable_reason": not_evaluable_reason,
         "policy_result": policy_result,
         "calculations": [] if policy_result is None else list(policy_result["calculations"]),
+        "supplementary_calculations": dict(supplementary_calculations or {}),
         "evidence_ledger": evidence_ledger,
         "contradictions": contradictions,
         "contradiction_graph": contradiction_graph,
@@ -145,6 +166,9 @@ def supersede(
     id in supersedes_record_id, the reason, a new timestamp and a new id. The old record is not touched."""
     if not reason.strip():
         raise ValueError("a correction needs a reason")
+    refused = sorted(set(updates or {}) & set(IDENTITY_FIELDS))
+    if refused:
+        raise ValueError(f"a correction cannot change identity fields: {', '.join(refused)}")
     replacement = {key: copy.deepcopy(value) for key, value in record.items() if key not in CHAIN_FIELDS}
     replacement.update(copy.deepcopy(updates or {}))
     if reviewer is not None:
@@ -157,6 +181,12 @@ def supersede(
 
 
 def append_record(record: dict[str, Any], log: DecisionLog | Path | None = None) -> dict[str, Any]:
-    """Append to the hash-chained log (default DEFAULT_RECORDS_PATH); returns the stored record."""
+    """Append to the hash-chained log (default DEFAULT_RECORDS_PATH); returns the stored record.
+
+    Raises ValueError when the record supersedes a record that is not in this log.
+    """
     target = log if isinstance(log, DecisionLog) else DecisionLog(Path(log) if log else DEFAULT_RECORDS_PATH)
+    superseded = record.get("supersedes_record_id")
+    if superseded is not None and target.find(str(superseded)) is None:
+        raise ValueError(f"record {superseded} is not in the log, so it cannot be superseded")
     return target.append(record)

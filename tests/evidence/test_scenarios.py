@@ -119,9 +119,15 @@ def test_revenue_scenarios_are_not_evaluated_without_verified_revenue() -> None:
     for scenario_id in ("revenue_minus_10", "revenue_minus_20", "revenue_minus_30", "stated_revenue_is_verified"):
         assert results[scenario_id].status == "not_evaluated"
         assert "verified annual revenue is unknown" in str(results[scenario_id].reason)
-    assert results["rate_plus_200bps"].status == "evaluated"
+    # The rate shock runs, but the decision DSCR is not computable before or after it and the recommendation stays:
+    # it cannot show anything about stability, so it is not counted as tested (and the case is not "stable").
+    rate = results["rate_plus_200bps"]
+    assert rate.status == "not_evaluated" and rate.not_evaluated_code == "metric_not_computable"
+    assert rate.baseline_metric is None and rate.scenario_metric is None and not rate.recommendation_changed
     stability = decision_stability(list(results.values()), evaluate(state).recommendation)
-    assert "not tested: revenue_minus_10" in stability.summary
+    assert stability.stable is None
+    assert stability.summary.startswith("not evaluated: no stress scenario could be tested")
+    assert "not tested: revenue_minus_10" in stability.summary and "rate_plus_200bps" in stability.summary
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -286,3 +292,28 @@ def test_a_startup_loan_gets_the_rate_scenarios_only() -> None:
     assert all(item.status == "evaluated" and item.metric_calc_id == "CALC-startup_projected_dscr" for item in results)
     assert results[0].scenario_metric is not None and results[0].baseline_metric is not None
     assert results[0].scenario_metric < results[0].baseline_metric
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Review finding: a shock that cannot show anything is not counted as tested
+# --------------------------------------------------------------------------------------------------------------
+
+
+def test_a_frequency_shock_that_adds_no_claim_is_not_tested() -> None:
+    results = by_id(run_scenarios(from_application(two_claim_application())))
+    frequency = results["frequency_plus_10"]  # 0.10 x 2 claims = 0.2 -> 0 claims added
+    assert frequency.status == "not_evaluated" and frequency.not_evaluated_code == "no_change"
+    assert "equals the baseline" in str(frequency.reason) and "no claim added" in str(frequency.reason)
+    assert results["frequency_plus_25"].status == "evaluated"  # 0.25 x 2 = 0.5 -> 1 claim
+    stability = decision_stability(list(results.values()), results["frequency_plus_25"].baseline_recommendation)
+    family = next(item for item in stability.families if item.family == "frequency")
+    assert family.tested == ("frequency_plus_25",) and family.not_evaluated == ("frequency_plus_10",)
+
+
+def test_a_case_with_no_testable_shock_is_undetermined_not_stable() -> None:
+    every = [
+        result("frequency_plus_10", "frequency", 0.10, False, evaluated=False),
+        result("severity_plus_10", "severity", 0.10, False, evaluated=False),
+    ]
+    stability = decision_stability(every, "approve")
+    assert stability.stable is None and "no stress scenario could be tested" in stability.summary

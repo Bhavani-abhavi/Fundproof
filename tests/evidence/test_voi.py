@@ -218,7 +218,9 @@ def test_missing_documents_share_one_request_and_are_valued_together() -> None:
     assert all(voi(item, state) == 0.0 for item in items)
     ranked = rank_requests(state, items)
     assert len(ranked) == 1 and set(ranked[0].item_ids) == {item.item_id for item in items}
-    assert len(ranked[0].options_summary) == 4  # 2 x 2 combinations
+    # One option per document (provided_consistent; provided_inconsistent is left out because no policy rule reads
+    # its check lever), so 1 x 1 combination.
+    assert len(ranked[0].options_summary) == 1
     assert ranked[0].p_change == pytest.approx(1.0) and ranked[0].voi == pytest.approx(1.0 / 1.5)
 
 
@@ -249,3 +251,60 @@ def test_scores_are_bounded_on_generated_packets() -> None:
                 assert request.voi >= 0.0 and 0.0 <= request.p_change <= 1.0 + 1e-6
                 assert (request.voi == 0.0) == (request.p_change == 0.0)
                 assert sum(option["prior"] for option in request.options_summary) == pytest.approx(1.0, abs=1e-4)
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Review findings: an insurance value by hand, and a request with too many combinations degrades instead of failing
+# --------------------------------------------------------------------------------------------------------------
+
+
+def test_insurance_voi_uses_the_loss_ratio_as_a_fraction() -> None:
+    # APP-I-008 (package; property loss ratio decides): property earned premium 11,862 + 12,120 + 12,378 + 12,636 +
+    # 12,893 = 61,889; property incurred 11,625 + 11,878 + 12,130 = 35,633; 35,633 / 61,889 = 57.6% > 55.0%: refer.
+    # Option "lower" (prior 0.5) corrects the 2023-02-09 claim to 2,130: 25,633 / 61,889 = 41.4% -> approve.
+    # Option "as_shown" (prior 0.5) keeps it -> refer, no change.
+    # size = 1 + |41.4 - 57.6| / 100 = 1 + 0.162 = 1.162 (the percent difference as a FRACTION, capped at 1.0);
+    # VOI = 0.5 x 1.162 / 2.0 (corrected_loss_run) = 0.2905.
+    state = from_application(application_dict("APP-I-008"))
+    assert evaluate(state).recommendation == "refer"
+    item = make_item(
+        "paid_reserve_mismatch", "CONFLICTING", template_key="paid_reserve_mismatch", request_id="corrected_loss_run"
+    )
+    lower = {
+        "loss_runs.years[2].claims[0].paid": 2_130.0,
+        "loss_runs.years[2].claims[0].incurred": 2_130.0,
+        "stated_total_incurred": 29_863.0,
+    }
+    replacement = {
+        item.item_id: [
+            ResolutionChoice(option_id="lower", description="lower", prior=0.5, substitutions=lower),
+            ResolutionChoice(option_id="as_shown", description="as shown", prior=0.5, substitutions={}),
+        ]
+    }
+    value = request_value(state, [item], choices_by_item=replacement)
+    outcomes = {outcome.option_id: outcome for outcome in value.outcomes}
+    assert value.current_metric == 57.6 and outcomes["lower"].metric == 41.4
+    assert outcomes["lower"].recommendation == "approve" and outcomes["lower"].size == pytest.approx(1.162)
+    assert not outcomes["as_shown"].changes_recommendation
+    assert cost_weight("corrected_loss_run") == 2.0
+    assert value.voi == pytest.approx(0.2905, abs=1e-6)
+
+
+def test_a_request_with_too_many_combinations_is_not_scored_and_does_not_fail() -> None:
+    # Ten out-of-balance claim lines on one loss run: 2^10 = 1,024 combinations of the paid/reserve options exceed
+    # the cap of 729. Document amounts are untrusted input, so the engine must degrade, not raise.
+    application = application_dict("APP-I-008")
+    claims = application["loss_runs"]["years"][4]["claims"]
+    template = dict(application["loss_runs"]["years"][2]["claims"][0])
+    while sum(len(year["claims"]) for year in application["loss_runs"]["years"]) < 10:
+        claims.append(dict(template, date_of_loss="2025-02-09"))
+    for year in application["loss_runs"]["years"]:
+        for line in year["claims"]:
+            line["reserve"] = round(line["reserve"] + 100.0, 2)
+    state = from_application(application, injection_flags=[])
+    items = [item for item in detect_open_items(state) if item.problem_type == "paid_reserve_mismatch"]
+    assert len(items) >= 10
+    value = request_value(state, items)
+    assert not value.computable and value.voi == 0.0 and "exceed the cap of 729" in str(value.not_computable_reason)
+    ranked = rank_requests(state, items)
+    assert ranked[0].voi == 0.0 and "is not scored: 1024 combinations" in ranked[0].reason

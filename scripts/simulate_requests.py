@@ -14,7 +14,16 @@ What it does:
 2. runs every policy of evidence/simulator.py (voi, voi_lookahead, checklist, random, oracle) on every case, under
    every priors variant (documented, latent_x0.5, latent_x1.5, latent_removed; the oracle under documented only);
 3. writes the "simulator" section (see "Results files" below) and one JSON line per run to
-   data/processed/evidence/simulator_runs.jsonl (gitignored).
+   data/processed/evidence/simulator_runs.jsonl (gitignored). The section also holds "diagnostics"
+   (evidence/simulator_diagnostics.py): the latent option vs the documented prior per problem family, the coupled
+   reveals of insurance problems that also rewrite the stated claim history, the planted problems per case, and
+   the amount-driven cpa_reviewed_financials cases reported apart.
+
+READ THE DIAGNOSTICS BEFORE THE RESULTS. The generator does NOT draw each problem's latent (true) resolution from the
+template priors: it takes the option the cause implies or the option nearest the hidden value (the note at the top
+of docintel/synthetic/credit_records.py), so for several families the latent option is the same in every case. The
+"documented" priors are therefore not the distribution the truths come from, and the x0.5 / x1.5 variants scale the
+prior of the generator's latent option, not of a draw from the priors.
 
 HELD-OUT PROBLEM FAMILY: claims_history_mismatch (insurance). It was chosen and written down on 2026-10-14, BEFORE
 any simulation was run, following the example in the Phase 4 spec. Every case whose truth contains it is held out
@@ -61,6 +70,13 @@ from uwcopilot.docintel.truth import GENERATOR_VERSION, PacketTruth, truth_sha25
 from uwcopilot.evidence.requests import catalog_version, templates_version
 from uwcopilot.evidence.simulator import run_context, simulate
 from uwcopilot.evidence.simulator_cases import prepare_case
+from uwcopilot.evidence.simulator_diagnostics import (
+    case_row,
+    coupling_summary,
+    is_structural_cpa_case,
+    latent_vs_prior,
+    planted_problem_counts,
+)
 from uwcopilot.evidence.simulator_models import (
     MAX_REQUESTS,
     ORACLE_MAX_OPEN_REQUESTS,
@@ -102,10 +118,13 @@ POLICY_DESCRIPTIONS: dict[str, str] = {
     f"{ORACLE_MAX_OPEN_REQUESTS} open requests at the start)",
 }
 VARIANT_DESCRIPTIONS: dict[str, str] = {
-    "documented": "template priors of config/resolution_templates.yaml",
-    "latent_x0.5": "prior of the latent (true) option x0.5, renormalized",
-    "latent_x1.5": "prior of the latent (true) option x1.5, renormalized",
-    "latent_removed": "latent (true) option removed from the option set, renormalized",
+    "documented": "template priors of config/resolution_templates.yaml (NOT the distribution the latent truths come "
+    "from: see diagnostics.latent_vs_prior)",
+    "latent_x0.5": "prior of the generator's latent option (the option the cause implies or nearest the hidden value; "
+    "not drawn from the priors) x0.5, renormalized",
+    "latent_x1.5": "prior of the generator's latent option x1.5, renormalized; where the documented prior of that "
+    "option is below its latent share, this moves the priors TOWARD the truths",
+    "latent_removed": "the generator's latent option removed from the option set, renormalized",
 }
 READING_NOTES: tuple[str, ...] = (
     "The voi policy only makes requests whose VOI is above zero, so its zero-value request count is 0 by "
@@ -127,6 +146,23 @@ READING_NOTES: tuple[str, ...] = (
     "The full-information recommendation is what the SYNTHETIC reference policy (agent/policy.py) gives once every "
     "planted problem is revealed; it is the benchmark here, not a claim about the right lending or underwriting "
     "decision.",
+    "Latent truths do not follow the documented priors (diagnostics.latent_vs_prior): the generator takes the "
+    "option the cause implies or the nearest one, so for several families one option is latent in every case and "
+    "another never. The 'documented' rows are therefore not a correct-prior baseline, and the x0.5 / x1.5 rows "
+    "measure robustness around priors that are already wrong (x1.5 can move a family toward its truth).",
+    "A reveal applies the generator's latent substitutions, which are not always the template option the engine "
+    "values: insurance problems that change the claims of the latent world also set the stated claim count and "
+    "total incurred to the true history (diagnostics.coupling). Revealing such a problem can therefore change the "
+    "recommendation although the engine's own option for it did not (a VOI of 0 followed by a change), and in the "
+    "held-out family it can remove the claims-history finding without the claims-history request; the cases where "
+    "one coupled reveal alone does so are listed in diagnostics.coupling.held_out_family.",
+    "The held-out family's cases carry more co-planted problems than the main test split "
+    "(diagnostics.planted_problems): part of its larger VOI decision error is the myopia of a one-step score on "
+    "several co-occurring problems, not a family-specific weakness. decision_errors_by_kind splits every policy's "
+    "errors into undetected planted problems, voi stops with every open request at VOI 0, and other.",
+    "Above $500,000 every credit case carries the amount-driven missing cpa_reviewed_financials document (latent "
+    "always provided_consistent); diagnostics.structural_cpa reports those cases apart from the rest of the credit "
+    "test split.",
 )
 NOT_CLAIMABLE: tuple[str, ...] = (
     "real time or cost savings (cost weights and priors are planning assumptions)",
@@ -204,9 +240,11 @@ def case_rng(seed: int, case_id: str) -> random.Random:
     return random.Random(int(digest[:8], 16))
 
 
-def run_case(truth: PacketTruth, seed: int) -> list[SimulationResult]:
-    """Every policy under every priors variant on one case (the oracle under the documented priors only)."""
+def run_case(truth: PacketTruth, seed: int) -> tuple[list[SimulationResult], dict[str, Any]]:
+    """Every policy under every priors variant on one case (the oracle under the documented priors only), and the
+    case's diagnostics row (simulator_diagnostics.case_row)."""
     case = prepare_case(truth)
+    row = case_row(case)
     try:
         context = run_context(case)
     except ValueError as error:
@@ -220,7 +258,7 @@ def run_case(truth: PacketTruth, seed: int) -> list[SimulationResult]:
                 continue
             rng = case_rng(seed, truth.packet_id) if policy == "random" else None
             results.append(simulate(truth, policy, variant, rng, prepared=case, context=context))
-    return results
+    return results, row
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -298,6 +336,34 @@ def design(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def diagnostics(
+    results: list[SimulationResult], truths: list[PacketTruth], rows: list[dict[str, Any]], held_out: set[str]
+) -> dict[str, Any]:
+    """The case diagnostics per group (simulator_diagnostics.py), and the structural CPA cases reported apart."""
+    groups = {
+        "test_main": lambda case_id, split: split == "test" and case_id not in held_out,
+        "held_out_family": lambda case_id, split: split == "test" and case_id in held_out,
+        "development": lambda case_id, split: split == "dev",
+    }
+    section: dict[str, Any] = {"latent_vs_prior": {}, "coupling": {}, "planted_problems": {}}
+    for name, chosen in groups.items():
+        group_truths = [truth for truth in truths if chosen(truth.packet_id, truth.split)]
+        group_rows = [row for row in rows if chosen(row["case_id"], row["split"])]
+        section["latent_vs_prior"][name] = latent_vs_prior(group_truths)
+        section["coupling"][name] = coupling_summary(group_rows)
+        section["planted_problems"][name] = planted_problem_counts(group_rows)
+    cpa = {truth.packet_id for truth in truths if truth.split == "test" and is_structural_cpa_case(truth)}
+    credit_test = [r for r in results if r.split == "test" and r.line == "credit" and r.case_id not in held_out]
+    section["structural_cpa"] = {
+        "note": "credit test cases (held-out family excluded) with the amount-driven missing cpa_reviewed_financials "
+        "document, summarized apart from the other credit test cases",
+        "n_cases": len(cpa),
+        "with_structural_cpa": group_summaries([r for r in credit_test if r.case_id in cpa]),
+        "without_structural_cpa": group_summaries([r for r in credit_test if r.case_id not in cpa]),
+    }
+    return section
+
+
 def headline(test_summaries: dict[str, Any]) -> dict[str, Any]:
     """The paired VOI-minus-checklist differences on the test split, all lines, documented priors (copied)."""
     summary = test_summaries.get("all")
@@ -313,7 +379,11 @@ def headline(test_summaries: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_payload(
-    results: list[SimulationResult], truths: list[PacketTruth], args: argparse.Namespace, run: RunProvenance
+    results: list[SimulationResult],
+    truths: list[PacketTruth],
+    rows: list[dict[str, Any]],
+    args: argparse.Namespace,
+    run: RunProvenance,
 ) -> dict[str, Any]:
     """The "simulator" section."""
     started = time.perf_counter()
@@ -333,6 +403,7 @@ def build_payload(
         "test": test,
         "held_out_family": group_summaries(test_held_out),
         "development": group_summaries(development),
+        "diagnostics": diagnostics(results, truths, rows, held_out),
         "not_claimable": list(NOT_CLAIMABLE),
         "provenance": run.finish(data_snapshots={"simulator_case_set": cases}),
     }
@@ -391,12 +462,15 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
     truths: list[PacketTruth] = []
     results: list[SimulationResult] = []
+    rows: list[dict[str, Any]] = []
     for line in args.lines:
         for truth in build_cases(line, args):
             truths.append(truth)
-            results.extend(run_case(truth, args.seed))
+            case_results, row = run_case(truth, args.seed)
+            results.extend(case_results)
+            rows.append(row)
     simulation_seconds = round(time.perf_counter() - started, 1)
-    payload = build_payload(results, truths, args, run)
+    payload = build_payload(results, truths, rows, args, run)
     payload["simulation_seconds"] = simulation_seconds
     for text in headline_lines(payload):
         print(text)

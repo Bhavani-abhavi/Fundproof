@@ -10,17 +10,19 @@ truth is used to choose packets, as the simulator itself does. Everything is SYN
 import ast
 import json
 import random
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
 import pytest
-from evidence_case_helpers import CASE_NUMBERS, LINE_PREFIX, generated_truth, single_problem_packet
+from evidence_case_helpers import CASE_NUMBERS, LINE_PREFIX, application_dict, generated_truth, single_problem_packet
 
 import simulate_requests
 from uwcopilot.agent.applications import parse_application
 from uwcopilot.common.paths import REPO_ROOT
 from uwcopilot.docintel.truth import PacketTruth
 from uwcopilot.evidence import simulator
+from uwcopilot.evidence.open_item_models import make_item
 from uwcopilot.evidence.requests import ResolutionChoice, cost_weight
 from uwcopilot.evidence.simulator import (
     Position,
@@ -35,8 +37,10 @@ from uwcopilot.evidence.simulator import (
     variant_choices,
 )
 from uwcopilot.evidence.simulator_cases import SimCase, full_information_state, latent_option_for, prepare_case
+from uwcopilot.evidence.simulator_diagnostics import case_row, coupling_summary, is_coupled, latent_vs_prior
 from uwcopilot.evidence.simulator_models import SimulationResult, requests_to_stable
-from uwcopilot.evidence.simulator_summary import paired, policy_metrics, ratio_ci
+from uwcopilot.evidence.simulator_summary import decision_errors_by_kind, paired, policy_metrics, ratio_ci
+from uwcopilot.evidence.state import apply, evaluate, from_application
 from uwcopilot.evidence.voi import request_values, resolution_choices
 
 EVIDENCE_DIR = REPO_ROOT / "src" / "uwcopilot" / "evidence"
@@ -478,3 +482,115 @@ def test_request_keys_name_the_request_and_its_params() -> None:
     keys = [request_key(group) for group in groups]
     assert len(set(keys)) == len(keys)
     assert all(key.split("|")[0] == group[0].request_id for key, group in zip(keys, groups, strict=True))
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Review findings: the zero-value clause, the oracle's cost weights, diagnostics and error kinds
+# --------------------------------------------------------------------------------------------------------------
+
+
+def positions_with_two_recommendations() -> tuple[Position, Position]:
+    """APP-I-008 as documented (refer: 57.6% property loss ratio) and with one claim lowered (approve: 41.4%)."""
+    before = from_application(application_dict("APP-I-008"))
+    after = apply(
+        before,
+        {
+            "loss_runs.years[2].claims[0].paid": 2_130.0,
+            "loss_runs.years[2].claims[0].incurred": 2_130.0,
+            "stated_total_incurred": 29_863.0,
+        },
+    )
+    first = Position(answered=(), revealed=(), state=before, result=evaluate(before))
+    second = Position(answered=("OI-x",), revealed=("PB-01",), state=after, result=evaluate(after))
+    assert (first.result.recommendation, second.result.recommendation) == ("refer", "approve")
+    return first, second
+
+
+def test_a_zero_voi_request_whose_reveal_changes_the_recommendation_is_not_zero_value() -> None:
+    first, second = positions_with_two_recommendations()
+    item = make_item("paid_reserve_mismatch", "CONFLICTING", request_id="corrected_loss_run", template_key=None)
+    pick = simulator.Pick(group=[item], voi=0.0, p_change=0.0)
+    changed = simulator.step_after(first, pick, second, None)  # type: ignore[arg-type]
+    assert changed.voi_before == 0.0 and changed.recommendation_after != changed.recommendation_before
+    assert changed.zero_value is False
+    kept = simulator.step_after(first, pick, first, None)  # type: ignore[arg-type]
+    assert kept.zero_value is True
+
+
+@dataclass(frozen=True)
+class ToyResult:
+    """A policy result with only a recommendation (for the toy request graph)."""
+
+    recommendation: str
+
+
+def toy_position(answered: tuple[str, ...]) -> Position:
+    """A toy position: the target is reached after A alone, or after both B and C."""
+    reached = "A" in answered or {"B", "C"} <= set(answered)
+    return Position(answered=answered, revealed=(), state=None, result=ToyResult("approve" if reached else "refer"))  # type: ignore[arg-type]
+
+
+def test_the_oracle_pays_cost_weights_not_request_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Toy graph: request A alone reaches the target at cost 3.0; B then C reach it at cost 1.0 + 1.0 = 2.0. The
+    # cheapest path (B, C) is LONGER than the shortest one (A): an oracle that paid 1.0 per request would pick A.
+    groups = {
+        name: [make_item("missing_document", "UNKNOWN", name, request_id=name, template_key=None)] for name in "ABC"
+    }
+    weights = {"A": 3.0, "B": 1.0, "C": 1.0}
+
+    def toy_open_requests(case: object, position: Position) -> tuple[list, list]:
+        open_groups = [groups[name] for name in "ABC" if name not in position.answered]
+        return [group[0] for group in open_groups], open_groups
+
+    def toy_advance(case: object, position: Position, group: list) -> Position:
+        return toy_position((*position.answered, group[0].request_id))
+
+    monkeypatch.setattr(simulator, "open_requests", toy_open_requests)
+    monkeypatch.setattr(simulator, "advance", toy_advance)
+    monkeypatch.setattr(simulator, "cost_weight", lambda request_id: weights[request_id])
+    search = oracle_path(None, toy_position(()), "approve")  # type: ignore[arg-type]
+    assert search.path is not None and [group[0].request_id for group in search.path] == ["B", "C"]
+
+
+def test_diagnostics_count_latent_options_against_the_documented_priors() -> None:
+    truths = [generated_truth(f"PKT-C-{number}", "credit") for number in CASE_NUMBERS]
+    table = latent_vs_prior(truths)
+    planted = sum(len(truth.problems) for truth in truths)
+    assert sum(entry["n_problems"] for entry in table.values()) == planted
+    for entry in table.values():
+        options = entry["options"]
+        assert sum(option["latent_count"] for option in options.values()) == entry["n_problems"]
+        assert sum(option["documented_prior"] for option in options.values()) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_diagnostics_find_insurance_reveals_that_also_rewrite_the_stated_history() -> None:
+    truth = single_problem_packet("insurance", "paid_reserve_mismatch")
+    problem = next(item for item in truth.problems if item.problem_type == "paid_reserve_mismatch")
+    assert is_coupled(problem) == bool(
+        {"stated_claim_count", "stated_total_incurred"} & set(problem.latent_substitutions)
+    )
+    history = single_problem_packet("insurance", "claims_history_mismatch")
+    assert not any(is_coupled(item) for item in history.problems if item.problem_type == "claims_history_mismatch")
+    row = case_row(prepared(truth.packet_id, "insurance"))
+    assert set(row) >= {"n_planted_problems", "coupled_problem_types", "coupled_reveal_removes_reconciliation_finding"}
+    summary = coupling_summary([row])
+    assert summary["n_cases"] == 1
+
+
+def test_decision_errors_are_split_by_kind() -> None:
+    def errored(case_id: str, undetected: tuple[str, ...], stop: str) -> SimulationResult:
+        return hand_result(case_id, "voi", 0.0, 0, 0, True).model_copy(
+            update={"undetected_problem_ids": undetected, "stop_reason": stop}
+        )
+
+    runs = [
+        errored("a", ("PB-01",), "no_nonzero_voi"),
+        errored("b", (), "no_nonzero_voi"),
+        errored("c", (), "list_exhausted"),
+        hand_result("d", "voi", 0.0, 0, 0, False),
+    ]
+    assert decision_errors_by_kind(runs) == {
+        "undetected_planted_problem": 1,
+        "stopped_with_every_open_request_at_zero_voi": 1,
+        "other": 1,
+    }

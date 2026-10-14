@@ -19,6 +19,13 @@ revenue := verified, stated TIV := schedule TIV) are not shocks: they are listed
 recommendation. Note the policy's precedence: a blocking finding (sanctions, embedded instructions, identity,
 loss-run integrity) keeps the recommendation at "refer" whatever a shock does, so such a case reads as stable.
 
+A shock counts as TESTED only when it could have shown something. It is "not_evaluated" (with not_evaluated_code
+and the reason) when it cannot be built (not_applicable), cannot be applied (not_applied), changes nothing (no_change:
+a frequency shock that rounds to zero whole claims, or a severity shock with no claims to scale), or leaves the
+decision metric not computable before AND after while the recommendation stays the same (metric_not_computable: no
+verified revenue for a DSCR, no loss ratio for a line). Such a shock keeps its deltas for the record, but it never
+makes a case read as "stable". The last two rules do not apply to counterfactuals, which are reported apart.
+
 All scenarios are what-ifs on SYNTHETIC data, not predictions.
 """
 
@@ -44,6 +51,16 @@ INSURANCE_METRIC_NAME = "5-year loss ratio"
 VERIFIED_REVENUE_CALC = "CALC-verified_annual_revenue"
 SCHEDULE_TIV_CALC = "CALC-schedule_tiv"
 SHOCK_FAMILIES: tuple[str, ...] = ("revenue", "rate", "frequency", "severity")
+# Why a scenario was not tested (ScenarioResult.not_evaluated_code); see the module docstring.
+NOT_APPLICABLE = "not_applicable"
+NOT_APPLIED = "not_applied"
+NO_CHANGE = "no_change"
+METRIC_NOT_COMPUTABLE = "metric_not_computable"
+NO_CHANGE_REASON = "the scenario changes nothing in the application, so it equals the baseline"
+METRIC_REASON = (
+    "the {metric} is not computable before or after the scenario and the recommendation is unchanged, so the "
+    "scenario cannot show how stable the decision is"
+)
 
 
 @dataclass(frozen=True)
@@ -116,6 +133,7 @@ class ScenarioResult(Frozen):
     is_shock: bool
     status: str  # "evaluated" | "not_evaluated"
     reason: str | None = None
+    not_evaluated_code: str | None = None  # not_applicable | not_applied | no_change | metric_not_computable
     notes: tuple[str, ...] = ()
     changed_paths: tuple[str, ...] = ()
     metric_name: str
@@ -218,8 +236,8 @@ def scenario_plan(spec: ScenarioSpec, state: CaseState, baseline: PolicyResult) 
     raise ValueError(f"unknown scenario {spec.scenario_id}")
 
 
-def not_evaluated(spec: ScenarioSpec, baseline: PolicyResult, reason: str) -> ScenarioResult:
-    """A scenario that could not be built or evaluated, with the reason."""
+def not_evaluated(spec: ScenarioSpec, baseline: PolicyResult, reason: str, code: str) -> ScenarioResult:
+    """A scenario that could not be built or evaluated, with the reason and its code."""
     metric = decision_metric(baseline)
     return ScenarioResult(
         scenario_id=spec.scenario_id,
@@ -229,6 +247,7 @@ def not_evaluated(spec: ScenarioSpec, baseline: PolicyResult, reason: str) -> Sc
         is_shock=spec.is_shock,
         status="not_evaluated",
         reason=reason,
+        not_evaluated_code=code,
         metric_name=metric.name,
         metric_calc_id=metric.calc_id,
         baseline_metric=metric.value,
@@ -267,17 +286,32 @@ def compare(
     )
 
 
+def untested(result: ScenarioResult, code: str, reason: str) -> ScenarioResult:
+    """An evaluated scenario that could not show anything, marked not_evaluated (its deltas are kept)."""
+    return result.model_copy(update={"status": "not_evaluated", "not_evaluated_code": code, "reason": reason})
+
+
 def run_scenario(spec: ScenarioSpec, state: CaseState, baseline: PolicyResult) -> ScenarioResult:
-    """Build, apply and evaluate one scenario (not_evaluated with the reason when that is not possible)."""
+    """Build, apply and evaluate one scenario (not_evaluated with the reason when it cannot be built or applied, or
+    when it cannot show anything: module docstring)."""
     try:
         plan = scenario_plan(spec, state, baseline)
     except levers.ScenarioNotApplicable as error:
-        return not_evaluated(spec, baseline, str(error))
+        return not_evaluated(spec, baseline, str(error), NOT_APPLICABLE)
     try:
         scenario = evaluate(apply(state, plan.substitutions))
     except (LeverError, IncompleteApplicationError) as error:
-        return not_evaluated(spec, baseline, f"the scenario could not be applied: {type(error).__name__}")
-    return compare(spec, plan, baseline, scenario)
+        reason = f"the scenario could not be applied: {type(error).__name__}"
+        return not_evaluated(spec, baseline, reason, NOT_APPLIED)
+    result = compare(spec, plan, baseline, scenario)
+    if not spec.is_shock:  # a counterfactual is reported apart from stability, whatever its metric
+        return result
+    if not plan.substitutions:
+        notes = "; ".join(plan.notes)
+        return untested(result, NO_CHANGE, f"{NO_CHANGE_REASON} ({notes})" if notes else NO_CHANGE_REASON)
+    if result.baseline_metric is None and result.scenario_metric is None and not result.recommendation_changed:
+        return untested(result, METRIC_NOT_COMPUTABLE, METRIC_REASON.format(metric=result.metric_name))
+    return result
 
 
 def scenario_specs(line: str) -> tuple[ScenarioSpec, ...]:
@@ -315,11 +349,11 @@ def family_stability(family: str, results: list[ScenarioResult]) -> FamilyStabil
 def stability_summary(baseline: str, families: list[FamilyStability]) -> tuple[bool | None, str]:
     """(stable, summary text) over the families."""
     tested = [family for family in families if family.tested]
-    if not tested:
-        return None, "not evaluated: no stress scenario could be run"
-    flips = [family for family in tested if family.first_flip]
     skipped = [name for family in families for name in family.not_evaluated]
     suffix = f" (not tested: {', '.join(skipped)})" if skipped else ""
+    if not tested:
+        return None, "not evaluated: no stress scenario could be tested" + suffix
+    flips = [family for family in tested if family.first_flip]
     if not flips:
         return True, STABLE_TEXT + suffix
     parts = [f"{family.first_flip_label} ({baseline} -> {family.flips_to})" for family in flips]

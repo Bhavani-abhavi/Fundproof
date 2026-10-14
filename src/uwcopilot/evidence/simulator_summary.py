@@ -10,6 +10,11 @@ scanner misses, for example) cannot be requested by any policy, so the error it 
 decision_error_rate_when_every_planted_problem_detected leaves those cases out so the policies' own stopping errors
 can be read on their own.
 
+decision_errors_by_kind splits a policy's decision errors: a planted problem no open item stands for
+(undetected_planted_problem; no policy can request it), a voi run that stopped while open requests remained because
+each had a VOI of exactly 0 (stopped_with_every_open_request_at_zero_voi: the myopia of a one-step score when two
+problems each keep the recommendation), and the rest (other).
+
 Only computed runs are summarized; runs that could not be computed are counted with their reasons.
 """
 
@@ -74,6 +79,21 @@ def metric_value(result: SimulationResult, metric: str) -> float | None:
     return float(value)
 
 
+def decision_errors_by_kind(runs: Sequence[SimulationResult]) -> dict[str, int]:
+    """The decision errors of computed runs, by kind (module docstring)."""
+    kinds = {"undetected_planted_problem": 0, "stopped_with_every_open_request_at_zero_voi": 0, "other": 0}
+    for result in runs:
+        if not result.decision_error:
+            continue
+        if result.undetected_problem_ids:
+            kinds["undetected_planted_problem"] += 1
+        elif result.stop_reason == "no_nonzero_voi":
+            kinds["stopped_with_every_open_request_at_zero_voi"] += 1
+        else:
+            kinds["other"] += 1
+    return kinds
+
+
 def policy_metrics(results: Sequence[SimulationResult]) -> dict[str, Any]:
     """Per-case means (with CIs) of one policy's runs."""
     runs = computed(results)
@@ -92,6 +112,7 @@ def policy_metrics(results: Sequence[SimulationResult]) -> dict[str, Any]:
             [bool(result.decision_error) for result in runs if not result.undetected_problem_ids]
         ),
         "requests_to_stable_when_reached": rate(stable),
+        "decision_errors_by_kind": decision_errors_by_kind(runs),
         "stop_reasons": dict(sorted(Counter(result.stop_reason for result in runs).items())),
     }
 
@@ -155,6 +176,9 @@ def case_counts(results: Sequence[SimulationResult]) -> dict[str, Any]:
             Counter(str(result.not_computed_reason) for result in rows if not result.computed)
         ),
         "n_clean_cases": sum(1 for result in rows if not result.problem_types),
+        "mean_planted_problems_per_case": (
+            round(sum(len(result.problem_types) for result in rows) / len(rows), DIGITS) if rows else None
+        ),
         "open_requests_at_start": dict(sorted(Counter(result.n_initial_open_requests for result in runs).items())),
         "cases_with_undetected_planted_problems": sum(1 for result in runs if result.undetected_problem_ids),
         "undetected_planted_problems_by_type": dict(sorted(undetected.items())),

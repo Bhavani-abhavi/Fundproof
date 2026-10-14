@@ -18,11 +18,14 @@ from uwcopilot.docintel.schemas import parse_extraction
 from uwcopilot.docintel.truth import InjectedProblem
 from uwcopilot.evidence.evaluation import (
     ABSENT,
+    CLAIM_STATUS_LABEL,
     CONFLICTING,
+    LOCATION_DEFAULTS_KEY,
     UNKNOWN,
     VERIFIED,
     claim_counts,
     expected_claims,
+    expected_patterns,
     expected_table,
     expected_table_sha256,
     merge_expectation,
@@ -462,3 +465,39 @@ def test_counter_helpers_and_paired_difference():
     difference = paired_ratio_difference(first, second, "x", "n")
     assert difference["value"] == -0.25  # 3/4 - 4/4
     assert difference["ci_low"] <= -0.25 <= difference["ci_high"] <= 0.0
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Table v2 (review finding): dependency-aware expectations and the same-author label
+# ----------------------------------------------------------------------------------------------------------------
+
+
+def test_a_missing_debt_schedule_makes_the_debt_service_ratios_unknown():
+    table = expected_claims(truth([], missing=["debt_schedule"]))
+    for claim_id in ("CALC-annual_debt_service", "CALC-dscr", "CALC-leverage", "CALC-stressed_dscr_revenue"):
+        assert table[claim_id].status == UNKNOWN and not table[claim_id].required, claim_id
+
+
+def test_missing_credit_report_and_loss_run_totals_expect_unknown_by_pattern():
+    case = truth([problem("PB-01", "loss_run_total_mismatch", "corrected_loss_run")], missing=["credit_report"])
+    table = expected_claims(case)
+    assert table["CALC-min_principal_credit_score"].status == UNKNOWN
+    assert table["CALC-loss_ratio_5yr_property"].status == UNKNOWN
+    patterns = expected_patterns(case)
+    predicted = {
+        "APP-owners.0.credit_score": UNKNOWN,
+        "APP-owners.1.bankruptcy_within_7_years": UNKNOWN,
+        "APP-loss_runs.years.2023-11-01": UNKNOWN,
+        "APP-owners.0.is_control_person": UNKNOWN,  # no rule expects it: VERIFIED expected, so wrong
+    }
+    scores, _ = score_claims(predicted, table, patterns)
+    by_id = {score.claim_id: score for score in scores}
+    assert by_id["APP-owners.0.credit_score"].correct and by_id["APP-owners.1.bankruptcy_within_7_years"].correct
+    assert by_id["APP-loss_runs.years.2023-11-01"].correct and not by_id["APP-owners.0.is_control_person"].correct
+
+
+def test_undocumented_location_fields_are_excluded_by_design_and_the_table_carries_its_label():
+    scores, excluded = score_claims({"APP-locations.0.wind_tier": UNKNOWN, "APP-locations.1.flood_zone": UNKNOWN}, {})
+    assert scores == [] and excluded == {LOCATION_DEFAULTS_KEY: 2}
+    assert expected_table()["version"] == "evidence-claim-status-table-v2"
+    assert "same author" in expected_table()["label"] and "same author" in CLAIM_STATUS_LABEL

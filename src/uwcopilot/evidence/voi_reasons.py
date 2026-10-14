@@ -70,7 +70,8 @@ def reason_sentence(value: RequestValue, given_others: RequestValue | None = Non
     """The one-sentence reason of a request (given_others: its lookahead value, for a zero-value request)."""
     phrase = request_phrase(value)
     if not value.computable:
-        return f"No plausible resolution could be built from the case values, so {phrase} is not scored."
+        why = value.not_computable_reason or "no plausible resolution could be built from the case values"
+        return f"{phrase[0].upper()}{phrase[1:]} is not scored: {why}."
     clause = change_clause(value)
     if clause is not None:
         return f"Requesting {phrase} {clause}."

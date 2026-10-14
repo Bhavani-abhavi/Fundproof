@@ -13,6 +13,13 @@ value, a number, dict or list; other text is formatted), re-implemented here so 
 generator, which knows the hidden truth. An option whose placeholder has no case value is left out and the
 remaining priors are renormalized; the caller is told which options were dropped.
 
+An option whose "check:<id>" lever names a check the reference policy has no rule for (POLICY_CHECK_IDS: the checks
+in agent.policy.DOCUMENT_CHECK_RULES, plus embedded_instructions, which acts on the injection flags) is left out the
+same way. Such a lever cannot change any policy result, so the option would evaluate exactly like another option
+under a different name. Today this is missing_document's "provided_inconsistent" ("check:<document>_consistency":
+the guidelines route no rule on a late document that disagrees with the file), so a missing-document request is
+valued with "provided_consistent" alone (prior 1.0). The template keeps the option for a future rule.
+
 Everything here is SYNTHETIC: Northwind Business Credit and Harborline Mutual are fictional institutions.
 """
 
@@ -24,11 +31,18 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from uwcopilot.agent.policy import DOCUMENT_CHECK_RULES
 from uwcopilot.common.paths import CONFIG_DIR
+from uwcopilot.docintel.levers import check_overrides
 
 REQUESTS_FILE = CONFIG_DIR / "evidence_requests.yaml"
 TEMPLATES_FILE = CONFIG_DIR / "resolution_templates.yaml"
 PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
+EMBEDDED_INSTRUCTIONS_CHECK = "embedded_instructions"
+# Check ids a "check:" lever can act on: a reference-policy rule exists for them (module docstring).
+POLICY_CHECK_IDS: frozenset[str] = frozenset(
+    {check_id for rules in DOCUMENT_CHECK_RULES.values() for check_id in rules} | {EMBEDDED_INSTRUCTIONS_CHECK}
+)
 
 
 class EvidenceRequest(BaseModel):
@@ -138,8 +152,8 @@ def instantiate_options(
 ) -> InstantiatedTemplate:
     """The template's options filled with case values; extra_substitutions are added to every option.
 
-    Options whose placeholders have no case value are dropped and the remaining priors renormalized to sum to 1
-    (the documented priors keep their ratios).
+    Options whose placeholders have no case value, or whose check lever no policy rule reads (module docstring),
+    are dropped and the remaining priors renormalized to sum to 1 (the documented priors keep their ratios).
     """
     kept: list[tuple[dict[str, Any], dict[str, Any]]] = []
     dropped: list[str] = []
@@ -150,6 +164,9 @@ def instantiate_options(
                 for lever, value in option["substitutions"].items()
             }
         except MissingPlaceholder:
+            dropped.append(option["option_id"])
+            continue
+        if not set(check_overrides(substitutions)) <= POLICY_CHECK_IDS:
             dropped.append(option["option_id"])
             continue
         kept.append((option, {**substitutions, **(extra_substitutions or {})}))

@@ -14,7 +14,9 @@ from typing import Any
 
 from uwcopilot.docintel.evaluation_stats import bootstrap, counts_of, ratio_metric, safe_ratio, totals
 from uwcopilot.evidence.evaluation import (
+    BY_DESIGN_PATTERNS,
     BY_DESIGN_PREFIXES,
+    CLAIM_STATUS_LABEL,
     EXPECTED_STATUSES,
     EXPECTED_TABLE_VERSION,
     PREDICTED_STATUSES,
@@ -30,7 +32,9 @@ CLAIM_NOTE = (
     "is not in the ledger (also every required claim of a packet whose application did not validate). A packet "
     "whose application did not validate has no ledger, so its VERIFIED claims cannot be scored: read the accuracy "
     "together with 'evaluable'. The claim id scheme of the table and of the ledger were written by the same author, "
-    "so this measures detection and propagation, not an independent claim taxonomy."
+    "so this measures detection and propagation, not an independent claim taxonomy: it is agreement with the "
+    "documented status rules, and a status rule that is wrong in both tables is scored as correct. Table v2 adds "
+    "dependency-aware expectations (a calculation over a value no document provided is expected UNKNOWN)."
 )
 CALC_NOTE = (
     "The reference policy's calculations on the engine's application against the same calculations on "
@@ -44,8 +48,11 @@ EXPLANATION_NOTE = (
 )
 SCENARIO_NOTE = (
     "Counts over evaluable packets. A family's first flip is the smallest tested shock that changes the reference "
-    "recommendation ('none': every tested shock keeps it; 'untested': no scenario of the family could be evaluated, "
-    "e.g. no verified revenue). Stability is a property of the reference policy on these SYNTHETIC cases."
+    "recommendation ('none': every tested shock keeps it; 'untested': no scenario of the family could be tested). "
+    "A scenario counts as tested only when it could show something: one that changes nothing (a frequency shock "
+    "that rounds to zero whole claims) or leaves the decision metric not computable before and after with the same "
+    "recommendation is NOT tested (not_tested_by_reason), so a packet with no tested shock is 'undetermined', never "
+    "'stable'. Stability is a property of the reference policy on these SYNTHETIC cases."
 )
 
 
@@ -91,7 +98,9 @@ def claim_status_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     for record in records:
         excluded.update(record["excluded_by_design"])
     unobservable = counter_group(records, "claims.by_problem.")
+    reasons = {**BY_DESIGN_PREFIXES, **{key: reason for key, (_, reason) in BY_DESIGN_PATTERNS.items()}}
     return {
+        "label": CLAIM_STATUS_LABEL,
         "note": CLAIM_NOTE,
         "expected_table": {"version": EXPECTED_TABLE_VERSION, "sha256": expected_table_sha256()},
         "accuracy": ratio_metric(records, "claims.correct", "claims.total"),
@@ -106,8 +115,7 @@ def claim_status_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
             name.split(".")[0]: value for name, value in unobservable.items() if name.endswith(".unobservable")
         },
         "excluded_by_design": {
-            prefix: {"claims": int(excluded.get(prefix, 0)), "reason": reason}
-            for prefix, reason in BY_DESIGN_PREFIXES.items()
+            key: {"claims": int(excluded.get(key, 0)), "reason": reason} for key, reason in reasons.items()
         },
     }
 
@@ -182,6 +190,7 @@ def scenario_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "unstable": int(summed.get("stability.unstable", 0)),
         "undetermined": int(summed.get("stability.undetermined", 0)),
         "first_flip_by_family": nested_counts(counter_group(records, "stability.first_flip.")),
+        "not_tested_by_reason": counter_group(records, "scenarios_not_tested."),
         "by_scenario": nested_counts(counter_group(records, "scenarios.")),
     }
 

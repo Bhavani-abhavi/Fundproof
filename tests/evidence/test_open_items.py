@@ -79,7 +79,10 @@ def test_each_problem_type_is_detected_with_its_catalog_request(line: str, probl
         assert problem_type in request_catalog()[item.request_id].resolves or expected_type == "missing_loss_run"
         assert item.template_key in templates()
         choices, dropped = resolution_choices(item)
-        assert choices and not dropped
+        # missing_document's provided_inconsistent option names a check no policy rule reads, so it is left out
+        # (evidence/requests.py); every other template keeps all its options.
+        assert choices and set(dropped) <= {"provided_inconsistent"}
+        assert (item.template_key == "missing_document") == bool(dropped)
         assert sum(choice.prior for choice in choices) == pytest.approx(1.0, abs=1e-5)
 
 

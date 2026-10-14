@@ -27,7 +27,10 @@ unchanged.
 
 What this is not: not optimal and not an economic model. It trusts the priors and measures decision change with the
 reference policy only. A resolution whose levers cannot be applied, or whose application does not validate, is
-listed with its error and counts as no change.
+listed with its error and counts as no change. A request that cannot be scored (an item with no plausible
+resolution, or more than MAX_JOINT_OPTIONS combinations, e.g. a loss run with ten out-of-balance lines) is returned
+with computable False and the reason, never an exception: document amounts are untrusted input, so a crafted or
+misread document must degrade the ranking, not stop the engine.
 """
 
 import itertools
@@ -45,6 +48,8 @@ from uwcopilot.evidence.voi_reasons import options_summary, reason_sentence
 
 SIZE_CAP = 1.0
 MAX_JOINT_OPTIONS = 729
+NO_OPTIONS_REASON = "no plausible resolution could be built from the case values"
+TOO_MANY_OPTIONS_REASON = "{count} combinations of resolutions exceed the cap of {cap}, so the request is not scored"
 PCT_TO_FRACTION = 100.0
 SCORE_NAME = "a rules-based, scenario-based value-of-information score"
 
@@ -155,11 +160,18 @@ def options(item: OpenItem, state: CaseState, current: PolicyResult | None = Non
 # --------------------------------------------------------------------------------------------------------------
 
 
-def joint_choices(choice_lists: list[list[ResolutionChoice]]) -> list[tuple[ResolutionChoice, ...]]:
-    """Every combination of one choice per item (the cartesian product), capped at MAX_JOINT_OPTIONS."""
+def joint_count(choice_lists: list[list[ResolutionChoice]]) -> int:
+    """The number of combinations of one choice per item."""
     total = 1
     for choices in choice_lists:
         total *= len(choices)
+    return total
+
+
+def joint_choices(choice_lists: list[list[ResolutionChoice]]) -> list[tuple[ResolutionChoice, ...]]:
+    """Every combination of one choice per item (the cartesian product), capped at MAX_JOINT_OPTIONS (ValueError
+    above it; request_value checks the count first and never raises)."""
+    total = joint_count(choice_lists)
     if total > MAX_JOINT_OPTIONS:
         raise ValueError(f"{total} joint resolutions exceed the cap of {MAX_JOINT_OPTIONS}")
     return list(itertools.product(*choice_lists))
@@ -197,6 +209,10 @@ def request_value(
         choice_lists.append(choices)
         dropped.extend(f"{item.item_id}:{option_id}" for option_id in missing)
     computable = all(choice_lists)
+    reason = None if computable else NO_OPTIONS_REASON
+    if computable and joint_count(choice_lists) > MAX_JOINT_OPTIONS:
+        computable = False
+        reason = TOO_MANY_OPTIONS_REASON.format(count=joint_count(choice_lists), cap=MAX_JOINT_OPTIONS)
     outcomes: list[OptionOutcome] = []
     if computable:
         for combination in joint_choices(choice_lists):
@@ -220,6 +236,7 @@ def request_value(
         voi=round(sum(outcome.weighted for outcome in outcomes) / weight, 6),
         dropped_option_ids=tuple(dropped),
         computable=computable,
+        not_computable_reason=reason,
     )
 
 

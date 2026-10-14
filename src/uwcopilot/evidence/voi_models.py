@@ -39,6 +39,7 @@ class RequestValue(Frozen):
     voi: float
     dropped_option_ids: tuple[str, ...] = ()
     computable: bool = True
+    not_computable_reason: str | None = None
 
 
 class RankedRequest(Frozen):
