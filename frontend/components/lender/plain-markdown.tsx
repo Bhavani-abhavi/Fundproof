@@ -152,7 +152,15 @@ export function PlainMarkdown({ text, className }: { text: string; className?: s
             );
           case "table":
             return (
-              <div key={index} className="overflow-x-auto rounded-md border border-border">
+              // The table can scroll sideways on a phone, so the box must be reachable from the keyboard
+              // (axe scrollable-region-focusable): a focusable, named region, as in chart-frame.tsx.
+              <div
+                key={index}
+                role="region"
+                aria-label={`Table ${index + 1}`}
+                tabIndex={0}
+                className="overflow-x-auto rounded-md border border-border outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+              >
                 <table className="figure-nums w-full text-left text-xs [overflow-wrap:normal]">
                   <thead className="bg-paper-sunken">
                     <tr>
