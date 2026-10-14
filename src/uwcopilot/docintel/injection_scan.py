@@ -34,7 +34,7 @@ from typing import NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from uwcopilot.agent.injection import MAX_EXCERPT_CHARS, detect
+from uwcopilot.agent.injection import ALL_PATTERNS, MAX_EXCERPT_CHARS, detect
 from uwcopilot.docintel.normalize import hidden_tag_text, normalize_text
 from uwcopilot.docintel.schemas import Cited, InsuranceSubmission, LoanPacket, PacketExtraction
 
@@ -97,8 +97,20 @@ def detection_text(raw: str) -> str:
     return visible
 
 
-def excerpt_of(text: str) -> str:
-    """A short excerpt for the audit record."""
+def excerpt_of(text: str, patterns: Sequence[str] = ()) -> str:
+    """A short excerpt for the audit record, around the first match of the named patterns.
+
+    A long free-text field (a cover email body) can hold the instruction far past its first MAX_EXCERPT_CHARS
+    characters; the excerpt then starts a quarter of its length before the match, so the record shows the
+    instruction. Without a match it is the start of the text.
+    """
+    for item in ALL_PATTERNS:
+        if item.name not in patterns:
+            continue
+        match = item.pattern.search(text)
+        if match is not None:
+            start = max(0, match.start() - MAX_EXCERPT_CHARS // 4)
+            return text[start : start + MAX_EXCERPT_CHARS]
     return text[:MAX_EXCERPT_CHARS]
 
 
@@ -120,7 +132,7 @@ def add_hit(hits: dict[tuple, DocumentInjectionHit], line: ScanLine, patterns: l
         hits[marker] = known.model_copy(update={"patterns": merged})
         return
     hits[marker] = DocumentInjectionHit(
-        doc_id=line.doc_id, page=line.page, line=line.line, patterns=list(patterns), excerpt=excerpt_of(text)
+        doc_id=line.doc_id, page=line.page, line=line.line, patterns=list(patterns), excerpt=excerpt_of(text, patterns)
     )
 
 
@@ -205,7 +217,7 @@ def scan_extraction_fields(extraction: PacketExtraction) -> list[DocumentInjecti
                     page=cited.page,
                     line=cited.line,
                     patterns=patterns,
-                    excerpt=excerpt_of(text),
+                    excerpt=excerpt_of(text, patterns),
                     field=field,
                 )
             )

@@ -6,11 +6,17 @@ Contradictions (match_contradictions):
 - A detected contradiction MATCHES an injected problem when the type is the same and they overlap: they share a
   truth document (the documents of the pages the contradiction's evidence cites) or a field (equal paths, or one
   path inside the other, such as "profit_and_loss" and "profit_and_loss.revenue").
-- Evidence check (evidence_correct): a match whose cited values agree with the truth. Every side value cited on
-  a document that the problem's values_by_doc lists must equal that document's true value (money and numbers
-  within $0.01, text casefolded with single spaces; for a list of true values, one of them or their sum). A match
-  with no comparable value is not counted either way. Recall and precision are also reported counting only
-  evidence-correct matches, so a contradiction that matches by type and document but rests on misread values
+- Evidence check (evidence_correct): a match whose cited values agree with the truth. values_by_doc gives one true
+  value per problem document, often an aggregate (a month's payments, a loss run's claim count, a schedule's TIV),
+  while a contradiction cites the parts (each payment, each claim, each location). So, for every problem document
+  the contradiction cites, the true value must equal one of the side values cited on that document, their sum, or
+  (for a whole-number count) how many values are cited (numbers within $0.01; text: the true text inside the cited
+  text, casefolded; a count against cited amounts is compared with the number of amounts only when they are equal,
+  otherwise it is not comparable). And the contradiction must cite at least two of the problem's documents when two
+  or more print a value (a schedule-only arithmetic contradiction does not show an application-vs-schedule TIV
+  problem; an owner missing from a document has no value there). A
+  match with no comparable value is None and counted neither way. Recall and precision are also reported counting
+  only evidence-correct matches, so a contradiction that matches by type and document but rests on misread values
   (OCR) is visible.
 - Recall: an injected problem counts as detected when at least one contradiction matches it. Precision: a
   contradiction counts as correct when it matches at least one injected problem. Several contradictions about one
@@ -87,40 +93,48 @@ def as_text(value: Any) -> str:
     return " ".join(str(value).split()).casefold()
 
 
-def value_agrees(cited: Any, true_value: Any) -> bool | None:
-    """True / False when a cited value equals the true value (module docstring); None when they cannot be compared."""
+def document_agrees(cited: list[Any], true_value: Any) -> bool | None:
+    """True / False when the values cited on one document agree with its true value (module docstring); None when
+    nothing can be compared."""
     if isinstance(true_value, list):
-        numbers = [as_number(item) for item in true_value]
-        if as_number(cited) is not None and None not in numbers:
-            total = sum(number for number in numbers if number is not None)
-            if abs(as_number(cited) - total) <= MONEY_TOLERANCE:
-                return True
-        return any(value_agrees(cited, item) for item in true_value)
-    if isinstance(true_value, dict):
+        verdicts = [document_agrees(cited, item) for item in true_value]
+        if True in verdicts:
+            return True
+        return False if False in verdicts else None
+    if isinstance(true_value, str):
+        texts = [as_text(item) for item in cited if isinstance(item, str)]
+        if not texts:
+            return None
+        return any(as_text(true_value) in text for text in texts)
+    number = as_number(true_value)
+    numbers = [as_number(item) for item in cited if as_number(item) is not None]
+    if number is None or not numbers:
         return None
-    if as_number(true_value) is not None:
-        number = as_number(cited)
-        return None if number is None else abs(number - as_number(true_value)) <= MONEY_TOLERANCE
-    if isinstance(true_value, str) and isinstance(cited, str):
-        return as_text(cited) == as_text(true_value)
-    return None
+    if any(abs(candidate - number) <= MONEY_TOLERANCE for candidate in [*numbers, sum(numbers)]):
+        return True
+    if isinstance(true_value, int) and not isinstance(true_value, bool):
+        # A count (claims on a loss run; the truth writes amounts as floats) against cited amounts: the number of
+        # amounts may agree; a check that cites only some of the rows is not evidence of a misread, so a different
+        # number is "not comparable".
+        return True if len(numbers) == number else None
+    return False
 
 
 def evidence_correct(problem: Any, contradiction: Contradiction, page_docs: dict[int, str]) -> bool | None:
-    """True when every comparable side value on a problem document equals its true value; None when none compares."""
+    """True when the contradiction's cited values agree with the problem's true values (module docstring)."""
     true_values = dict(getattr(problem, "values_by_doc", None) or {})  # a hand-built stand-in may have none
-    compared = 0
+    cited: dict[str, list[Any]] = {}
     for item in contradiction.sides:
         doc_id = page_docs.get(item.page) if item.page is not None else item.doc_id
-        if doc_id not in true_values:
-            continue
-        agrees = value_agrees(item.value, true_values[doc_id])
-        if agrees is None:
-            continue
-        if not agrees:
-            return False
-        compared += 1
-    return True if compared else None
+        if doc_id in true_values:
+            cited.setdefault(doc_id, []).append(item.value)
+    verdicts = [document_agrees(values, true_values[doc_id]) for doc_id, values in cited.items()]
+    if False in verdicts:
+        return False
+    if True not in verdicts:
+        return None
+    printed = [doc_id for doc_id, value in true_values.items() if value is not None]  # None: absent from that doc
+    return len(cited) >= min(2, len(printed))
 
 
 def designed_abstention(problem: Any, doc_types: dict[str, str]) -> bool:

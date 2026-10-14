@@ -39,7 +39,7 @@ from uwcopilot.docintel import deposits
 from uwcopilot.docintel.check_models import CheckResult
 from uwcopilot.docintel.checks_credit import documents_provided as credit_documents_provided
 from uwcopilot.docintel.normalize import canonical_name
-from uwcopilot.docintel.schemas import Cited, ExtractedOwner, LoanApplicationForm, LoanPacket
+from uwcopilot.docintel.schemas import BankStatement, Cited, ExtractedOwner, LoanApplicationForm, LoanPacket
 from uwcopilot.docintel.to_application_common import (
     CENTS,
     ApplicationBuilder,
@@ -49,6 +49,13 @@ from uwcopilot.docintel.to_application_common import (
     money,
     provided_codes,
 )
+
+SCHEDULE_PATHS: tuple[str, ...] = (
+    "debt.existing_monthly_payment_schedule",
+    "debt.refinanced_monthly_payment",
+    "debt.existing_total_debt_balance",
+)
+TOTAL_TOLERANCE_USD = 1.00  # NBC-9.1: printed totals and rows may differ by up to $1.00
 
 
 def statement_sources(statements: list) -> list[Cited]:
@@ -65,7 +72,7 @@ def account_number(statements: list, builder: ApplicationBuilder) -> str | None:
     return None
 
 
-def rows_disagree_with_total(statement, month: dict) -> bool:
+def rows_disagree_with_total(statement: BankStatement, month: dict) -> bool:
     """True when the statement has no deposit row, or its deposit rows and printed total are more than $1.00 apart."""
     has_rows = any(row.kind == "deposit" for row in deposits.classify_rows(statement))
     if not has_rows:
@@ -100,14 +107,6 @@ def bank_statements(packet: LoanPacket, builder: ApplicationBuilder) -> dict:
         ),
         "cash_intensive_approved": False,
     }
-
-
-SCHEDULE_PATHS: tuple[str, ...] = (
-    "debt.existing_monthly_payment_schedule",
-    "debt.refinanced_monthly_payment",
-    "debt.existing_total_debt_balance",
-)
-TOTAL_TOLERANCE_USD = 1.00  # NBC-9.1: printed totals and rows may differ by up to $1.00
 
 
 def add_unknown(builder: ApplicationBuilder, path: str) -> None:

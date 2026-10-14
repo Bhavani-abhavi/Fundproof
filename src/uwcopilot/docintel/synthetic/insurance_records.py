@@ -6,6 +6,11 @@ doc_ids maps document keys to packet doc ids: "insurance_application", "property
 Every problem that changes the claims of the latent world (a hidden claim, a missing loss run, a corrected claim
 line, a claims-history correction) also sets the application's stated claim count and total incurred to the TRUE
 loss history (true_history), so application_latent never carries a reconciliation difference no problem explains.
+
+Latent outcomes do not follow the template priors (see the same note in credit_records.py): the latent option is the
+one the cause implies, or the nearest one. For loss_run_total_mismatch the integrity variant is always rows_correct
+and the hidden-claim variant always summary_correct_missing_claim; claims_history_mismatch is always
+loss_runs_correct; a missing ownership statement is always provided_consistent.
 """
 
 from datetime import date, timedelta

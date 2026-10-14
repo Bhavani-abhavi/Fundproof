@@ -51,9 +51,20 @@ def test_rules_pipeline_metrics_on_three_packets(runs: dict[str, list[dict]]) ->
     metrics = summarize(runs["rules"])
     assert metrics["n_packets"] == 3 and metrics["packets_by_line"] == {"credit": 2, "insurance": 1}
     assert metrics["fields"]["overall"]["f1"]["value"] >= 0.9
-    assert metrics["citations"]["accuracy"]["value"] >= 0.9
+    citations = metrics["citations"]
+    assert citations["page_level_on_correct_values"]["value"] >= 0.9
+    assert (
+        citations["supported_all_values"]["value"] >= 0.9 and citations["line_level_on_correct_values"]["value"] >= 0.9
+    )
     assert metrics["page_classification"]["all"]["value"] >= 0.9
     assert metrics["checklist"]["code_accuracy"]["denominator"] == 2 * 11 + 8
+    # Outcomes, not only plumbing: 5 scorable problems (one of them an embedded instruction written in a technique
+    # the regex patterns do not know), every detected contradiction matches a problem, every checklist is right.
+    contradictions = metrics["contradictions"]
+    assert contradictions["recall"]["denominator"] == 5 and contradictions["recall"]["numerator"] >= 4
+    assert contradictions["precision"]["value"] == 1.0
+    assert metrics["checklist"]["packet_exact_match"]["value"] == 1.0
+    assert metrics["injections"]["recall"]["denominator"] == 1
     assert metrics["cost"] == {
         "llm_calls": 0,
         "input_tokens": 0,

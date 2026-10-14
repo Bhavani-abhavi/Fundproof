@@ -5,6 +5,21 @@ values that fill the resolution template, the latent option and the exact latent
 problems.make_problem). doc_ids maps document keys to packet doc ids: "loan_application", "profit_and_loss",
 "balance_sheet", "debt_schedule", "credit_report", "formation_document", "tax_return_summary",
 "bank_statement:YYYY-MM", "photo_id:O1", "collateral_valuation:1".
+
+LATENT OUTCOMES DO NOT FOLLOW THE TEMPLATE PRIORS (read this before using the truths to evaluate resolution or
+value-of-information). config/resolution_templates.yaml gives each option a prior, but the generator does NOT draw
+the latent option from those priors. The latent option is the one the problem's CAUSE implies, or the option
+nearest to the true hidden value, so for several problem types it is the same in every packet:
+- missing_pages: the removed month is one of the case's own months (seasonality of +-15%), so it is almost always
+  nearest to the median of the others: month_typical;
+- missing_document: provided_consistent (no packet carries an "inconsistent" late document); a request above
+  $500,000 always adds a cpa_reviewed_financials missing document (no document type can satisfy it), so that
+  checklist code follows from the amount alone: report it apart from drawn missing documents;
+- each revenue_gap cause maps to one option (non-revenue counted and unsupported -> verified_is_right, unidentified
+  -> stated_is_right, timing -> midpoint); name/FEIN typos -> typo_confirmed; prompt_injection -> confirmed.
+A resolution or calibration evaluation on these truths therefore measures how well a method recovers the cause,
+not how it handles the spread the priors describe. Drawing latents from the priors (and building the hidden month
+or claims to match) is left to the Phase 4 simulator.
 """
 
 import statistics

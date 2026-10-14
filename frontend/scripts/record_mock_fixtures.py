@@ -158,10 +158,11 @@ def record_studio(rec: Recorder) -> None:
     first = paths[0]
     change = (first["change_sets"] or [first["closest"]])[0]
     if change and change["apply"]["supported"]:
-        patch = {"version": project["version"], **change["apply"]["project_fields"]}
+        apply = change["apply"]
+        patch = {"version": project["version"], **apply["project_fields"], "plan_change": apply["plan_change"]}
         updated = rec.call("PUT", base, patch)
         rec.save("project_demo_v2.json", {"patch": patch, "project": updated})
-        site = change["apply"]["site_index"]
+        site = apply["site_index"]
         rec.save("scores_demo_v2.json", rec.call("POST", f"{base}/sites/score", {}))
         rec.save(f"feasibility_demo_v2_{site}.json", rec.call("POST", f"{base}/feasibility", {"site_index": site}))
         rec.save(f"path_demo_v2_{site}.json", rec.call("POST", f"{base}/path-to-approval", {"site_index": site}))

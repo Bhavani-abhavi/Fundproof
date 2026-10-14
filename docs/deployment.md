@@ -28,12 +28,16 @@ writes; the file says which machine and which target each number comes from.
      |-- /api/*            FastAPI: /api/health, /api/config, /api/me, /api/auth/*,
      |      |                       /api/studio/* (Founder Studio), /api/lender/* (Lender Desk DEMO)
      |      |-- sign-in -> huggingface.co OpenID Connect (OAUTH_* variables injected because hf_oauth: true)
-     |      |-- heavy work (simulation, path search, agent run) -> worker threads, 60 s per request, then 503
+     |      |-- request bodies over 64 KiB -> 413; validation answers never echo the input
+     |      |-- heavy work (simulation, path search, agent run) -> worker threads, 60 s per request, then 503;
+     |      |                  at most 3 jobs per user running or queued
      |      |-- lender demo -> the LangGraph agent with the template memo (no language model), the guideline
      |      |                  index in /app/qdrant_storage, OFAC lists in /app/data/raw/ofac (UWC_SCREENING_LISTS=ofac)
-     |      |-- address sites -> Census Geocoder (keyless, real metros only; needs the Space's internet access)
+     |      |-- address sites -> Census Geocoder (keyless, real metros only; needs the Space's internet access;
+     |      |                  its own 2-thread pool, one lookup batch per user, 10 s timeout, no cache)
      |      '-- Store   -> /app/data on the container disk (lost on restart), or, with UWC_STORE=hf_dataset,
-     |                     an encrypted mirror in a PRIVATE Hugging Face dataset
+     |                     an encrypted mirror in a PRIVATE Hugging Face dataset (Hub commits never block a
+     |                     request: they hold only the Hub lock; store calls run in worker threads)
      '-- everything else  the Next.js static export in /app/frontend/out (served by uwcopilot.web.static)
 ```
 
@@ -297,6 +301,10 @@ None of these can be checked without a real Space:
 
 ## 9. Owner decisions (open)
 
+- **Privacy notice.** Studio addendum rule B lets the deployed app take real founder input only under
+  `docs/studio/privacy.md`. That file is a draft written from the v0.1 code on 2026-10-13 (what is collected, the
+  Census Geocoder, encryption, deletion and retention, logs, and what S8 still has to build); the owners review and
+  approve it before the first public deploy.
 - **License.** The repository has no LICENSE file, so the Space card has no `license` key. Choosing one is the
   owners' decision.
 - **Space visibility.** The workflow creates the Space public (`private=False`), as planned for a usable prototype.

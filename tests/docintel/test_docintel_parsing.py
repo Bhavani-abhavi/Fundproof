@@ -120,7 +120,16 @@ def test_parse_percent(text: str, expected: float | None) -> None:
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("48", 48), ("10,311", 10311), ("10 311", 10311), ("1O", 10), ("4.5", None), ("", None), ("4 1", None), ("2 5", None)],
+    [
+        ("48", 48),
+        ("10,311", 10311),
+        ("10 311", 10311),  # a thousands comma read as a space
+        ("1O", 10),
+        ("4.5", None),
+        ("", None),
+        ("4 1", None),  # two OCR tokens (a speck read as "4") are not 41
+        ("2 5", None),
+    ],
 )
 def test_parse_int(text: str, expected: int | None) -> None:
     assert parse_int(text) == expected

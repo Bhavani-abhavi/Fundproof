@@ -27,6 +27,15 @@ What it does, in one headless Chromium profile (Playwright, `channel="chromium"`
    the lender file, with the mobile (Lighthouse default) and desktop presets, --lighthouse-runs times each.
 8. Deletes the plan through "Delete plan" and checks that its page then says "Not found".
 
+Reproducibility: the results must name the code they measured. The script compares the server's /api/health
+git_sha (the image's UWC_GIT_SHA stamp, `make docker-build-stamped`) with this checkout's HEAD and checks that the
+working tree is clean. When either fails it REFUSES to write, unless --allow-unreproducible is given; the entry then
+says "reproducible": false with the reason and a SHA-256 digest of the uncommitted changes (so the tree can at least
+be identified), and its numbers must not be quoted as the release's.
+
+The results page is also scanned with every "Show the numbers as a table" opened, and the lender file with the
+decision record opened, because those scrolling boxes are where keyboard access can break.
+
 Every step is timed with time.perf_counter() and recorded as passed or failed; a failed step stops its flow. Browser
 console errors and API answers of HTTP 400 or more are recorded per step; the ones a step expects (the 404s of the
 error paths) are marked expected. A flow passes when all its steps passed and nothing unexpected was logged.
@@ -41,6 +50,7 @@ bad arguments or missing tools.
 
 import argparse
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -144,7 +154,7 @@ RECOMMENDATION_TO_ACTION: dict[str, str] = {
     "decline_for_review": "decline",
 }
 # The three possible path-to-approval headlines (frontend/components/studio/project/path-panel.tsx).
-PATH_STATUS_TEXT = re.compile(r"simulated targets|reaches all three targets")
+PATH_STATUS_TEXT = re.compile(r"simulated targets|reaches all three targets|found no path")
 EXPECTED_404_CONSOLE = "status of 404"
 
 RESULTS_DESCRIPTION = (
@@ -196,7 +206,66 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-lighthouse", action="store_true", help="only the flows and the axe scans")
     parser.add_argument("--step-timeout-s", type=float, default=DEFAULT_STEP_TIMEOUT_S, help="timeout of each wait")
     parser.add_argument("--wait-s", type=float, default=DEFAULT_WAIT_S, help="how long to wait for /api/health")
+    parser.add_argument(
+        "--allow-unreproducible",
+        action="store_true",
+        help="write the results even when the tree is dirty or the server's commit stamp differs from HEAD "
+        "(the entry is then marked reproducible: false)",
+    )
     return parser.parse_args(argv)
+
+
+def git_output(*arguments: str) -> str | None:
+    """stdout of a git command in the repository, or None when git is missing or fails."""
+    try:
+        completed = subprocess.run(["git", *arguments], cwd=REPO_ROOT, capture_output=True, check=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return completed.stdout.decode("utf-8", errors="replace")
+
+
+def worktree_digest(status: str) -> str:
+    """SHA-256 over `git diff HEAD --binary` and the untracked files (path + bytes): identifies a dirty tree."""
+    digest = hashlib.sha256((git_output("diff", "HEAD", "--binary") or "").encode("utf-8"))
+    for line in sorted(status.splitlines()):
+        if line.startswith("?? "):
+            path = REPO_ROOT / line[3:].strip().strip('"')
+            digest.update(line.encode("utf-8"))
+            if path.is_file():
+                digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def reproducibility(server_git_sha: str | None) -> dict[str, Any]:
+    """Whether the measured server can be rebuilt from a commit: a clean tree whose HEAD the server names."""
+    head = (git_output("rev-parse", "HEAD") or "").strip() or None
+    status = git_output("status", "--porcelain")
+    dirty = status is None or bool(status.strip())
+    reasons = []
+    if head is None:
+        reasons.append("git HEAD could not be read")
+    if dirty:
+        reasons.append("the working tree has uncommitted changes")
+    if not server_git_sha:
+        reasons.append("the server does not name its commit (build with `make docker-build-stamped`)")
+    elif server_git_sha.endswith("-dirty"):
+        reasons.append(f"the server was built from an uncommitted tree ({server_git_sha})")
+    elif head is not None and not head.startswith(server_git_sha) and not server_git_sha.startswith(head):
+        reasons.append(f"the server runs commit {server_git_sha}, not HEAD {head}")
+    return {
+        "reproducible": not reasons,
+        "reasons": reasons,
+        "head": head,
+        "server_git_sha": server_git_sha,
+        "working_tree_dirty": dirty,
+        "working_tree_digest_sha256": worktree_digest(status or "") if dirty and status is not None else None,
+        "note": (
+            "Reproducible means: a clean checkout of `head` rebuilt with the Dockerfile gives the measured app."
+            if not reasons
+            else "UNREPRODUCIBLE: these numbers describe an uncommitted or unstamped build; rebuild from a commit "
+            "with `make docker-build-stamped` and run again before quoting them."
+        ),
+    }
 
 
 def check_arguments(args: argparse.Namespace) -> str:
@@ -753,12 +822,13 @@ class BrowserSession:
         with log.step("wizard_sites") as record:
             started = time.perf_counter()
             page.get_by_role("button", name=re.compile("^Suggest areas")).click()
-            use_first = page.get_by_role("button", name=re.compile(r"^Use suggested area 1,"))
+            # The button's name is its visible text (WCAG 2.5.3); which area it is comes from its description.
+            use_first = page.get_by_role("button", name="Use this area").first
             use_first.wait_for(timeout=self.timeout_ms)
             record["suggest_areas_ms"] = since_ms(
                 started, self.observer.first_answer("POST", r"/areas/suggest$", started)
             )
-            suggested = re.search(r"tract (\w+)", use_first.get_attribute("aria-label") or "")
+            suggested = re.search(r"suggested-area-(\w+)", use_first.get_attribute("aria-describedby") or "")
             use_first.click()
             tract_select = page.get_by_label("Or pick a census tract from the list")
             values = tract_select.locator("option").evaluate_all("options => options.map(option => option.value)")
@@ -801,6 +871,15 @@ class BrowserSession:
             require(page.get_by_text("SYNTHETIC").count() > 0, "no SYNTHETIC label on a SYNTHETIC-metro plan")
             self.scan("studio results", "/studio/project/?id=<plan>")
             self.screenshot("studio-results-1280-light")
+        with log.step("results_tables_open"):
+            # The chart tables scroll inside their own box: scan them open too (keyboard access to scrolling boxes).
+            toggles = page.locator("figure details > summary")
+            require(toggles.count() > 0, "no chart table toggle on the results page")
+            for index in range(toggles.count()):
+                toggles.nth(index).click()  # open
+            self.scan("studio results: chart tables open", "/studio/project/?id=<plan>")
+            for index in range(toggles.count()):
+                toggles.nth(index).click()  # close again
         with log.step("edit_targets_and_apply_change") as record:
             page.get_by_role("button", name="Edit the targets").click()
             for name, value in DEMO_TARGET_EDITS.items():
@@ -899,6 +978,8 @@ class BrowserSession:
             log.facts["record_label"] = body.get("label")
             self.scan("lender file (after the decision)", "/lender/file/?id=<file>")
             self.screenshot("lender-decision-1280-light")
+            page.locator("summary:has-text('Read the record')").first.click()
+            self.scan("lender file: decision record open", "/lender/file/?id=<file>")
 
     def errors(self, log: FlowLog) -> None:
         """Signed-in error paths: an unknown plan id and the wizard's own input check."""
@@ -1034,6 +1115,7 @@ def build_entry(
     lighthouse_runs = [run for page in session.lighthouse_pages for run in page["runs"]]
     return {
         "target": {"kind": args.target, "label": TARGET_LABELS[args.target], "url": base_url},
+        "reproducibility": reproducibility(server.get("git_sha")),
         "measured_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "auth": {"mode": "dev", "note": DEV_LOGIN_NOTE, "username": session.username},
         "server": dict(server),
@@ -1098,6 +1180,11 @@ def node_version(node: str) -> str:
 def print_summary(entry: Mapping[str, Any]) -> None:
     """A short human-readable summary."""
     print(f"Target: {entry['target']['kind']} ({entry['target']['url']})")
+    checked = entry["reproducibility"]
+    print(
+        f"  reproducible: {checked['reproducible']}"
+        + (f" ({'; '.join(checked['reasons'])})" if checked["reasons"] else "")
+    )
     for flow in entry["e2e"]["flows"]:
         print(f"  [{'PASS' if flow['passed'] else 'FAIL'}] flow {flow['name']}")
         for step in flow["steps"]:
@@ -1123,6 +1210,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         container = container_facts(args.container) if args.container else None
     except (MetricsConfigError, SmokeConfigError) as error:
         print(f"Error: {error}", file=sys.stderr)
+        return 2
+    checked = reproducibility(server.get("git_sha"))
+    if not checked["reproducible"] and not args.allow_unreproducible:
+        print(
+            "Error: refusing to measure an unreproducible build: " + "; ".join(checked["reasons"]) + ". Commit, "
+            "rebuild with `make docker-build-stamped`, or pass --allow-unreproducible to record it marked as such.",
+            file=sys.stderr,
+        )
         return 2
     if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ and DEFAULT_BROWSERS_PATH.is_dir():
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(DEFAULT_BROWSERS_PATH)

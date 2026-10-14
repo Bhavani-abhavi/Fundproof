@@ -14,9 +14,15 @@ go to results/docintel_per_packet.jsonl (one line per packet and run). Nothing h
 
 The results carry a provenance block (uwcopilot.governance.provenance): git commit and dirty flag, time, the
 eval-set manifest hash, package versions, load average, and in data_snapshots the Tesseract version, generator
-version, test_truth_sha256 and seeds. Latency depends on the machine and on --workers; both are recorded.
+version, test_truth_sha256 and seeds. Latency depends on the machine and on --workers; both are recorded, and each
+run's latency block carries the machine's load average before and after that run with a caveat. --max-load N
+refuses to start when the 1-minute load average is above N (use it to measure latency on a quiet machine).
 
-Usage: uv run python scripts/eval_docintel.py [--limit N] [--skip-forced-ocr] [--provider ollama --model M]
+Error analysis belongs on the DEV split (--split dev, with --out/--per-packet-out pointing outside results/); the
+test split is for the final measurement only.
+
+Usage: uv run python scripts/eval_docintel.py [--split dev] [--limit N] [--skip-forced-ocr] [--max-load N]
+       [--provider ollama --model M]
 """
 
 import argparse
@@ -54,9 +60,33 @@ DEFAULT_PER_PACKET = RESULTS_DIR / "docintel_per_packet.jsonl"
 EVAL_MANIFEST = REPO_ROOT / "eval" / "packets" / "manifest.json"
 GENERATION_CONFIG = CONFIG_DIR / "generation_eval.yaml"
 NOT_MEASURED_HYBRID = (
-    "not measured (no --provider was given: this run used the rules extractor only; local-model comparisons are "
-    "run separately with --provider)"
+    "not measured (no --provider run has been done: this run used the rules extractor only; "
+    "`scripts/eval_docintel.py --provider ollama` would measure it)"
 )
+LATENCY_CAVEAT = (
+    "Wall-clock times on the machine named in provenance.environment. They depend on the machine, on other work "
+    "running at the same time (see machine_load: the 1/5/15-minute load average before and after this run) and on "
+    "the number of worker processes; they are not a stable product figure."
+)
+NOT_EXERCISED_NOTE = (
+    "check_status_counts shows checks that never pass or fail on these SYNTHETIC packets (always not_evaluated): "
+    "their detection is not measured here. Known: tax_return_vs_pnl (NBC-9.1) compares only a P&L for the same "
+    "calendar year as a tax return, and every generated P&L is trailing twelve months ending mid-year."
+)
+COMPOSITION_NOTE = (
+    "Composition-confounded: scanned pages hold a different mix of document types than clean pages (see "
+    "rules.fields.by_condition.<condition>.by_document_type), so this difference mixes scan degradation with that "
+    "mix. text_layer_vs_forced_ocr reads the same pages both ways and isolates the OCR effect."
+)
+EVAL_SET_NOTE = (
+    "Generator synthetic-packets-v2, master seed 20261013. The v1 packets (seed 42) and their test split were "
+    "inspected during the Phase 2 review, so v2 was generated with a new seed; error analysis for v2 was done on "
+    "the dev split only."
+)
+NOT_IMPLEMENTED = [
+    "NBC-6.2 name and date of birth on the photo ID against the application and the credit report: the application "
+    "and credit report schemas carry no date of birth, so this match is not checked",
+]
 
 
 class EvalSetError(RuntimeError):
@@ -75,6 +105,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", default=None, help="model for the hybrid run (default: the provider's)")
     parser.add_argument("--workers", type=int, default=1, help="parallel packets in the rules run (latency!)")
     parser.add_argument("--ocr-workers", type=int, default=2, help="parallel packets in the forced-OCR run")
+    parser.add_argument("--max-load", type=float, default=None, help="refuse to start above this 1-minute load")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--per-packet-out", type=Path, default=DEFAULT_PER_PACKET)
     return parser.parse_args(argv)
@@ -138,6 +169,21 @@ def evaluate_one(
     if hybrid is not None:
         record["llm_usage"] = result.llm_usage
     return record
+
+
+def load_average() -> list[float] | None:
+    """The 1/5/15-minute load average, or None where the platform has none."""
+    try:
+        return [round(value, 2) for value in os.getloadavg()]
+    except OSError:
+        return None
+
+
+def with_machine_load(summary: dict[str, Any], before: list[float] | None, after: list[float] | None) -> dict:
+    """The run summary with the load average around the run and the latency caveat added to its latency block."""
+    summary["latency"]["machine_load"] = {"load_average_before": before, "load_average_after": after}
+    summary["latency"]["caveat"] = LATENCY_CAVEAT
+    return summary
 
 
 def evaluate_all(packets_dir: Path, entries: list[dict[str, Any]], ocr: str, workers: int) -> list[dict[str, Any]]:
@@ -222,6 +268,7 @@ def build_comparisons(
     """Clean vs scanned pages, text layer vs forced OCR, rules vs hybrid (or 'not measured' with the reason)."""
     comparisons: dict[str, Any] = {
         "clean_vs_scanned_pages": {
+            "note": COMPOSITION_NOTE,
             "clean": prf_metric(rules, "fields.clean.all"),
             "scanned": prf_metric(rules, "fields.scanned.all"),
             "f1_difference_clean_minus_scanned": paired_f1_difference(
@@ -272,6 +319,10 @@ def main(argv: list[str] | None = None) -> int:
     except EvalSetError as error:
         print(error, file=sys.stderr)
         return 1
+    current_load = load_average()
+    if args.max_load is not None and current_load is not None and current_load[0] > args.max_load:
+        print(f"The 1-minute load average {current_load[0]} is above --max-load {args.max_load}.", file=sys.stderr)
+        return 1
     matches_committed = committed_manifest_matches(manifest)
     if matches_committed is False:
         print(
@@ -280,8 +331,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     print(f"Evaluating {len(entries)} SYNTHETIC {args.split} packets from {display_path(args.packets_dir)}")
+    rules_load = load_average()
     rules = evaluate_all(args.packets_dir, entries, "auto", args.workers)
+    rules_load_after = load_average()
     forced = None if args.skip_forced_ocr else evaluate_all(args.packets_dir, entries, "force", args.ocr_workers)
+    forced_load_after = load_average()
     hybrid, models, prompts = None, [], {}
     if args.provider:
         from uwcopilot.llm.ollama_queue import ollama_queue_lock
@@ -297,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         "description": "Document pipeline on SYNTHETIC packets: fields, citations, pages, checklist, "
         "contradictions, injections, latency and cost. Simulated documents only; no real-world accuracy claim.",
         "evaluation_set": {
+            "note": EVAL_SET_NOTE,
             "split": args.split,
             "n_packets": len(entries),
             "full_split": args.limit is None and args.packet_ids is None,
@@ -323,9 +378,15 @@ def main(argv: list[str] | None = None) -> int:
             "workers_forced_ocr_run": None if forced is None else args.ocr_workers,
             "wall_seconds": round(time.perf_counter() - started, 1),
         },
-        "rules": summarize(rules),
+        "rules": with_machine_load(summarize(rules), rules_load, rules_load_after),
         "comparisons": build_comparisons(rules, forced, hybrid),
+        "coverage_notes": {"checks_not_exercised": NOT_EXERCISED_NOTE, "not_implemented": NOT_IMPLEMENTED},
     }
+    if forced is not None:
+        report["comparisons"]["text_layer_vs_forced_ocr"]["forced_ocr"]["machine_load"] = {
+            "load_average_before": rules_load_after,
+            "load_average_after": forced_load_after,
+        }
     versions = sorted({record["tesseract_version"] for record in rules + (forced or []) if record["tesseract_version"]})
     report["provenance"] = run.finish(
         prompts=prompts,

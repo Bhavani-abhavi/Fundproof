@@ -1,12 +1,12 @@
 {
  "business_type_id": "laundromat",
  "business_type_name": "Laundromat",
- "created_at": "2026-10-13T15:48:47.303039Z",
+ "created_at": "2026-10-13T23:44:22.047807Z",
  "data_label": "SYNTHETIC",
  "demand_unit": "machine turns/day",
  "disclaimer": "Educational planning tool. Not financial, legal or lending advice. Lenders make their own decisions.",
- "expires_at": "2026-11-12T15:48:47.323326Z",
- "id": "71a66065c4a51829",
+ "expires_at": "2026-11-12T23:44:22.048344Z",
+ "id": "9b78d404eabe8ced",
  "idea": {
   "flagged": false,
   "flags": [],
@@ -21,17 +21,26 @@
   "annual_rate_status": "ASSUMPTION",
   "budget_status": "USER_STATED",
   "budget_total": 500000.0,
+  "build_out_assumed": null,
   "cash_reserve_at_opening": 100000.0,
+  "cash_reserve_status": "DERIVED",
   "loan_amount": 400000.0,
+  "loan_amount_status": "USER_STATED",
   "loan_term_months": 120,
-  "note": "USD as entered. owner_equity + loan_amount - budget_total is the cash reserve at opening.",
+  "loan_term_status": "USER_STATED",
+  "note": "USD. The cash reserve at opening is owner_equity + loan_amount - the build-out budget (the profile's point estimate when the budget is empty); each simulated future then also takes a build-out overrun out of it.",
   "owner_equity": 200000.0,
+  "owner_equity_status": "USER_STATED",
+  "plan_changes": {},
   "rate_type": "variable"
  },
  "name": "Demo laundromat (SYNTHETIC)",
  "opening_date": "2027-04-01",
  "opening_date_status": "ASSUMPTION",
  "retention_days": 30,
+ "seed": 2801103018,
+ "selected_site_index": 0,
+ "selected_site_status": "USER_STATED",
  "sites": [
   {
    "address": null,
@@ -70,6 +79,6 @@
    "tract_geoid": "SYN000010"
   }
  ],
- "updated_at": "2026-10-13T15:48:47.303039Z",
+ "updated_at": "2026-10-13T23:44:22.047807Z",
  "version": 1
 }

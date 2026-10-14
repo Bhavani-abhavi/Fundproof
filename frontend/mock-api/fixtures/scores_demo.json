@@ -5,7 +5,7 @@
  "metro_name": "Synthetic Metro (SYNTHETIC)",
  "mode": "synthetic",
  "mode_reason": "SYNTHETIC metro: generated data for demonstration and validation only",
- "project_id": "71a66065c4a51829",
+ "project_id": "9b78d404eabe8ced",
  "project_version": 1,
  "scoring_method": "siteiq-v1: percentile rank within the metro per factor, weighted mean of the scored factors",
  "sites": [
@@ -40,7 +40,7 @@
          "seed": "20261012"
         },
         "publisher": "Underwriting Copilot project (generated, not a real place)",
-        "retrieved_at": "2026-10-13T15:48:46Z",
+        "retrieved_at": "2026-10-13T23:44:21Z",
         "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
         "source_id": "synthetic_city",
         "url": "synthetic://synthetic_metro",
@@ -126,7 +126,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -163,7 +163,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -200,7 +200,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -237,7 +237,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -274,7 +274,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -312,7 +312,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -342,7 +342,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -370,7 +370,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -443,7 +443,7 @@
          "seed": "20261012"
         },
         "publisher": "Underwriting Copilot project (generated, not a real place)",
-        "retrieved_at": "2026-10-13T15:48:46Z",
+        "retrieved_at": "2026-10-13T23:44:21Z",
         "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
         "source_id": "synthetic_city",
         "url": "synthetic://synthetic_metro",
@@ -529,7 +529,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -566,7 +566,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -603,7 +603,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -640,7 +640,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -677,7 +677,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -715,7 +715,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -745,7 +745,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -773,7 +773,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -846,7 +846,7 @@
          "seed": "20261012"
         },
         "publisher": "Underwriting Copilot project (generated, not a real place)",
-        "retrieved_at": "2026-10-13T15:48:46Z",
+        "retrieved_at": "2026-10-13T23:44:21Z",
         "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
         "source_id": "synthetic_city",
         "url": "synthetic://synthetic_metro",
@@ -932,7 +932,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -969,7 +969,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -1006,7 +1006,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -1043,7 +1043,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -1080,7 +1080,7 @@
         "seed": "20261012"
        },
        "publisher": "Underwriting Copilot project (generated, not a real place)",
-       "retrieved_at": "2026-10-13T15:48:46Z",
+       "retrieved_at": "2026-10-13T23:44:21Z",
        "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
        "source_id": "synthetic_city",
        "url": "synthetic://synthetic_metro",
@@ -1118,7 +1118,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -1148,7 +1148,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",
@@ -1176,7 +1176,7 @@
        "seed": "20261012"
       },
       "publisher": "Underwriting Copilot project (generated, not a real place)",
-      "retrieved_at": "2026-10-13T15:48:46Z",
+      "retrieved_at": "2026-10-13T23:44:21Z",
       "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
       "source_id": "synthetic_city",
       "url": "synthetic://synthetic_metro",

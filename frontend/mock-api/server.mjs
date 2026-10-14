@@ -9,10 +9,11 @@
 // This file only routes requests to them and keeps a little state in memory (sessions, plans, demo decisions).
 // It is NOT the real API:
 // - every plan gets the recorded demo plan's results (relabeled with its id and version);
-// - a plan created from the wizard is echoed back with its own inputs, and its derived fields (cash reserve,
-//   location checks) say "mock" instead of being computed;
+// - a plan created from the wizard is echoed back with its own inputs; its location checks say "mock", and its cash
+//   reserve is the server's rule (cash + loan - budget, or the business type's build_out_assumed) applied here;
 // - "Apply this change" on the demo plan returns the recorded version 2; other edits just bump the version;
-// - edited path targets are answered only for the recorded edits (path_demo_targets.json); others get a 501.
+// - edited path targets are answered only for the recorded edits (path_demo_targets.json), and a bound on extra
+//   owner cash is not replayed at all; those get a 501.
 // Error paths for testing pages: a plan id starting with "timeout" answers 503 on its heavy routes, and
 // MOCK_LATENCY_MS delays every /api answer.
 
@@ -156,7 +157,31 @@ function summary(plan) {
   };
 }
 
-/** A plan made from wizard input (mock: names come from the options, derived fields are not computed). */
+/** The plan's money as the server would show it (the server's own rule for the reserve, applied to the input). */
+function mockMoney(body, business, changes = {}) {
+  const assumed = body.budget_total ? null : (business?.build_out_assumed ?? 0);
+  const status = (field) => (field in changes ? "PLAN_CHANGE" : "USER_STATED");
+  return {
+    budget_total: body.budget_total ?? null,
+    budget_status: body.budget_total ? status("budget_total") : "ASSUMPTION",
+    build_out_assumed: assumed,
+    owner_equity: body.owner_equity,
+    owner_equity_status: status("owner_equity"),
+    loan_amount: body.loan_amount,
+    loan_amount_status: status("loan_amount"),
+    loan_term_months: body.loan_term_months,
+    loan_term_status: status("loan_term_months"),
+    annual_rate_pct: body.annual_rate_pct ?? null,
+    annual_rate_status: body.annual_rate_pct ? "USER_STATED" : "ASSUMPTION",
+    rate_type: body.rate_type ?? "variable",
+    cash_reserve_at_opening: body.owner_equity + body.loan_amount - (body.budget_total ?? assumed ?? 0),
+    cash_reserve_status: body.budget_total ? "DERIVED" : "ASSUMPTION",
+    plan_changes: changes,
+    note: "mock API: the server's rules applied to the stated inputs",
+  };
+}
+
+/** A plan made from wizard input (mock: names come from the options, location checks are not done). */
 function planFromInput(body) {
   const metro = OPTIONS?.metros?.find((item) => item.id === body.metro_id);
   const business = OPTIONS?.business_types?.find((item) => item.id === body.business_type_id);
@@ -176,18 +201,9 @@ function planFromInput(body) {
     business_type_name: business?.name ?? body.business_type_id,
     demand_unit: business?.demand_unit ?? "",
     idea: { text: body.idea_text ?? null, flagged: false, flags: [], note: "mock API: the idea text was not screened" },
-    money: {
-      budget_total: body.budget_total ?? null,
-      budget_status: body.budget_total ? "USER_STATED" : "ASSUMPTION",
-      owner_equity: body.owner_equity,
-      loan_amount: body.loan_amount,
-      loan_term_months: body.loan_term_months,
-      annual_rate_pct: body.annual_rate_pct ?? null,
-      annual_rate_status: body.annual_rate_pct ? "USER_STATED" : "ASSUMPTION",
-      rate_type: body.rate_type ?? "variable",
-      cash_reserve_at_opening: null,
-      note: "mock API: the cash reserve is computed only by the real server",
-    },
+    money: mockMoney(body, business),
+    selected_site_index: 0,
+    selected_site_status: "USER_STATED",
     sites: body.sites.map((site, index) => ({
       index,
       label: site.label,
@@ -317,15 +333,33 @@ async function handleApi(request, response, url) {
       }
       let updated;
       const patch = DEMO_V2?.patch ?? {};
-      const isRecordedApply = plan.id === DEMO?.id && Object.keys(patch).every((key) => body[key] === patch[key]);
+      const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+      const isRecordedApply = plan.id === DEMO?.id && Object.keys(patch).every((key) => same(body[key], patch[key]));
       if (isRecordedApply) {
         updated = { ...DEMO_V2.project, id: plan.id };
       } else {
         updated = { ...plan, version: plan.version + 1, updated_at: new Date().toISOString() };
-        for (const key of ["owner_equity", "loan_amount", "loan_term_months", "budget_total"]) {
-          if (key in body) {
-            updated.money = { ...updated.money, [key]: body[key], cash_reserve_at_opening: null, note: "mock API: not recomputed" };
-          }
+        const money = { ...plan.money };
+        const input = {
+          budget_total: "budget_total" in body ? body.budget_total : money.budget_total,
+          owner_equity: body.owner_equity ?? money.owner_equity,
+          loan_amount: body.loan_amount ?? money.loan_amount,
+          loan_term_months: body.loan_term_months ?? money.loan_term_months,
+          annual_rate_pct: "annual_rate_pct" in body ? body.annual_rate_pct : money.annual_rate_pct,
+          rate_type: money.rate_type,
+        };
+        const business = OPTIONS?.business_types?.find((item) => item.id === plan.business_type_id);
+        const changes = { ...(money.plan_changes ?? {}) };
+        for (const key of Object.keys(body)) {
+          delete changes[key];
+        }
+        for (const field of body.plan_change?.fields ?? []) {
+          changes[field] = { source: "path_to_approval", engine_version: body.plan_change.engine_version, applied_at: new Date().toISOString(), evidence_needed: body.plan_change.evidence_needed ?? [] };
+        }
+        updated.money = mockMoney(input, business, changes);
+        if (typeof body.selected_site_index === "number") {
+          updated.selected_site_index = body.selected_site_index;
+          updated.selected_site_status = "selected_site_index" in changes ? "PLAN_CHANGE" : "USER_STATED";
         }
       }
       plans.set(plan.id, updated);
@@ -348,6 +382,9 @@ async function handleApi(request, response, url) {
     if (rest === "/path-to-approval" && method === "POST") {
       const body = await readBody(request);
       const siteIndex = Number(body?.site_index ?? 0);
+      if (typeof body?.max_extra_owner_cash === "number") {
+        return problem(response, 501, "Mock API: a bound on extra owner cash cannot be replayed; the real server answers it.");
+      }
       if (body?.targets && Object.keys(body.targets).length > 0) {
         const recorded = editedTargetsResult(plan, siteIndex, body.targets);
         return recorded

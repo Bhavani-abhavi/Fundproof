@@ -4,13 +4,13 @@
   "label": "simulated, based on stated assumptions",
   "meets_target": false,
   "n_paths": 1000,
-  "p_cash_negative_within_months": 0.889,
-  "p_dscr_at_least_target_year2": 0.091,
-  "p_stressed_dscr_at_least_min_year2": 0.023,
-  "projected_dscr_base_case": -1.0,
-  "seed": 3683302423,
-  "shortfall": 2.275,
-  "stressed_dscr_base_case": -1.67,
+  "p_cash_negative_within_months": 0.886,
+  "p_dscr_at_least_target_year2": 0.076,
+  "p_stressed_dscr_at_least_min_year2": 0.022,
+  "projected_dscr_base_case": -0.98,
+  "seed": 2801103018,
+  "shortfall": 2.288,
+  "stressed_dscr_base_case": -1.65,
   "targets_missed": [
    "dscr_year2",
    "stressed_dscr_year2",
@@ -20,17 +20,17 @@
  "change_sets": [],
  "closest": {
   "after": {
-   "annual_debt_service": 43018.99,
+   "annual_debt_service": 61455.71,
    "label": "simulated, based on stated assumptions",
    "meets_target": false,
    "n_paths": 1000,
-   "p_cash_negative_within_months": 0.256,
-   "p_dscr_at_least_target_year2": 0.746,
-   "p_stressed_dscr_at_least_min_year2": 0.491,
-   "projected_dscr_base_case": 3.48,
-   "seed": 3683302423,
-   "shortfall": 0.519,
-   "stressed_dscr_base_case": 0.88,
+   "p_cash_negative_within_months": 0.127,
+   "p_dscr_at_least_target_year2": 0.68,
+   "p_stressed_dscr_at_least_min_year2": 0.437,
+   "projected_dscr_base_case": 2.52,
+   "seed": 2801103018,
+   "shortfall": 0.51,
+   "stressed_dscr_base_case": 0.67,
    "targets_missed": [
     "dscr_year2",
     "stressed_dscr_year2",
@@ -38,10 +38,18 @@
    ]
   },
   "apply": {
+   "plan_change": {
+    "engine_version": "studio-path-to-approval-1.2",
+    "evidence_needed": [
+     "bank statements that show $320,000 of owner cash (NSP-3.1)",
+     "a rent quote or lease letter of intent for 'Suggested area 1 (tract SYN000092)'"
+    ],
+    "fields": [
+     "owner_equity"
+    ],
+    "source": "path_to_approval"
+   },
    "project_fields": {
-    "budget_total": 500000.0,
-    "loan_amount": 280000.0,
-    "loan_term_months": 120,
     "owner_equity": 320000.0
    },
    "reason": null,
@@ -53,13 +61,13 @@
    "label": "simulated, based on stated assumptions",
    "meets_target": false,
    "n_paths": 1000,
-   "p_cash_negative_within_months": 0.889,
-   "p_dscr_at_least_target_year2": 0.091,
-   "p_stressed_dscr_at_least_min_year2": 0.023,
-   "projected_dscr_base_case": -1.0,
-   "seed": 3683302423,
-   "shortfall": 2.275,
-   "stressed_dscr_base_case": -1.67,
+   "p_cash_negative_within_months": 0.886,
+   "p_dscr_at_least_target_year2": 0.076,
+   "p_stressed_dscr_at_least_min_year2": 0.022,
+   "projected_dscr_base_case": -0.98,
+   "seed": 2801103018,
+   "shortfall": 2.288,
+   "stressed_dscr_base_case": -1.65,
    "targets_missed": [
     "dscr_year2",
     "stressed_dscr_year2",
@@ -69,18 +77,20 @@
   "changes": [
    {
     "effort": 0.4,
+    "evidence_needed": "bank statements that show $320,000 of owner cash (NSP-3.1)",
     "fields_changed": [
-     "plan.owner_equity",
-     "loan.amount"
+     "plan.owner_equity"
     ],
-    "from_value": 200000.0,
-    "label": "Owner cash equity",
-    "lever": "owner_equity",
-    "to_value": 320000.0,
+    "from_value": 100000.0,
+    "label": "Cash reserve at opening",
+    "lever": "working_capital_reserve",
+    "own_change": 120000.0,
+    "to_value": 220000.0,
     "unit": "USD"
    },
    {
     "effort": 0.3,
+    "evidence_needed": "a rent quote or lease letter of intent for 'Suggested area 1 (tract SYN000092)'",
     "fields_changed": [
      "site",
      "site_label"
@@ -88,26 +98,57 @@
     "from_value": "Tract SYN000010",
     "label": "Candidate site (same metro)",
     "lever": "site",
+    "own_change": null,
     "to_value": "Suggested area 1 (tract SYN000092)",
     "unit": "machine turns/day"
    }
   ],
   "effort": 0.7,
-  "explanation": "Put in $120,000 more of your own cash (owner equity $200,000 -> $320,000) and borrow that much less. Only if you really have this cash: the lender checks equity against bank statements (NSP-3.1, SYNTHETIC program). Use your candidate site 'Suggested area 1 (tract SYN000092)' instead of 'Tract SYN000010' (its most likely demand is 330.2 machine turns/day, against 97.8; status MODEL_ESTIMATE). It has no rent quote, so the metro's rent range (ASSUMPTION) is used until you get one. Plan after the change: owner equity $320,000, loan $280,000 over 120 months, build-out $500,000, cash reserve at opening $100,000; equity injection 53.3% of the project (the SYNTHETIC program asks for at least 20.0%, NSP-3.1). Result (simulated, based on stated assumptions; 1,000 simulated futures, seed 3683302423): chance that year-2 DSCR is at least 1.25: 0.091 -> 0.746 (target: at least 0.80); chance that year-2 DSCR stays at least 1.00 under the lender's 20% revenue stress: 0.023 -> 0.491 (target: at least 0.80); chance that cash falls below zero within 24 months: 0.889 -> 0.256 (target: at most 0.10). Still missed: the year-2 DSCR target, the lender's revenue-stress target, the cash target. The lender's own check on the year-2 median (NSP-4.1 and NSP-4.2): projected DSCR -1.00 -> 3.48, revenue-stressed DSCR -1.67 -> 0.88. Reaching these simulated targets does not mean a lender will approve the loan. Lenders make their own decisions.",
+  "evidence_needed": [
+   "bank statements that show $320,000 of owner cash (NSP-3.1)",
+   "a rent quote or lease letter of intent for 'Suggested area 1 (tract SYN000092)'"
+  ],
+  "explanation": "If you kept $120,000 more cash in reserve at opening, funded by your own cash and used your candidate site 'Suggested area 1 (tract SYN000092)' instead of 'Tract SYN000010', the simulation (simulated, based on stated assumptions; 1,000 simulated futures, seed 2801103018) gives: chance that year-2 DSCR is at least 1.25: 0.076 -> 0.680 (target: at least 0.80); chance that year-2 DSCR stays at least 1.00 under the lender's 20% revenue stress (NSP-4.2): 0.022 -> 0.437 (target: at least 0.80); chance that cash falls below zero within 24 months: 0.886 -> 0.127 (target: at most 0.10). In this simulation these would still be missed: the year-2 DSCR target, the revenue-stress target, the cash target. This counts only if you really have this cash: the lender checks owner equity against bank statements (NSP-3.1, SYNTHETIC program). The site 'Suggested area 1 (tract SYN000092)' has a most likely demand of 330.2 machine turns/day, against 97.8 (status MODEL_ESTIMATE). It has no rent quote, so the metro's rent range (ASSUMPTION) is used until you get one. The plan with this change: owner equity $200,000 -> $320,000, loan $400,000 over 120 months, build-out $500,000, cash reserve at opening $100,000 -> $220,000; equity injection 44.4% of the project (the SYNTHETIC program asks for at least 20.0%, NSP-3.1). The lender's own check on the year-2 median (NSP-4.1, and NSP-4.2 with the program's 20% revenue stress): projected DSCR -0.98 -> 2.52, revenue-stressed DSCR -1.65 -> 0.67. What would back the changed figures for a lender: bank statements that show $320,000 of owner cash (NSP-3.1); a rent quote or lease letter of intent for 'Suggested area 1 (tract SYN000092)'. Until then they are plan changes from a simulation, not quotes or verified figures. Reaching these simulated targets does not mean a lender will approve the loan. Lenders make their own decisions.",
+  "field_changes": [
+   {
+    "field": "owner_equity",
+    "from_value": 200000.0,
+    "label": "Owner cash equity",
+    "to_value": 320000.0,
+    "unit": "USD",
+    "writes_plan": true
+   },
+   {
+    "field": "cash_reserve_at_opening",
+    "from_value": 100000.0,
+    "label": "Cash reserve at opening",
+    "to_value": 220000.0,
+    "unit": "USD",
+    "writes_plan": false
+   },
+   {
+    "field": "site_label",
+    "from_value": "Tract SYN000010",
+    "label": "Site",
+    "to_value": "Suggested area 1 (tract SYN000092)",
+    "unit": "site",
+    "writes_plan": true
+   }
+  ],
   "meets_target": false,
   "n_levers": 2,
   "plan_after": {
    "build_out_cost": 500000.0,
-   "cash_reserve_at_opening": 100000.0,
+   "cash_reserve_at_opening": 220000.0,
    "checks": {
-    "equity_injection_pct": 53.3,
+    "equity_injection_pct": 44.4,
     "equity_minimum_pct": 20.0,
     "loan_within_limits": true,
     "meets_equity_minimum": true,
     "term_within_limits": true
    },
    "days_open_per_week": null,
-   "loan_amount": 280000.0,
+   "loan_amount": 400000.0,
    "loan_term_months": 120,
    "other_debt_amount": 0.0,
    "owner_equity": 320000.0,
@@ -132,12 +173,13 @@
    "price": null,
    "site_label": "Tract SYN000010"
   },
+  "program_rules_not_met": [],
   "rank": 0,
   "unchanged": "Unchanged: your credit score, your experience, your other debts (none listed), the site's demand estimate, every assumption range and the note rate."
  },
  "data_label": "SYNTHETIC",
  "disclaimer": "Educational planning tool. Not financial, legal or lending advice. Lenders make their own decisions.",
- "engine_version": "studio-path-to-approval-1.0",
+ "engine_version": "studio-path-to-approval-1.2",
  "guardrail_note": "Reaching the targets is not an approval: Studio never approves, declines or recommends a lender.",
  "guardrails": [
   "Only plan choices move: owner equity, loan amount, build-out cost, cash reserve at opening, price, days open, loan term and the choice between your own candidate sites in the same metro.",
@@ -218,18 +260,25 @@
   }
  ],
  "levers_not_available": {
-  "days_open_per_week": "locked by you",
-  "price": "locked by you"
+  "days_open_per_week": "not part of the v0.1 plan form yet, so the search does not move it (locked by the server, not by you)",
+  "price": "not part of the v0.1 plan form yet, so the search does not move it (locked by the server, not by you)"
  },
- "message": "No path within your bounds: no change of one or two plan choices inside your bounds reaches all three targets (simulated, based on stated assumptions). The closest result is shown. Next steps are to widen a bound you can really widen, or to rethink the plan itself (site, size, concept).",
+ "message": "No path within your bounds: the search did not find a change of one or two plan choices inside your bounds that reaches all three targets (simulated, based on stated assumptions). It tries a grid of values and screens pairs, so it is not exhaustive: a combination it did not try could still reach them. The closest result is shown. A wider bound (only where you could really go further) or a different plan (site, size, concept) may change the answer.",
  "metro_mode": "synthetic",
  "notes": [
   "Metro synthetic_metro runs in synthetic mode: SYNTHETIC metro: generated data for demonstration and validation only.",
   "site data-coverage score 0.90 (from SiteIQ)",
   "Pairs are searched only for levers that do not reach the targets alone but move the plan closer on their own, and the pair grid assumes that moving a lever further in its helpful direction does not hurt; a pair can be missed when that does not hold.",
-  "Quick mode: searched with 500 simulated paths and a coarser grid; every number shown was re-checked with 1000 paths (0 change-set(s) dropped because they missed a target in the re-check).",
-  "Price and days open are not part of the plan form yet, so the search did not move them (they are locked)."
+  "Quick mode: a coarser search (4 values on each side of each lever instead of 8, at most 250 plan variants evaluated) on 1,000 simulated paths, seed 2801103018. A finer search can find a smaller change than the one shown.",
+  "Price and days open are not part of the plan form yet, so the search did not move them (the server locks them)."
  ],
+ "owner_cash_bound": {
+  "current": 200000.0,
+  "extra": 120000.0,
+  "high": 320000.0,
+  "note": "Default bound: owner cash may grow by up to 20% of the project cost (config/studio/levers.yaml), a placeholder (DESIGN_CHOICE) for your own answer. Extra owner cash counts only if you really have it: a lender checks it against bank statements. The cash-reserve lever is funded by your own cash too.",
+  "source": "default"
+ },
  "plan_before": {
   "build_out_cost": 500000.0,
   "cash_reserve_at_opening": 100000.0,
@@ -248,28 +297,29 @@
   "price": null,
   "site_label": "Tract SYN000010"
  },
- "project_id": "71a66065c4a51829",
+ "project_id": "9b78d404eabe8ced",
  "project_version": 1,
  "search": {
   "blocked_by_program": 0,
   "budget_exhausted": false,
-  "cache_hits": 0,
-  "evaluations": 35,
+  "cache_hits": 1,
+  "evaluations": 43,
   "pairs_screened": 10,
-  "pairs_searched": 0,
-  "runtime_ms": 205.61,
+  "pairs_searched": 3,
+  "runtime_ms": 183.91,
   "search_complete": true,
-  "singles_tried": 25
+  "singles_tried": 25,
+  "variants_evaluated": 43
  },
  "settings": {
-  "confirm_paths": 1000,
-  "max_evaluations": 400,
+  "confirm_paths": null,
+  "max_evaluations": 250,
   "max_results": 3,
   "mode": "quick",
   "months": 36,
-  "n_paths": 500,
+  "n_paths": 1000,
   "search_pairs": true,
-  "seed": 3683302423,
+  "seed": 2801103018,
   "steps_per_side": 4
  },
  "simulator_version": "studio-feasibility-1.0",

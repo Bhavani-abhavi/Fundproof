@@ -375,3 +375,14 @@ web-metrics:  ## Start DOCKER_IMAGE with dev login, run flows + axe + Lighthouse
 
 injection-requests:  ## Hash the 240 planned R4 requests without a model -> results/injection/planned_requests.json
 	uv run python scripts/injection_request_hashes.py
+
+# Website v0.1 verify-and-fix: an image stamped with the commit it was built from (GET /api/health names it), so
+# scripts/web_metrics.py can tell whether its results describe a commit. An uncommitted tree is stamped
+# "<HEAD>-dirty", which web_metrics.py reports as unreproducible. Extra docker flags (a build proxy) go in
+# DOCKER_BUILD_FLAGS, e.g. "--network=host --build-arg HTTPS_PROXY=...".
+.PHONY: docker-build-stamped
+
+docker-build-stamped:  ## docker-build with UWC_GIT_SHA=<HEAD> (<HEAD>-dirty for an uncommitted tree)
+	docker build $(DOCKER_BUILD_FLAGS) $(if $(EXTRA_CA_CERTS),--secret id=extra_ca_certs$(comma)src=$(EXTRA_CA_CERTS),) \
+		--build-arg UWC_GIT_SHA=$$(git rev-parse HEAD)$$(test -z "$$(git status --porcelain)" || echo -dirty) \
+		-t $(DOCKER_IMAGE) .

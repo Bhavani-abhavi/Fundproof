@@ -12,7 +12,10 @@ debt-payment checks in checks_revenue.py.
   <- P&L and balance sheet, neither dated more than 90 days before the application date (NBC-3.1 item 4; the
   P&L's date is its period end, the balance sheet's its "as of" date; a stale one is listed in
   values["stale_documents"] and does not count); debt_schedule; principal_photo_ids <- a photo ID for every
-  principal (NBC-1.2: a person with 20% or more, or the control person); formation_documents and
+  principal (NBC-1.2: a person with 20% or more, or the control person) that is not expired on the application
+  date (NBC-6.2; an ID whose expiry date was not read still counts, an expired one does not and is listed in
+  values["expired_photo_ids"]). NBC-6.2's name and date-of-birth match with the credit report is NOT checked: the
+  application and credit report schemas carry no date of birth. formation_documents and
   beneficial_ownership_certification <- the formation document (the second one needs its members table);
   collateral_documents <- collateral valuation. The evidence also cites the application values that make a
   conditional document required (the requested amount, the purpose).
@@ -23,7 +26,9 @@ debt-payment checks in checks_revenue.py.
   and the application's percentages must add up to 100%.
 - tax_return_vs_pnl (NBC-9.1): the most recent tax return's gross receipts against the P&L revenue "for the same
   year". The summary's tax year is treated as a calendar year, so the check runs only when the P&L period ends on
-  31 December of that year; otherwise it is not evaluated.
+  31 December of that year; otherwise it is not evaluated. The SYNTHETIC generator always prints a trailing-twelve-
+  month P&L ending mid-year, so on the generated packets this check is never evaluated and its detection is NOT
+  measured (the evaluation's check_status_counts shows it); only the hand-built tests exercise it.
 """
 
 from uwcopilot.agent.credit_calculations import round_pct
@@ -47,7 +52,7 @@ from uwcopilot.docintel.checks_identity import owner_consistency, value_consiste
 from uwcopilot.docintel.checks_statements import MONTHS_REQUIRED, consecutive_months
 from uwcopilot.docintel.deposits import month_of, sorted_by_month
 from uwcopilot.docintel.normalize import canonical_fein, canonical_name
-from uwcopilot.docintel.schemas import Cited, LoanPacket
+from uwcopilot.docintel.schemas import Cited, LoanPacket, PhotoId
 
 TAX_RETURN_DIFFERENCE_PCT = 10.0  # NBC-9.1: tax return receipts vs P&L revenue for the same year
 FINANCIALS_MAX_AGE_DAYS = 90  # NBC-3.1 item 4: P&L and balance sheet dated no more than 90 days before the application
@@ -95,6 +100,14 @@ def stale_financials(packet: LoanPacket) -> list[Evidence]:
     return stale
 
 
+def expired_photo_id(photo_id: PhotoId, packet: LoanPacket) -> bool:
+    """True when the ID's expiry date is before the application date (NBC-6.2); False when either date is unknown."""
+    application = packet.application
+    if application is None or application.application_date.value is None or photo_id.expiry_date.value is None:
+        return False
+    return photo_id.expiry_date.value < application.application_date.value
+
+
 def documents_provided(packet: LoanPacket) -> dict[str, list[Evidence]]:
     """Checklist code -> evidence of the documents that satisfy it (only the codes the packet satisfies)."""
     provided: dict[str, list[Evidence]] = {}
@@ -118,10 +131,11 @@ def documents_provided(packet: LoanPacket) -> dict[str, list[Evidence]]:
         ]
     if packet.debt_schedule is not None:
         provided["debt_schedule"] = [document_evidence(packet.debt_schedule, "document", "debt_schedule")]
-    id_names = {canonical_name(item.name.value) for item in packet.photo_ids if item.name.found}
+    current_ids = [item for item in packet.photo_ids if not expired_photo_id(item, packet)]
+    id_names = {canonical_name(item.name.value) for item in current_ids if item.name.found}
     needed = {name for _, name in principals(packet)}
-    if (needed and needed <= id_names) or (not needed and packet.photo_ids):
-        provided["principal_photo_ids"] = [document_evidence(item, "document", "photo_id") for item in packet.photo_ids]
+    if (needed and needed <= id_names) or (not needed and current_ids):
+        provided["principal_photo_ids"] = [document_evidence(item, "document", "photo_id") for item in current_ids]
     if packet.formation is not None:
         provided["formation_documents"] = [document_evidence(packet.formation, "document", "formation_document")]
         if packet.formation.members:
@@ -173,6 +187,7 @@ def check_required_documents(packet: LoanPacket) -> CheckResult:
         "missing": missing,
         "no_packet_document_type": [code for code in NO_PACKET_DOCUMENT_TYPE if code in required],
         "stale_documents": [item.field for item in stale],
+        "expired_photo_ids": [item.doc_id for item in packet.photo_ids if expired_photo_id(item, packet)],
     }
     evidence = [item for items in provided.values() for item in items]
     evidence += requirement_triggers(packet, required) + stale

@@ -218,7 +218,7 @@ def studio_pages(page: Page, base_url: str, tag: str, out: Path, checks: Checks,
     page.locator(".maplibregl-canvas").first.wait_for(timeout=20_000)
     page.get_by_role("button", name="Suggest areas for a laundromat").click()
     settle(page, "Suggested areas for this business type")
-    page.get_by_role("button", name="Use suggested area 1, tract").click()
+    page.get_by_role("button", name="Use this area").first.click()
     page.get_by_label("Or pick a census tract from the list").select_option(index=5)
     page.get_by_role("button", name="Add as a site").click()
     page.wait_for_timeout(800)

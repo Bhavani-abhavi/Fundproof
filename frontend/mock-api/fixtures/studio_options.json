@@ -15,54 +15,60 @@
  },
  "business_types": [
   {
+   "build_out_assumed": 1970000.0,
    "build_out_high": 4970000.0,
    "build_out_low": 490000.0,
-   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); contractor quotes replace them.",
+   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); with the budget left empty the simulation uses build_out_assumed, the sum of their most likely values. Contractor quotes replace them.",
    "build_out_status": "ASSUMPTION",
    "demand_unit": "cars/day",
    "id": "car_wash",
    "name": "Car wash (express tunnel and self-serve)"
   },
   {
+   "build_out_assumed": 500000.0,
    "build_out_high": 1100000.0,
    "build_out_low": 165000.0,
-   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); contractor quotes replace them.",
+   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); with the budget left empty the simulation uses build_out_assumed, the sum of their most likely values. Contractor quotes replace them.",
    "build_out_status": "ASSUMPTION",
    "demand_unit": "machine turns/day",
    "id": "laundromat",
    "name": "Laundromat"
   },
   {
+   "build_out_assumed": 2630000.0,
    "build_out_high": 7880000.0,
    "build_out_low": 660000.0,
-   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); contractor quotes replace them.",
+   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); with the budget left empty the simulation uses build_out_assumed, the sum of their most likely values. Contractor quotes replace them.",
    "build_out_status": "ASSUMPTION",
    "demand_unit": "room-nights/day",
    "id": "motel",
    "name": "Motel / small hotel"
   },
   {
+   "build_out_assumed": 284000.0,
    "build_out_high": 745000.0,
    "build_out_low": 98000.0,
-   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); contractor quotes replace them.",
+   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); with the budget left empty the simulation uses build_out_assumed, the sum of their most likely values. Contractor quotes replace them.",
    "build_out_status": "ASSUMPTION",
    "demand_unit": "covers/day",
    "id": "restaurant_cafe",
    "name": "Restaurant / cafe / dessert shop (ice cream, coffee, bakery)"
   },
   {
+   "build_out_assumed": 225000.0,
    "build_out_high": 620000.0,
    "build_out_low": 73000.0,
-   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); contractor quotes replace them.",
+   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); with the budget left empty the simulation uses build_out_assumed, the sum of their most likely values. Contractor quotes replace them.",
    "build_out_status": "ASSUMPTION",
    "demand_unit": "transactions/day",
    "id": "retail_storefront",
    "name": "Small retail storefront (convenience or specialty)"
   },
   {
+   "build_out_assumed": 29000.0,
    "build_out_high": 112000.0,
    "build_out_low": 6000.0,
-   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); contractor quotes replace them.",
+   "build_out_note": "Sum of the profile's capex ranges (config/studio/business_types); with the budget left empty the simulation uses build_out_assumed, the sum of their most likely values. Contractor quotes replace them.",
    "build_out_status": "ASSUMPTION",
    "demand_unit": "booked nights/month",
    "id": "short_term_rental",
@@ -90,7 +96,7 @@
  },
  "disclaimer": "Educational planning tool. Not financial, legal or lending advice. Lenders make their own decisions.",
  "dscr_target": {
-  "label": "lender policy (SYNTHETIC Northwind guideline NBC-4.2), editable",
+  "label": "lender policy (SYNTHETIC Northwind guideline NBC-4.2); fixed in the web app, so every simulation is measured against the same threshold",
   "source": "corpus/guidelines/northwind_business_credit.md NBC-4.2, term loan minimum decision DSCR (SYNTHETIC document of a fictional institution; also the NSP-4.1 threshold of the SYNTHETIC startup program)",
   "value": 1.25
  },
@@ -306,6 +312,7 @@
     "unit": "percent",
     "value": 7.0
    },
+   "simulation_available": true,
    "site_input": "address_or_map",
    "supports_area_suggestions": true,
    "verified": true
@@ -346,6 +353,7 @@
     "unit": "percent",
     "value": 7.0
    },
+   "simulation_available": true,
    "site_input": "address_or_map",
    "supports_area_suggestions": true,
    "verified": true
@@ -386,6 +394,7 @@
     "unit": "percent",
     "value": 7.0
    },
+   "simulation_available": true,
    "site_input": "address_or_map",
    "supports_area_suggestions": true,
    "verified": true
@@ -426,6 +435,7 @@
     "unit": "percent",
     "value": 7.0
    },
+   "simulation_available": true,
    "site_input": "address_or_map",
    "supports_area_suggestions": true,
    "verified": true
@@ -466,6 +476,7 @@
     "unit": "percent",
     "value": 7.0
    },
+   "simulation_available": true,
    "site_input": "address_or_map",
    "supports_area_suggestions": true,
    "verified": true
@@ -496,7 +507,7 @@
       "seed": "20261012"
      },
      "publisher": "Underwriting Copilot project (generated, not a real place)",
-     "retrieved_at": "2026-10-13T15:48:46Z",
+     "retrieved_at": "2026-10-13T23:44:21Z",
      "sha256": "86a5c3aba12e6ff741e480a26e1e650d80a8a5dde354a067085b5b572a111266",
      "source_id": "synthetic_city",
      "url": "synthetic://synthetic_metro",
@@ -506,6 +517,7 @@
     "unit": "percent",
     "value": 6.25
    },
+   "simulation_available": true,
    "site_input": "map",
    "supports_area_suggestions": true,
    "verified": false

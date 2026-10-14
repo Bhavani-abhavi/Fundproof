@@ -472,12 +472,12 @@
  ],
  "decision": {
   "action": "request_more_information",
-  "decided_at": "2026-10-13T15:49:04.065029+00:00",
+  "decided_at": "2026-10-13T23:44:51.354169+00:00",
   "final_status": "more_information_requested_by_human",
   "is_override": false,
   "label": "DEMO",
-  "record_id": "DR-ae93502c557267751dd91eec",
-  "record_sha256": "c119c308ff3d4750dae3f12166677ab6156e4c47c19e341cc2ee6eb804f89295",
+  "record_id": "DR-34b8d51237646bbdef254006",
+  "record_sha256": "5e936448efd6a97563aa38eebabfa8ce1d3171309ae7c87fca34c378a0d03adb",
   "reviewer_role": "underwriter"
  },
  "evidence": {
