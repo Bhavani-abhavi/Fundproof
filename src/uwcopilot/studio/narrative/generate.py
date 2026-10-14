@@ -45,8 +45,9 @@ LLM_PROVIDERS: tuple[str, ...] = ("fake", "ollama", "hf_inference")
 MAX_ATTEMPTS = 2
 # The template draft (the example the model follows) is about 1,200 tokens; a full draft needs about as many.
 DEFAULT_MAX_TOKENS = 1600
-# The first request is about 10,000 characters and the retry adds the rejected draft and the findings; the Ollama
-# client's context guard estimates 1 token per 2 characters, so 12,288 tokens leave room for both and the answer.
+# The first request is about 12,000-13,000 characters (measured on the first six golden scenarios) and the retry adds
+# the rejected draft and the findings; the Ollama client's context guard estimates 1 token per 2 characters, so
+# 12,288 tokens leave room for both and the answer.
 OLLAMA_NUM_CTX = 12288
 OLLAMA_SEED = 42
 ClientFactory = Callable[[str, str | None], LLMClient]

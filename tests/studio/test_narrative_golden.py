@@ -11,6 +11,7 @@ import pytest
 
 import eval_studio_evidence
 from uwcopilot.llm.fake_client import FakeLLM
+from uwcopilot.llm.ollama_client import OllamaError
 from uwcopilot.studio.metros import list_metros
 from uwcopilot.studio.narrative import check_draft, plan_sha256, render_narrative, template_draft
 from uwcopilot.studio.narrative.evaluation import pooled
@@ -82,6 +83,13 @@ def test_the_evaluation_script_writes_its_results_with_provenance(tmp_path: Path
     }
     assert provenance["generated_by"] == "scripts/eval_studio_evidence.py"
     assert report["data_label"] == "SYNTHETIC" and report["golden"]["scenarios_run"] == 1
+    ledgers = report["ledgers"]
+    row = report["per_scenario"][0]["ledger"]
+    claims = row["claims"]
+    assert ledgers["scenarios"] == 1
+    assert ledgers["claims_per_ledger"] == {"min": claims, "median": claims, "max": claims}
+    assert sum(ledgers["claims_by_status"].values()) == claims
+    assert sum(ledgers["findings_by_check"].values()) == row["assertion_results"]["false"]
 
 
 def test_an_llm_run_writes_its_own_file_and_measures_the_fallback(
@@ -101,3 +109,17 @@ def test_an_llm_run_writes_its_own_file_and_measures_the_fallback(
     assert llm["measured"] is True and llm["narratives_asked"] == 1
     assert llm["fallback_rate"]["rate"] == 1.0 and llm["llm_calls"] == 2
     assert llm["violation_code_counts"]["V1_DIGIT"] == 2
+
+
+def test_a_provider_that_never_answers_is_not_measured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unreachable(provider: str, model: str | None) -> FakeLLM:
+        raise OllamaError("Ollama server not reachable (test)")
+
+    monkeypatch.setattr(eval_studio_evidence, "default_client", unreachable)
+    output = tmp_path / "down.json"
+    arguments = ["--provider", "fake", "--limit", "1", "--n-paths", str(N_PATHS), "--output", str(output)]
+    assert eval_studio_evidence.main(arguments) == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["llm"]["measured"] is False and report["llm"]["narratives_asked"] == 1
+    assert report["headline"]["llm_fallback_rate"].startswith("not measured")
+    assert report["per_scenario"][0]["llm"]["fallback_used"] is True

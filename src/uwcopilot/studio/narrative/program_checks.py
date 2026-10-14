@@ -30,8 +30,10 @@ from uwcopilot.agent.policy_startup import (
 from uwcopilot.evidence.ledger_models import Assertion, Claim
 from uwcopilot.studio.feasibility.result import FeasibilityResult
 from uwcopilot.studio.narrative import ids
+from uwcopilot.studio.narrative.assumption_claims import SITE_DEMAND_INPUT
 from uwcopilot.studio.narrative.derive import percent_of
-from uwcopilot.studio.narrative.founder_claims import FIELD_FOR_INPUT, claim_id_for_field
+from uwcopilot.studio.narrative.program_calcs import input_claim_of
+from uwcopilot.studio.narrative.target_measures import TargetMeasures
 from uwcopilot.studio.path_to_approval.models import PlanCase, Target
 
 PHRASES: dict[str, tuple[str, str, str, str]] = {
@@ -62,7 +64,13 @@ PHRASES: dict[str, tuple[str, str, str, str]] = {
     ids.A_INDUSTRY: (
         "business type neither prohibited nor restricted for startups",
         "is eligible for the program",
-        "is a restricted or prohibited industry for the program and needs Senior Underwriter review",
+        "is a restricted industry for the program and needs Senior Underwriter review",
+        "could not be checked against the program's industry list",
+    ),
+    "industry_prohibited": (
+        "business type neither prohibited nor restricted for startups",
+        "is eligible for the program",
+        "is a prohibited industry for the program",
         "could not be checked against the program's industry list",
     ),
     ids.A_EXPERIENCE: (
@@ -175,12 +183,21 @@ def documented_with(claim: Claim | None, document_types: tuple[str, ...]) -> boo
 class ProgramChecks:
     """The assertions of one plan (module docstring)."""
 
-    def __init__(self, case: PlanCase, result: FeasibilityResult, claims: dict[str, Claim], target: Target) -> None:
-        """claims: every claim of the ledger by id; target: the Studio's simulated targets."""
+    def __init__(
+        self,
+        case: PlanCase,
+        result: FeasibilityResult,
+        claims: dict[str, Claim],
+        target: Target,
+        measures: TargetMeasures,
+    ) -> None:
+        """claims: every claim of the ledger by id; target: the Studio's simulated targets; measures: the probability
+        claim that answers each target (target_measures.py)."""
         self.case = case
         self.result = result
         self.claims = claims
         self.target = target
+        self.measures = measures
 
     def get(self, claim_id: str) -> Claim:
         """A claim that must exist."""
@@ -255,6 +272,7 @@ class ProgramChecks:
                 sections,
                 eligible,
                 [self.get(ids.PLAN_BUSINESS_TYPE)],
+                phrase_key="industry_prohibited" if category == "prohibited" else None,
                 trigger_ids=() if eligible else ("R-NSP-02",),
                 detail=f"category {category}",
             ),
@@ -332,9 +350,7 @@ class ProgramChecks:
             return []
         checks = []
         for rank, name in enumerate(self.result.tornado.top_drivers, start=1):
-            field = FIELD_FOR_INPUT.get(name)
-            claim = self.claims.get(claim_id_for_field(field)) if field else None
-            claim = claim or self.claims.get(ids.assume_id(name)) or self.claims.get(ids.SITE_DEMAND_MODE)
+            claim = self.driver_claim(name)
             backed = claim is not None and claim.status == "VERIFIED"
             evidence = [self.get(ids.tornado_id(rank, "input"))] + ([claim] if claim is not None else [])
             checks.append(
@@ -350,46 +366,46 @@ class ProgramChecks:
             )
         return checks
 
+    def driver_claim(self, name: str) -> Claim | None:
+        """The claim behind one simulator input: the site demand for mature_demand, else program_calcs.input_claim_of
+        (an edited range, the founder's figure, or its ASSUME.* claim). None when the ledger has no claim for it,
+        which counts as not backed."""
+        if name == SITE_DEMAND_INPUT:
+            return self.claims.get(ids.SITE_DEMAND_MODE)
+        return input_claim_of(name, self.claims)
+
     def target_checks(self) -> list[Assertion]:
-        """The three simulated targets (no program section: they are Studio design choices)."""
-        checks = []
-        p_dscr = self.claims.get(ids.SIM_P_DSCR_Y2)
-        if p_dscr is not None:
-            checks.append(
-                make_assertion(
-                    ids.A_TARGET_DSCR,
-                    "target_dscr",
-                    (),
-                    at_least(p_dscr, percent_of(self.target.p_dscr_min)),
-                    [p_dscr, self.get(ids.TARGET_P_DSCR)],
-                    phrase_key="target",
-                )
-            )
-        p_stressed = self.claims.get(ids.SIM_P_STRESSED_Y2)
-        if p_stressed is not None:
-            checks.append(
-                make_assertion(
-                    ids.A_TARGET_STRESS,
-                    "target_stress",
-                    (),
-                    at_least(p_stressed, percent_of(self.target.p_stressed_min)),
-                    [p_stressed, self.get(ids.TARGET_P_STRESSED)],
-                    phrase_key="target",
-                )
-            )
-        p_cash = self.get(ids.SIM_P_CASH)
-        cash_ok = float(p_cash.value) <= percent_of(self.target.p_cash_negative_max)
-        checks.append(
+        """The three simulated targets (no program section: they are Studio design choices). Each compares the
+        probability measured for exactly that target (target_measures.py); an UNKNOWN one leaves it not evaluated."""
+        p_dscr, p_stressed = self.get(self.measures.dscr), self.get(self.measures.stress)
+        p_cash = self.get(self.measures.cash)
+        cash_ok = None if p_cash.value is None else float(p_cash.value) <= percent_of(self.target.p_cash_negative_max)
+        return [
+            make_assertion(
+                ids.A_TARGET_DSCR,
+                "target_dscr",
+                (),
+                at_least(p_dscr, percent_of(self.target.p_dscr_min)),
+                [p_dscr, self.get(ids.TARGET_DSCR_MIN), self.get(ids.TARGET_P_DSCR)],
+                phrase_key="target",
+            ),
+            make_assertion(
+                ids.A_TARGET_STRESS,
+                "target_stress",
+                (),
+                at_least(p_stressed, percent_of(self.target.p_stressed_min)),
+                [p_stressed, self.get(ids.TARGET_STRESSED_MIN), self.get(ids.TARGET_P_STRESSED)],
+                phrase_key="target",
+            ),
             make_assertion(
                 ids.A_TARGET_CASH,
                 "target_cash",
                 (),
                 cash_ok,
-                [p_cash, self.get(ids.TARGET_P_CASH)],
+                [p_cash, self.get(ids.TARGET_CASH_MONTHS), self.get(ids.TARGET_P_CASH)],
                 phrase_key="target_max",
-            )
-        )
-        return checks
+            ),
+        ]
 
     def all(self) -> list[Assertion]:
         """Every check of the plan."""

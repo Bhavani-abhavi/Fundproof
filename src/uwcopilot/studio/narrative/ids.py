@@ -5,7 +5,8 @@ Prefixes say where a value comes from:
 - PLAN.*     what the plan is about (business type, metro, opening date, rate type): text claims;
 - FOUNDER.*  figures the founder typed (USER_STATED; VERIFIED or CONFLICTING when a document backs or contradicts it);
 - DOC.*      a document value that disagrees with the founder's figure (CONFLICTING);
-- ASSUME.*   simulator inputs from a profile or metro range (ASSUMPTION), or public data (VERIFIED);
+- ASSUME.*   simulator inputs from a profile or metro range (ASSUMPTION), public data (VERIFIED), or a range the
+             founder edited (USER_STATED, Plan.assumption_overrides);
 - RATE.*     the note rate the simulation used;
 - SITE.*     SiteIQ outputs and location factors;
 - SIM.*      simulation outputs (MODEL_ESTIMATE);
@@ -76,6 +77,7 @@ TARGET_STRESSED_MIN = "TARGET.stressed_dscr_min"
 TARGET_P_STRESSED = "TARGET.p_stressed_min_pct"
 TARGET_P_CASH = "TARGET.p_cash_negative_max_pct"
 TARGET_CASH_MONTHS = "TARGET.cash_months"
+TARGET_STRESS_SHARE = "TARGET.stress_revenue_share_pct"
 # CALC
 CALC_OTHER_DEBT_AMOUNT = "CALC.other_debt_amount"
 CALC_OTHER_DEBT_MONTHLY = "CALC.other_debt_monthly_payment"
@@ -92,6 +94,9 @@ CALC_REVENUE_STRESSED_DSCR = "CALC.revenue_stressed_dscr"
 CALC_RATE_STRESSED_DSCR = "CALC.rate_stressed_dscr"
 # PATH
 PATH_STATUS = "PATH.status"
+PATH_BEFORE_P_DSCR = "PATH.before.p_dscr_pct"
+PATH_BEFORE_P_STRESSED = "PATH.before.p_stressed_pct"
+PATH_BEFORE_P_CASH = "PATH.before.p_cash_negative_pct"
 # Assertions
 A_AMOUNT = "A-NSP-8.1-amount"
 A_TERM = "A-NSP-8.1-term"

@@ -131,7 +131,11 @@ class SimulationClaims:
         return claims
 
     def break_even(self) -> list[Claim]:
-        """Break-even month percentiles (text when fewer paths break even) and the share that never does."""
+        """Break-even month percentiles (text when fewer paths break even) and the share that never does.
+
+        A break-even month is a month number (month 1 = the opening month), so it is printed as a plain number
+        ("month 14"), not as a duration.
+        """
         result = self.result.break_even
         claims: list[Claim] = []
         for claim_id, label, month, percentile in (
@@ -145,7 +149,7 @@ class SimulationClaims:
                     self.estimate(claim_id, label, NOT_WITHIN_HORIZON, "TEXT", "text", output, self.band(percentile))
                 )
             else:
-                claims.append(self.estimate(claim_id, label, month, "MONTHS", "months", output, self.band(percentile)))
+                claims.append(self.estimate(claim_id, label, month, "MONTHS", "int", output, self.band(percentile)))
         claims.append(
             self.share(
                 ids.SIM_NOT_BREAK_EVEN,

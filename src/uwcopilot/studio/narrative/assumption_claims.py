@@ -2,7 +2,10 @@
 the build-out cost when the founder left it empty, and the site's demand range.
 
 Every simulated input is listed in FeasibilityResult.distributions with a status and a source. What each becomes:
-- USER_STATED (typed by the founder): no claim here, founder_claims.py has it;
+- USER_STATED because the founder typed the figure in the plan: no claim here, founder_claims.py has it;
+- USER_STATED because the founder edited its range (Plan.assumption_overrides): a USER_STATED claim under the same
+  ASSUME.<name> id with the edited range, since that range is what the simulator sampled (the founder's note is kept
+  in the details only; it is free text and never becomes prose or a prompt);
 - ASSUMPTION (a profile or simulator planning range): ASSUMPTION, source "unsourced" (the profile's note says which
   source should replace it; it is kept in the claim's details), with its low-high range;
 - SOURCED (a profile rate from a cited publication): ASSUMPTION with that source and its range (a published average
@@ -16,7 +19,7 @@ Shares and probabilities are stored as percents (units.py). The value is the dis
 value the one-forecast case uses); the range is its low and high.
 """
 
-from uwcopilot.evidence.ledger_models import UNSOURCED, Claim, InputValue
+from uwcopilot.evidence.ledger_models import UNSOURCED, Claim, InputValue, Provenance, ValueRange
 from uwcopilot.studio.feasibility.assumptions import FeasibilityAssumptions, load_assumptions
 from uwcopilot.studio.feasibility.distributions import Distribution
 from uwcopilot.studio.feasibility.result import FeasibilityResult
@@ -36,10 +39,36 @@ SITEIQ_MODEL = "siteiq"
 SITE_DEMAND_UNCERTAINTY = "SiteIQ range from {low} to {high} {unit} (every rate at its low or high end at once)"
 
 
-def distribution_claim(item: Distribution, metro_id: str) -> Claim | None:
-    """The claim for one simulator input that the founder did not type (None for USER_STATED and site demand)."""
-    if item.status == "USER_STATED" or item.name == SITE_DEMAND_INPUT:
+def edited_range_claim(item: Distribution, metro_id: str) -> Claim:
+    """USER_STATED: a range the founder edited (Plan.assumption_overrides); its most likely value and its range."""
+    fmt = format_for(item.unit, item.mode)
+    value, low, high = fmt.scale(item.mode), fmt.scale(item.low), fmt.scale(item.high)
+    field = f"plan.assumption_overrides.{item.name}"
+    return Claim(
+        id=ids.assume_id(item.name),
+        label=f"{item.description} (range edited by the founder)",
+        value=value,
+        unit=fmt.unit,
+        display=fmt.display,
+        status="USER_STATED",
+        provenance=Provenance(
+            kind="user_input",
+            ref=field,
+            metro_id=metro_id,
+            details={"founder_note": item.source, "shape": item.kind, "unit_text": item.unit},
+        ),
+        inputs={"field": field, "value": value, "low": low, "high": high},
+        value_range=ValueRange(low=float(low), high=float(high)) if low is not None and high is not None else None,
+    )
+
+
+def distribution_claim(item: Distribution, metro_id: str, overridden: frozenset[str] = frozenset()) -> Claim | None:
+    """The claim for one simulator input that the founder did not type as a plan figure (None for a typed figure and
+    for the site demand). overridden: the inputs whose range the founder edited."""
+    if item.name == SITE_DEMAND_INPUT:
         return None
+    if item.status == "USER_STATED":
+        return edited_range_claim(item, metro_id) if item.name in overridden else None
     fmt = format_for(item.unit, item.mode)
     value, low, high = fmt.scale(item.mode), fmt.scale(item.low), fmt.scale(item.high)
     claim_id = ids.assume_id(item.name)
@@ -65,11 +94,11 @@ def distribution_claim(item: Distribution, metro_id: str) -> Claim | None:
     )
 
 
-def distribution_claims(result: FeasibilityResult) -> list[Claim]:
-    """Claims for every simulator input except the founder's own figures and the site demand."""
+def distribution_claims(result: FeasibilityResult, overridden: frozenset[str] = frozenset()) -> list[Claim]:
+    """Claims for every simulator input except the founder's typed figures and the site demand."""
     claims = []
     for item in result.distributions:
-        claim = distribution_claim(item, result.metro_id)
+        claim = distribution_claim(item, result.metro_id, overridden)
         if claim is not None:
             claims.append(claim)
     return claims
@@ -141,6 +170,11 @@ def rate_claim(
     )
 
 
+def synthetic_source(source: str) -> str:
+    """A SYNTHETIC demand range's source, labeled SYNTHETIC once (a generated plan is not city data)."""
+    return source if source.upper().startswith("SYNTHETIC") else f"SYNTHETIC: {source}"
+
+
 def site_demand_claims(result: FeasibilityResult, run: dict[str, InputValue]) -> list[Claim]:
     """The site's demand (most likely, low and high) with the status of what the simulator received.
 
@@ -176,7 +210,7 @@ def site_demand_claims(result: FeasibilityResult, run: dict[str, InputValue]) ->
         elif site.status == "USER_STATED":
             claims.append(founder_range_claim(claim_id, label, value, fmt.unit, fmt.display, site.source))
         else:
-            source = f"{SYNTHETIC_PREFIX}{site.source}" if site.status == "SYNTHETIC" else site.source
+            source = synthetic_source(site.source) if site.status == "SYNTHETIC" else site.source
             claims.append(
                 assumption_range_claim(
                     claim_id,
@@ -216,9 +250,11 @@ def assumption_claims(
     founder_rate: Claim | None,
     founder_spread: Claim | None,
     run: dict[str, InputValue],
+    overridden: frozenset[str] = frozenset(),
 ) -> list[Claim]:
-    """Every simulator input the founder did not type, the note rate, the capex assumption and the site demand."""
-    claims = [*distribution_claims(result), *site_demand_claims(result, run)]
+    """Every simulator input the founder did not type, the note rate, the capex assumption and the site demand.
+    overridden: names of the inputs whose range the founder edited (Plan.assumption_overrides)."""
+    claims = [*distribution_claims(result, overridden), *site_demand_claims(result, run)]
     capex = capex_claim(result)
     if capex is not None:
         claims.append(capex)

@@ -475,7 +475,7 @@ studio-evidence-ollama:  ## The same with the local 1.5B model on 6 scenarios ->
 	uv run python scripts/eval_studio_evidence.py --provider ollama --model qwen2.5-1.5b-instruct-f16 --limit 6
 
 studio-narrative-test:  ## Founder ledger and narrative tests only (offline)
-	uv run pytest tests/studio -q -k narrative tests/llm/test_hf_inference_client.py
+	uv run pytest -q tests/studio/test_narrative_*.py tests/llm/test_hf_inference_client.py
 
 # Phase 5 part C: the shared risk client against the real scoring app, with tiny SYNTHETIC models, an in-process
 # transport (no network) and the agent's planned requests (the domain gap). See docs/risk_service.md.

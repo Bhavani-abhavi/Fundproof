@@ -17,13 +17,15 @@ slots only and rendered from the ledger, so it cannot contain a number the ledge
 Modules: ids (claim and assertion ids), units (display formats), derive (the derived-number status rule and claim
 constructors), founder_claims, assumption_claims, site_claims, simulation_claims, path_claims, program_thresholds,
 program_calcs, program_checks (the claims and checks), founder_ledger (build_founder_ledger), prose (safe words),
-template (the deterministic draft), prompts (the registry and the LLM request), generate (render_narrative),
-checker (the bound check and the mutation test), golden (the 36 golden scenarios), models (documents, results).
+target_measures (which probability answers each Studio target), template (the deterministic draft), prompts (the
+registry and the LLM request), generate (render_narrative), checker (the bound check and the mutation test), golden
+(the 36 golden scenarios), evaluation (the measurements), models (documents, results).
 """
 
 from uwcopilot.studio.narrative.founder_ledger import (
     FOUNDER_LEDGER_VERSION,
     PlanMismatch,
+    SimulationTooShort,
     build_founder_ledger,
     ledger_from_plan,
     plan_sha256,
@@ -42,6 +44,7 @@ __all__ = [
     "FounderDocumentValue",
     "NarrativeResult",
     "PlanMismatch",
+    "SimulationTooShort",
     "UnknownNarrativeProvider",
     "all_prompt_hashes",
     "build_founder_ledger",

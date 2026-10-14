@@ -275,7 +275,8 @@ def owner_fact_claims(case: PlanCase) -> list[Claim]:
 
 
 def other_debt_claims(case: PlanCase) -> list[Claim]:
-    """Amount and monthly payment of every other loan or seller note (USER_STATED or VERIFIED as the founder said)."""
+    """Amount and monthly payment of every other loan or seller note: USER_STATED (no document is attached to other
+    debt in this version, so the status the founder gave is kept in the details, never promoted to VERIFIED)."""
     claims: list[Claim] = []
     for index, item in enumerate(case.facts.other_debt, start=1):
         field = f"facts.other_debt.{index}"

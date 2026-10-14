@@ -9,12 +9,15 @@ create a second ledger. The claims, in order:
 1. founder_claims: what the plan is about, every figure the founder typed (USER_STATED, or VERIFIED / CONFLICTING
    when an uploaded document backs or contradicts it), owner facts and other debt;
 2. assumption_claims: every simulator input the founder did not type (ASSUMPTION ranges with their source or
-   "unsourced", public data as VERIFIED), the note rate, the build-out assumption and the site's demand range;
+   "unsourced", public data as VERIFIED, a range the founder edited as USER_STATED), the note rate, the build-out
+   assumption and the site's demand range;
 3. site_claims: SiteIQ's scores, location factors and metro inputs (VERIFIED rows with their locator, ASSUMPTION,
    UNKNOWN), when a SiteIQ result is given;
 4. simulation_claims: the simulation's outputs (MODEL_ESTIMATE with simulator version, seed, paths and plan hash);
 5. path_claims: the path-to-targets search, when a search result is given;
-6. program thresholds and Studio targets (VERIFIED policy), the program arithmetic (CALC.*), and the checks.
+6. program thresholds and Studio targets (VERIFIED policy), the probability that answers each target
+   (target_measures.py: the simulation's, the path search's for an edited target, or UNKNOWN), the program
+   arithmetic (CALC.*), and the checks.
 Callers may add claims of their own (extra_claims, for example the package's site comparison) so the package keeps
 one ledger. The plan, the simulation and the SiteIQ result must describe the same plan; a mismatch is an error.
 """
@@ -33,6 +36,7 @@ from uwcopilot.studio.narrative.program_checks import ProgramChecks
 from uwcopilot.studio.narrative.program_thresholds import program_threshold_claims, target_claims
 from uwcopilot.studio.narrative.simulation_claims import DEFAULT_MONTHLY_MONTHS, simulation_claims
 from uwcopilot.studio.narrative.site_claims import site_claims
+from uwcopilot.studio.narrative.target_measures import target_measures
 from uwcopilot.studio.path_to_approval.models import PathResult, PlanCase
 from uwcopilot.studio.path_to_approval.targets import default_target
 from uwcopilot.studio.siteiq.models import SiteScore
@@ -42,10 +46,15 @@ FOUNDER_LEDGER_VERSION = "founder-ledger-1.0"
 SUBJECT_PREFIX = "FOUNDER-"
 SUBJECT_HASH_CHARS = 12
 MONEY_TOLERANCE = 0.005
+PROJECTION_YEARS = 2
 
 
 class PlanMismatch(ValueError):
     """The plan, the simulation result and the SiteIQ result do not describe the same plan."""
+
+
+class SimulationTooShort(ValueError):
+    """The simulation does not reach year 2, so the program's year-2 checks cannot be computed."""
 
 
 def plan_sha256(case: PlanCase) -> str:
@@ -71,7 +80,8 @@ def run_identity(case: PlanCase, result: FeasibilityResult) -> dict[str, InputVa
 def check_same_plan(
     case: PlanCase, result: FeasibilityResult, site_score: SiteScore | None, path_result: PathResult | None
 ) -> None:
-    """Raise PlanMismatch when the inputs describe different plans (so a ledger never mixes two plans)."""
+    """Raise PlanMismatch when the inputs describe different plans (so a ledger never mixes two plans), and
+    SimulationTooShort when the simulation has no second year (the program checks read year 2)."""
     problems = []
     if (case.profile_id, case.metro_id) != (result.profile_id, result.metro_id):
         problems.append("business type or metro differs between the plan and the simulation")
@@ -89,6 +99,11 @@ def check_same_plan(
         problems.append("the path search is for another business type or metro")
     if problems:
         raise PlanMismatch("; ".join(problems))
+    if len(result.yearly) < PROJECTION_YEARS:
+        raise SimulationTooShort(
+            f"the simulation covers {result.months} months; the program checks need {PROJECTION_YEARS} full years "
+            "(simulate at least 24 months, 36 for the package)"
+        )
 
 
 def build_founder_ledger(
@@ -112,7 +127,7 @@ def build_founder_ledger(
     subject_id defaults to FOUNDER-<first 12 hex of the plan hash>; data_label to SYNTHETIC (the default for every
     plan in this repository; the web app passes its own label for real founder inputs under docs/studio/privacy.md).
     monthly_months: how many months get monthly P10/P50/P90 claims (12: the package shows year 1 by month).
-    Raises PlanMismatch when the inputs describe different plans.
+    Raises PlanMismatch when the inputs describe different plans, SimulationTooShort when the simulation has no year 2.
     """
     check_same_plan(case, feasibility, site_score, path_result)
     run = run_identity(case, feasibility)
@@ -125,16 +140,19 @@ def build_founder_ledger(
             claims[item.id] = item
 
     keep(founder_claims(case, feasibility.demand_unit, documents))
-    keep(assumption_claims(feasibility, claims.get(ids.FOUNDER_RATE), claims.get(ids.FOUNDER_SPREAD), run))
+    overridden = frozenset(case.plan.assumption_overrides)
+    keep(assumption_claims(feasibility, claims.get(ids.FOUNDER_RATE), claims.get(ids.FOUNDER_SPREAD), run, overridden))
     keep(site_claims(site_score))
     keep(simulation_claims(feasibility, run, monthly_months))
     keep(path_claims(path_result))
     keep(program_threshold_claims(case.loan.rate_type))
     target = path_result.target if path_result is not None else default_target()
-    keep(target_claims(target, feasibility))
+    keep(target_claims(target))
+    measures = target_measures(target, feasibility, claims)
+    keep(measures.unknown)
     ProgramCalculations(case, feasibility, claims).all()
     keep(extra_claims)
-    assertions = ProgramChecks(case, feasibility, claims, target).all()
+    assertions = ProgramChecks(case, feasibility, claims, target, measures).all()
     subject = subject_id or f"{SUBJECT_PREFIX}{run['plan_sha256'][:SUBJECT_HASH_CHARS]}"
     builder = Ledger.builder(subject_id=subject, line=LEDGER_LINE, data_label=data_label)
     for claim in claims.values():

@@ -27,6 +27,7 @@ from uwcopilot.studio.narrative.prose import (
 
 TEMPLATE_ID = "founder_narrative_template_v1"
 TOP_DRIVERS = 3
+PATH_OUTCOMES: tuple[str, ...] = ("p_dscr_pct", "p_stressed_pct", "p_cash_negative_pct")
 DRIVER_OPENERS: tuple[str, ...] = (
     "The input that moves second-year net income the most is",
     "The next is",
@@ -133,25 +134,35 @@ class TemplateWriter:
             )
         return sentences
 
+    def measured(self, assertion_id: str) -> str | None:
+        """The probability claim a target check compared (its first evidence id), or None without the check."""
+        check = self.ledger.assertion(assertion_id)
+        return check.evidence_ids[0] if check is not None and check.evidence_ids else None
+
     def simulation(self) -> list[str]:
-        """The three simulated chances, the median second year and the break-even month."""
+        """The three simulated chances against the targets, the median second year and the break-even month."""
         sentences = ["Every chance in this paragraph is simulated, based on stated assumptions."]
-        if self.has(ids.SIM_P_DSCR_Y2):
+        p_dscr = self.measured(ids.A_TARGET_DSCR)
+        if p_dscr is not None:
             sentences.append(
                 f"The simulated chance that the debt service coverage ratio in the second year reaches "
-                f"{self.slot(ids.TARGET_DSCR_MIN)} is {self.slot(ids.SIM_P_DSCR_Y2)}, which {a(ids.A_TARGET_DSCR)} "
+                f"{self.slot(ids.TARGET_DSCR_MIN)} is {self.slot(p_dscr)}, which {a(ids.A_TARGET_DSCR)} "
                 f"of {self.slot(ids.TARGET_P_DSCR)}."
             )
-        if self.has(ids.SIM_P_STRESSED_Y2):
+        p_stressed = self.measured(ids.A_TARGET_STRESS)
+        if p_stressed is not None:
             sentences.append(
-                f"With the lender's revenue stress, the simulated chance that the second-year ratio stays at or "
-                f"above {self.slot(ids.TARGET_STRESSED_MIN)} is {self.slot(ids.SIM_P_STRESSED_Y2)}, which "
+                f"With the stress test of the targets, which cuts revenue by {self.slot(ids.TARGET_STRESS_SHARE)} "
+                f"and net operating income by the same dollars, the simulated chance that the second-year ratio "
+                f"stays at or above {self.slot(ids.TARGET_STRESSED_MIN)} is {self.slot(p_stressed)}, which "
                 f"{a(ids.A_TARGET_STRESS)} of {self.slot(ids.TARGET_P_STRESSED)}."
             )
-        sentences.append(
-            f"The simulated chance that the business runs out of cash within {self.slot(ids.TARGET_CASH_MONTHS)} is "
-            f"{self.slot(ids.SIM_P_CASH)}, which {a(ids.A_TARGET_CASH)} of {self.slot(ids.TARGET_P_CASH)}."
-        )
+        p_cash = self.measured(ids.A_TARGET_CASH)
+        if p_cash is not None:
+            sentences.append(
+                f"The simulated chance that the business runs out of cash within {self.slot(ids.TARGET_CASH_MONTHS)} "
+                f"is {self.slot(p_cash)}, which {a(ids.A_TARGET_CASH)} of {self.slot(ids.TARGET_P_CASH)}."
+            )
         year2 = {field: ids.year_id(2, field) for field in ("revenue_p50", "noi_p50", "noi_p10", "noi_p90")}
         if all(self.has(claim_id) for claim_id in year2.values()):
             sentences.append(
@@ -165,9 +176,10 @@ class TemplateWriter:
     def break_even(self) -> str:
         """The median break-even month, or that the median future does not break even in the horizon."""
         median = self.ledger.claim(ids.SIM_BREAK_EVEN_P50)
-        if median is not None and median.display == "months":
+        if median is not None and median.unit == "MONTHS":
             return (
-                f"The median simulated break-even comes after {self.slot(ids.SIM_BREAK_EVEN_P50)}, and "
+                f"In the median simulated future the business breaks even in month "
+                f"{self.slot(ids.SIM_BREAK_EVEN_P50)}, counting from the opening month, and "
                 f"{self.slot(ids.SIM_NOT_BREAK_EVEN)} of the simulated futures do not break even within the "
                 "simulated horizon."
             )
@@ -225,16 +237,24 @@ class TemplateWriter:
         changes = self.changes(rank)
         if not changes:
             return ["No change-set within the lever bounds reaches every simulated target."]
-        outcome = self.slot(ids.change_set_id(rank, "after.p_dscr_pct"))
+        outcomes = self.outcomes(rank)
         if rank == 1:
             return [
                 f"The search for plan changes found a change-set that reaches every simulated target: {changes}, "
-                f"with a simulated chance of {outcome} for the coverage target."
+                f"with {outcomes}."
             ]
         return [
             "No change-set within the lever bounds reaches every simulated target; the closest change-set sets "
-            f"{changes}, with a simulated chance of {outcome} for the coverage target."
+            f"{changes}, with {outcomes}."
         ]
+
+    def outcomes(self, rank: int) -> str:
+        """The three simulated chances after one change-set, in words around their slots."""
+        after = {suffix: self.slot(ids.change_set_id(rank, f"after.{suffix}")) for suffix in PATH_OUTCOMES}
+        return (
+            f"a simulated chance of {after['p_dscr_pct']} for the coverage target, {after['p_stressed_pct']} for the "
+            f"stress target and {after['p_cash_negative_pct']} of running out of cash"
+        )
 
     def changes(self, rank: int) -> str:
         """'the loan term to {{claim:...}} and the price per unit to {{claim:...}}' for one change-set."""

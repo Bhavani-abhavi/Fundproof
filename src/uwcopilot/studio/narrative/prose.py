@@ -99,7 +99,8 @@ CLAIM_PHRASES: dict[str, str] = {
     "PROGRAM.revenue_stress_share_pct": "revenue cut of the lender's revenue stress",
     "PROGRAM.revenue_stress_min_dscr": "minimum coverage ratio under the revenue stress",
     "PROGRAM.rate_stress_min_dscr": "minimum coverage ratio under the rate stress",
-    "TARGET.dscr_min": "coverage ratio the simulation counts as covered",
+    "TARGET.dscr_min": "coverage ratio the target counts as covered",
+    "TARGET.stress_revenue_share_pct": "revenue cut of the stress target",
     "TARGET.p_dscr_min_pct": "Studio target for the chance of reaching that ratio",
     "TARGET.stressed_dscr_min": "coverage ratio the stress target counts",
     "TARGET.p_stressed_min_pct": "Studio target for the chance of passing the revenue stress",
@@ -114,6 +115,12 @@ CLAIM_PHRASES: dict[str, str] = {
     "SIM.y2.noi_p90": "high case of second-year net operating income",
     "SIM.break_even_p50": "median break-even month",
     "SIM.share_not_break_even": "share of simulated futures that do not break even",
+    "PATH.before.p_dscr_pct": "simulated chance of reaching the coverage target, as the path search measured it",
+    "PATH.before.p_stressed_pct": "simulated chance of passing the stress target, as the path search measured it",
+    "PATH.before.p_cash_negative_pct": "simulated chance of running out of cash, as the path search measured it",
+    "TARGET.measured.dscr": "simulated chance for the edited coverage target",
+    "TARGET.measured.stress": "simulated chance for the edited stress target",
+    "TARGET.measured.cash": "simulated chance for the edited cash target",
 }
 # Claim ids with a rank or an index in them: (pattern, phrase).
 PATTERN_PHRASES: tuple[tuple[re.Pattern[str], str], ...] = (

@@ -17,6 +17,8 @@ from uwcopilot.agent.policy_startup import (
     revenue_stressed_noi,
 )
 from uwcopilot.evidence.ledger_models import Claim, Ledger
+from uwcopilot.studio.feasibility import simulate
+from uwcopilot.studio.feasibility.inputs import RangeOverride
 from uwcopilot.studio.narrative import (
     FounderDocumentValue,
     PlanMismatch,
@@ -30,6 +32,7 @@ from uwcopilot.studio.narrative.founder_claims import typed_claim
 from uwcopilot.studio.narrative.golden import GoldenScenario, build_golden_scenario
 from uwcopilot.studio.narrative.units import format_for
 from uwcopilot.studio.path_to_approval import FounderFacts
+from uwcopilot.studio.path_to_approval.search import fabric_for
 
 N_PATHS = 200
 
@@ -109,6 +112,7 @@ def test_the_site_demand_given_to_the_simulator_is_an_assumption_not_data(ledger
     demand = claim(ledger, ids.SITE_DEMAND_MODE)
     assert demand.status == "ASSUMPTION"
     assert demand.provenance.source and demand.provenance.source.startswith("SYNTHETIC")
+    assert "city data" not in demand.provenance.source  # a generated plan's range, not data of the SYNTHETIC city
     assert demand.value_range is not None
 
 
@@ -286,3 +290,20 @@ def test_display_formats_for_studio_units() -> None:
     assert format_for("count", 3.0).display == "int"
     assert format_for("cars/day", 4.5).display == "ratio2"
     assert format_for("cars/day", 155.7).display == "int"
+
+
+def test_a_range_the_founder_edited_is_user_stated_and_feeds_the_arithmetic(scenario: GoldenScenario) -> None:
+    case = scenario.case
+    edits = {"payroll_burden_share": RangeOverride(low=0.12, mode=0.15, high=0.2, note="SYNTHETIC test edit")}
+    edited = case.model_copy(update={"plan": case.plan.model_copy(update={"assumption_overrides": edits})})
+    result = simulate(
+        edited.profile_id, fabric_for(edited.metro_id), edited.site, edited.plan, edited.loan, n=N_PATHS, seed=1
+    )
+    ledger = build_founder_ledger(edited, result)
+    burden = claim(ledger, ids.assume_id("payroll_burden_share"))
+    assert burden.status == "USER_STATED" and burden.provenance.kind == "user_input"
+    assert burden.value == pytest.approx(15.0) and burden.value_range is not None
+    assert (burden.value_range.low, burden.value_range.high) == pytest.approx((12.0, 20.0))
+    assert "SYNTHETIC test edit" not in burden.label
+    fixed = claim(ledger, ids.CALC_FIXED_COSTS)
+    assert burden.id in fixed.inputs and fixed.status != "VERIFIED"

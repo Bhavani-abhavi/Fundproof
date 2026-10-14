@@ -2,11 +2,15 @@
 
 What it talks to: POST <base URL>/chat/completions with "Authorization: Bearer <HF_TOKEN>", the request and
 answer in the OpenAI chat-completions shape (messages in; choices[0].message.content, finish_reason and usage out).
-The base URL default, https://router.huggingface.co/v1, and the request shape are taken from the Hugging Face
-documentation page https://huggingface.co/docs/inference-providers/index ("Alternative: OpenAI-Compatible Chat
-Completions Endpoint"), read on 2026-10-14. This repository has NEVER sent a request to that endpoint: the client is
-tested only against httpx.MockTransport (tests/llm/test_hf_inference_client.py). Inference Providers is
-pay-as-you-go, and the owners decided on no extra spending, so nothing here may be described as having run.
+The base URL default, https://router.huggingface.co/v1, the /chat/completions path, the "Authorization: Bearer" header
+and the HF_TOKEN name are taken from the Hugging Face documentation page
+https://huggingface.co/docs/inference-providers/index, section "OpenAI-Compatible Chat Completions Endpoint (Chat
+Only)" (anchor #alternative-openai-compatible-chat-completions-endpoint-chat-only), retrieved 2026-10-14T10:25Z
+(HTML SHA-256 f6c2b8287c08e9b16cb8cf80dfff28f8cd48fcc7cd66fbed076cd45e136e7417; the page is not committed). Only the
+documentation page was fetched. This repository has NEVER sent a request to the inference endpoint: the client is
+tested only against httpx.MockTransport (tests/llm/test_hf_inference_client.py). The same page describes Inference
+Providers as pay-as-you-go, and the owners decided on no extra spending, so nothing here may be described as having
+run.
 
 Why it is off unless three things are true (any one missing means no request can be sent):
 1. UWC_HF_INFERENCE_ENABLED is "1", "true" or "yes" in the repo .env file or the environment. Otherwise

@@ -37,7 +37,7 @@ ClientFactory = Callable[[str, str | None], LLMClient]
 
 
 def ledger_summary(ledger: Ledger) -> dict[str, Any]:
-    """Claims per status and checks per result."""
+    """Claims per status, checks per result, and which checks are findings (False) or not evaluated (None)."""
     results = [item.result for item in ledger.assertions]
     return {
         "claims": len(ledger.claims),
@@ -48,6 +48,35 @@ def ledger_summary(ledger: Ledger) -> dict[str, Any]:
             "false": results.count(False),
             "not_evaluated": results.count(None),
         },
+        "findings": [item.id for item in ledger.assertions if item.result is False],
+        "not_evaluated": [item.id for item in ledger.assertions if item.result is None],
+    }
+
+
+def ledger_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Over all scenarios: claims per ledger (min, median, max), claims per status, and how often each check was a
+    finding (False) or not evaluated (None)."""
+    sizes = [row["ledger"]["claims"] for row in rows]
+    statuses: dict[str, int] = {}
+    findings: dict[str, int] = {}
+    not_evaluated: dict[str, int] = {}
+    for row in rows:
+        for status, count in row["ledger"]["status_counts"].items():
+            statuses[status] = statuses.get(status, 0) + count
+        for assertion_id in row["ledger"]["findings"]:
+            findings[assertion_id] = findings.get(assertion_id, 0) + 1
+        for assertion_id in row["ledger"]["not_evaluated"]:
+            not_evaluated[assertion_id] = not_evaluated.get(assertion_id, 0) + 1
+    return {
+        "scenarios": len(rows),
+        "claims_per_ledger": {
+            "min": min(sizes, default=None),
+            "median": float(np.median(sizes)) if sizes else None,
+            "max": max(sizes, default=None),
+        },
+        "claims_by_status": statuses,
+        "findings_by_check": dict(sorted(findings.items())),
+        "not_evaluated_by_check": dict(sorted(not_evaluated.items())),
     }
 
 
@@ -194,11 +223,34 @@ def recall_block(rows: list[dict[str, Any]], check: str) -> dict[str, Any]:
     return {"recall_by_type": recall, "false_flag_rate": false_flags}
 
 
+NO_ANSWER_REASON = (
+    "not measured: the model was asked for {asked} narratives but no call returned an answer (the provider could not "
+    "be built or reached), so there is no fallback rate of a model to report"
+)
+
+
+def answered(item: dict[str, Any]) -> bool:
+    """True when at least one call to the model returned a draft for this narrative."""
+    return any(attempt["error"] is None for attempt in item["attempts"])
+
+
 def llm_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Fallback rate and first-try / retry validity of the model's drafts (only rows where a model was asked)."""
+    """Fallback rate and first-try / retry validity of the model's drafts (only rows where a model was asked).
+
+    The rates are reported only when the model answered at least once in the run: a provider that could not be
+    built or reached produced no drafts, and calling its template fallbacks a "fallback rate of 1.0" would describe
+    a model run that never happened. Such a run is "not measured", with the reasons.
+    """
     asked = [row["llm"] for row in rows if row["llm"] is not None]
     if not asked:
         return {"measured": False}
+    if not any(answered(item) for item in asked):
+        return {
+            "measured": False,
+            "reason": NO_ANSWER_REASON.format(asked=len(asked)),
+            "narratives_asked": len(asked),
+            "fallback_reasons": sorted({item["fallback_reason"] for item in asked if item["fallback_reason"]}),
+        }
     codes: dict[str, int] = {}
     latencies = []
     cached = 0

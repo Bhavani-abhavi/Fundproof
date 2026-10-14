@@ -4,7 +4,8 @@ Thresholds (PROGRAM.*) are VERIFIED policy claims citing their NSP section of co
 program.md; every number is imported from agent/policy_startup.py or agent/policy_credit.py, never retyped. Each
 carries the comparator it is read with ("at least", "at most", "minimum", "above"), which the founder checker uses.
 The Studio's simulated targets (TARGET.*) are VERIFIED policy claims too, sourced as editable design choices of the
-build plan (path_to_approval/targets.py), not lender rules.
+build plan (path_to_approval/targets.py), not lender rules. They hold the target's own values, edited or not;
+target_measures.py picks the simulated probability that was measured for exactly these values.
 """
 
 from uwcopilot.agent.policy_credit import (
@@ -26,7 +27,6 @@ from uwcopilot.agent.policy_startup import (
     STARTUP_MIN_TERM_MONTHS,
 )
 from uwcopilot.evidence.ledger_models import Claim
-from uwcopilot.studio.feasibility.result import FeasibilityResult
 from uwcopilot.studio.narrative import ids
 from uwcopilot.studio.narrative.derive import percent_of, policy_claim
 from uwcopilot.studio.path_to_approval.models import Target
@@ -180,10 +180,8 @@ def program_threshold_claims(rate_type: str) -> list[Claim]:
     return claims
 
 
-def target_claims(target: Target, result: FeasibilityResult) -> list[Claim]:
-    """The Studio's simulated targets, as simulated: the DSCR threshold is the one the simulation used."""
-    stress = next((item for item in result.stress if item.name == "revenue_stress"), None)
-    stressed_min = stress.min_dscr if stress is not None else target.stressed_dscr_min
+def target_claims(target: Target) -> list[Claim]:
+    """The Studio's simulated targets as given (default or edited by the founder), each with its source."""
 
     def target_claim(
         claim_id: str, label: str, value: float, unit: str, display: str, field: str, comparator: str | None
@@ -194,8 +192,8 @@ def target_claims(target: Target, result: FeasibilityResult) -> list[Claim]:
     return [
         target_claim(
             ids.TARGET_DSCR_MIN,
-            "Year-2 DSCR the simulation counts as covered",
-            result.dscr_target.value,
+            "Year-2 DSCR the target counts as covered",
+            target.dscr_min,
             "RATIO",
             "ratio2",
             "dscr_min",
@@ -211,9 +209,18 @@ def target_claims(target: Target, result: FeasibilityResult) -> list[Claim]:
             "at least",
         ),
         target_claim(
+            ids.TARGET_STRESS_SHARE,
+            "Revenue cut of the stress target",
+            percent_of(target.stress_revenue_share),
+            "PERCENT",
+            "pct1",
+            "stress_revenue_share",
+            None,
+        ),
+        target_claim(
             ids.TARGET_STRESSED_MIN,
             "Stressed year-2 DSCR the stress target counts",
-            stressed_min,
+            target.stressed_dscr_min,
             "RATIO",
             "ratio2",
             "stressed_dscr_min",

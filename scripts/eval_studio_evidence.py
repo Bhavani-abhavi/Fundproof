@@ -42,6 +42,7 @@ from uwcopilot.studio.narrative.evaluation import (
     BOOTSTRAP_SEED,
     CHECKS,
     evaluate_scenario,
+    ledger_totals,
     llm_block,
     pooled,
     recall_block,
@@ -180,13 +181,14 @@ def build_report(rows: list[dict[str, Any]], provider: str, model: str | None, l
             "with_synthetic_quoted_rate": sum(int(bool(row["notes"])) for row in rows),
             "path_status": count_by(rows, "path_status"),
         },
+        "ledgers": ledger_totals(rows),
         "headline": {
             "narrative_numbers_traced_round_trip": traced_share(rows, "template", "round_trip"),
             "narrative_numbers_traced_bound": traced_share(rows, "template", "bound"),
             "appendix_numbers_traced_round_trip": traced_share(rows, "appendix", "round_trip"),
             "appendix_numbers_traced_bound": traced_share(rows, "appendix", "bound"),
             "template_draft_valid": template_valid,
-            "llm_fallback_rate": llm["fallback_rate"] if llm["measured"] else NOT_MEASURED_TEMPLATE,
+            "llm_fallback_rate": llm["fallback_rate"] if llm["measured"] else llm.get("reason", NOT_MEASURED_TEMPLATE),
             "hf_inference": NOT_MEASURED_HF,
         },
         "checker": {
@@ -194,7 +196,7 @@ def build_report(rows: list[dict[str, Any]], provider: str, model: str | None, l
             "sentences": sum(row["sentences"] for row in rows),
             **{check: recall_block(rows, check) for check in CHECKS},
         },
-        "llm": llm if llm["measured"] else {"measured": False, "reason": NOT_MEASURED_TEMPLATE},
+        "llm": llm if llm["measured"] or "reason" in llm else {"measured": False, "reason": NOT_MEASURED_TEMPLATE},
         "statistics": {
             "intervals": "Wilson 95% and bootstrap 95% over scenarios",
             "bootstrap_resamples": BOOTSTRAP_RESAMPLES,

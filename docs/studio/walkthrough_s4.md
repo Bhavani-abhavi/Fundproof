@@ -10,21 +10,33 @@ one of those numbers into the project's ONE evidence ledger (`uwcopilot.evidence
 says how much to trust it, and writes the plan's summary so that it cannot contain a number the ledger does not hold:
 the writer (a fixed template, or an LLM) may only place slots like `{{claim:SIM.p_dscr_year2}}`, and a deterministic
 renderer fills in the values. Every probability is labelled "simulated, based on stated assumptions", every text ends
-with the Studio disclaimer, and nothing in S4 approves, declines or recommends a lender.
+with the Studio disclaimer ("Educational planning tool. Not financial, legal or lending advice. Lenders make their
+own decisions."), and nothing in S4 approves, declines or recommends a lender.
 
 **What was done and what was not.**
-- Done: `build_founder_ledger` (also exported as the build plan's `ledger_from_plan`); claims for founder inputs,
-  documents, assumptions, public data, SiteIQ, the simulation, the path search, program thresholds and Studio
-  targets; program arithmetic with a "never more certain than its inputs" status rule; checks against the SYNTHETIC
-  startup program (NSP sections); the deterministic template narrative; the LLM path (prompt registry, validation,
-  one retry with the validator's findings, template fallback); the `hf_inference` provider in the LLM layer
-  (disabled by default, tested only against a mocked endpoint); a bound checker and its mutation test on founder
-  narratives; the 36 golden scenarios; `scripts/eval_studio_evidence.py`; tests; Make targets.
+- Done: `build_founder_ledger` (also exported under the build plan's name `ledger_from_plan`); claims for founder
+  inputs, uploaded-document values, assumptions, public data, SiteIQ, the simulation, the path search, program
+  thresholds and Studio targets; program arithmetic with a "never more certain than its inputs" status rule; checks
+  against the SYNTHETIC startup program (NSP sections) and the Studio targets; the deterministic template narrative;
+  the LLM path (prompt registry, validation, one retry with the validator's findings, template fallback); the
+  `hf_inference` provider in the LLM layer (disabled by default, tested only against a mocked endpoint); a bound
+  checker and its mutation test on founder narratives; the 36 golden scenarios; `scripts/eval_studio_evidence.py`;
+  tests; Make targets.
+- Fixed in the review of the first draft (2026-10-14), each with a test: (1) an edited Studio target (the web form
+  lets a founder change them) was checked against a probability the simulation had measured for the default target,
+  for example a 24-month cash chance against an 18-month target; now each target uses the probability measured for
+  exactly that target (`target_measures.py`); (2) a range the founder edited (`Plan.assumption_overrides`) had no
+  claim at all, and the program arithmetic crashed on it; it is now a USER_STATED claim with its range; (3) the
+  NSP-6.1 driver check silently used the site demand for any driver it could not find; (4) the break-even month was
+  printed as a duration ("after 1 months") although it is a month number; (5) a generated plan's demand range in a
+  real metro was labelled "SYNTHETIC city data"; (6) a model run in which the model never answered would have
+  reported a fallback rate of 100%; it is now "not measured"; (7) `make studio-narrative-test` deselected the
+  hf_inference tests by its `-k narrative` filter.
 - Not done here (S6 owns them): the PDF package, `to_application`, the agent handoff and the startup items of
   `evidence/open_items.py`. S4's "share of package numbers with provenance" is measured on the rendered narrative and
   on an evidence appendix of every claim; the PDF itself is measured by S6.
 - Never run: the `hf_inference` provider. It can cost money and the owners decided on no extra spending. No document
-  in this repository may say it ran.
+  in this repository may say it ran. Only its public documentation page was read (section 1).
 
 ## 1. Files
 
@@ -32,48 +44,57 @@ with the Studio disclaimer, and nothing in S4 approves, declines or recommends a
 
 | File | What it does |
 |---|---|
-| `__init__.py` | The public API: `build_founder_ledger`, `ledger_from_plan`, `render_narrative`, `NarrativeResult`, `FounderDocumentValue`, `template_draft`, `check_draft`, `all_prompt_hashes`. |
+| `__init__.py` | The public API: `build_founder_ledger`, `ledger_from_plan`, `render_narrative`, `NarrativeResult`, `FounderDocumentValue`, `template_draft`, `check_draft`, `all_prompt_hashes`, `plan_sha256`, `PlanMismatch`. |
 | `ids.py` | Every claim and assertion id in one place (prefixes PLAN, FOUNDER, DOC, ASSUME, RATE, SITE, SIM, TORNADO, STRESS, PATH, PROGRAM, TARGET, CALC; assertions start with `A-`). Ids fit the slot grammar. |
 | `units.py` | One rule for units and display formats: shares and probabilities become percents (`pct1`), dollars `usd0`/`usd2`, months `months`, counts `int`, small values `ratio2`. |
 | `derive.py` | The derived-number status rule (section 3) and small constructors: `derived_claim`, `policy_claim`, `model_claim`, `assumption_range_claim`, `public_data_claim`. |
 | `models.py` | `FounderDocumentValue` (a value read from an uploaded document, with page and line), `AttemptRecord` and `NarrativeResult`. |
 | `founder_claims.py` | What the founder typed: USER_STATED, or VERIFIED / CONFLICTING when a document backs or contradicts it; owner facts (UNKNOWN when not entered); other debt. |
-| `assumption_claims.py` | Every simulator input the founder did not type (profile and metro ranges, public data), the build-out assumption, the note rate, and the site's demand range. |
+| `assumption_claims.py` | Every simulator input the founder did not type (profile and metro ranges, public data), a range the founder edited, the build-out assumption, the note rate, and the site's demand range. |
 | `site_claims.py` | SiteIQ: overall score (MODEL_ESTIMATE), coverage (VERIFIED calculation), each factor with its locator or its UNKNOWN reason, and the metro inputs. |
 | `simulation_claims.py` | The S3 outputs as MODEL_ESTIMATE claims with the run identity (simulator version, seed, paths, months, plan SHA-256). |
 | `path_claims.py` | The S5 search: status, probabilities before and after each change-set, each lever's new value. |
-| `program_thresholds.py` | The SYNTHETIC program's thresholds (imported from `agent/policy_startup.py` and `policy_credit.py`, never retyped) and the Studio targets, as VERIFIED policy claims with their comparator. |
-| `program_calcs.py` | The program arithmetic (project cost, equity injection, debt service, reserve, projected and stressed DSCR) with the program's own rounding. |
+| `program_thresholds.py` | The SYNTHETIC program's thresholds (imported from `agent/policy_startup.py` and `policy_credit.py`, never retyped) and the Studio targets as given, as VERIFIED policy claims with their comparator. |
+| `target_measures.py` | Which simulated probability answers each Studio target: the simulation's, the path search's (for an edited target), or an UNKNOWN claim that says why. |
+| `program_calcs.py` | The program arithmetic (project cost, equity injection, debt service, fixed costs, reserve, projected and stressed DSCR) with the program's own rounding. |
 | `program_checks.py` | The checks (assertions) with their NSP sections, trigger ids and the phrases the renderer prints. |
-| `founder_ledger.py` | `build_founder_ledger`: assembles the claims with `Ledger.builder()`, checks that plan, simulation and SiteIQ describe the same plan (`PlanMismatch`). |
+| `founder_ledger.py` | `build_founder_ledger`: assembles the claims with `Ledger.builder()`, checks that plan, simulation, SiteIQ and path search describe the same plan (`PlanMismatch`) and that the simulation has a second year (`SimulationTooShort`). |
 | `prose.py` | The plain words around the slots (business type, metro, inputs, factors), each checked with the grammar validator before use. |
 | `template.py` | The deterministic slot-only draft (the default writer and the fallback); `required_refs` and `allowed_sections` for the validator. |
 | `prompts.py` | The prompt registry (`founder_narrative_v1`, `founder_narrative_retry_v1`, and the template's own id and hash) and the request the LLM gets. |
 | `generate.py` | `render_narrative`: template by default; for a model, validate, retry once with the findings, render, audit, fall back to the template. |
 | `checker.py` | The bound check (each number must equal a claim its own sentence cites) and the mutation test on founder sentences. |
 | `golden.py` | The 36 golden SYNTHETIC scenarios (6 business types x the SYNTHETIC metro and the 5 real metros in their current mode). |
-| `evaluation.py` | Per-scenario measurements and pooled rates with Wilson and scenario-bootstrap intervals. |
+| `evaluation.py` | Per-scenario measurements, ledger totals, and pooled rates with Wilson and scenario-bootstrap intervals. |
 
 ### LLM layer
 
-- `src/uwcopilot/llm/hf_inference_client.py`: the Hugging Face Inference Providers client (OpenAI-compatible
-  chat-completions router). Off unless `UWC_HF_INFERENCE_ENABLED=1`, `HF_TOKEN` and a model are set, and the model
-  has a verified price in `config/llm_pricing.yaml` (otherwise the budget layer refuses the call before any request).
+- `src/uwcopilot/llm/hf_inference_client.py`: the Hugging Face Inference Providers client (the OpenAI-compatible
+  chat-completions router). The base URL, path, header and token name come from the public page
+  https://huggingface.co/docs/inference-providers/index, section "OpenAI-Compatible Chat Completions Endpoint (Chat
+  Only)", retrieved 2026-10-14 (the page's SHA-256 is in the module docstring). Off unless
+  `UWC_HF_INFERENCE_ENABLED=1`, `HF_TOKEN` and a model are set, and the model has a verified price in
+  `config/llm_pricing.yaml` (otherwise the budget layer refuses the call before any request).
 - `src/uwcopilot/llm/factory.py`: `get_llm_client("hf_inference", ...)` builds it as `Cached(Budgeted(client))`, like
   every paid provider. It is not in `settings.PROVIDERS`, so `UWC_LLM_PROVIDER` cannot select it by accident.
+- `.env.example` documents `UWC_HF_INFERENCE_ENABLED`, `UWC_HF_INFERENCE_MODEL` and `UWC_HF_INFERENCE_BASE_URL`
+  (commented out; the project test that every setting the code reads is documented needs them).
 
 ### Script, results, tests, Make targets
 
 - `scripts/eval_studio_evidence.py` writes `results/studio_evidence_metrics.json` (template provider) or
   `results/studio_evidence_metrics_<provider>.json` (an LLM provider), each with a `uwcopilot.governance.provenance`
-  block (git SHA, prompt hashes, config file hashes, metro snapshot fingerprints, model digest for a local model).
-- Tests: `tests/studio/test_narrative_ledger.py` (statuses, provenance, documents, conflicts, unknowns, arithmetic
-  against the lender side), `test_narrative_render.py` (template validity for every business type, the LLM path with
-  the fake client: retry, fallback, unreachable model, hf_inference refused; the prompt holds no values and no
-  founder text; the registry hashes), `test_narrative_checker.py` (bound check vs round-trip audit, the mutation
-  test), `test_narrative_golden.py` (36 scenarios, reproducibility, a real metro in its current mode, the script),
-  `tests/llm/test_hf_inference_client.py` (disabled by default, request shape, errors, cost cap; every HTTP call goes
-  to `httpx.MockTransport`).
+  block (git SHA and dirty flag, prompt hashes, config file hashes, metro snapshot fingerprints, model digest for a
+  local model).
+- Tests: `tests/studio/test_narrative_ledger.py` (statuses, provenance, documents, conflicts, unknowns, edited
+  ranges, arithmetic against the lender side), `test_narrative_targets.py` (each target checked against the
+  probability measured for it; the driver check; a result without a second year), `test_narrative_render.py`
+  (template validity for every business type, the LLM path with the fake client: retry, fallback, unreachable model,
+  hf_inference refused; the prompt holds no values and no founder text; the registry hashes),
+  `test_narrative_checker.py` (bound check vs round-trip audit, the mutation test), `test_narrative_golden.py` (36
+  scenarios, reproducibility, a real metro in its current mode, the script, an LLM run, a provider that never
+  answers), `tests/llm/test_hf_inference_client.py` (disabled by default, request shape, errors, cost cap; every HTTP
+  call goes to `httpx.MockTransport`).
 - Make: `make studio-evidence`, `make studio-evidence-ollama`, `make studio-narrative-test`.
 
 ## 2. Statuses: what each founder number becomes
@@ -84,6 +105,7 @@ with the Studio disclaimer, and nothing in S4 approves, declines or recommends a
 | Typed AND printed the same by an uploaded document | VERIFIED | kind `document`, citation doc id / page / line |
 | Typed, but a document prints a different value | CONFLICTING (both) | each links the other (`conflict_ids`) |
 | Marked "verified" by the founder without a document in the ledger | USER_STATED | a note says why it stays USER_STATED |
+| A range the founder edited (`Plan.assumption_overrides`) | USER_STATED | kind `user_input`, the edited range; the founder's note stays in the details |
 | Profile or simulator range (cost shares, ramp-up, shocks) | ASSUMPTION | source "unsourced" (the profile's note says what should replace it), range low-high |
 | Profile value from a cited publication | ASSUMPTION | the publication as source, range |
 | Public data row (Census, BLS, HPMS, Overture via SiteIQ) | VERIFIED | kind `public_data`, locator: publisher, dataset, URL, retrieval date, response SHA-256, geography |
@@ -94,7 +116,7 @@ with the Studio disclaimer, and nothing in S4 approves, declines or recommends a
 | SiteIQ score | MODEL_ESTIMATE | model `siteiq`, uncertainty "not measured per site" |
 | Path search output | MODEL_ESTIMATE | model `studio-path-to-approval` and version |
 | Program threshold, Studio target | VERIFIED | kind `policy`, the NSP section or the target's source, its comparator |
-| Needed but absent (credit score not entered, a factor without data) | UNKNOWN | the reason; nothing is filled in |
+| Needed but absent (credit score not entered, a factor without data, an edited target nobody measured) | UNKNOWN | the reason; nothing is filled in |
 
 ## 3. Design choices
 
@@ -117,9 +139,9 @@ with the Studio disclaimer, and nothing in S4 approves, declines or recommends a
    that broke it). If the second draft fails too, or the model cannot be reached, or the rendered text fails the
    audit, the deterministic template is used and the result says so (`fallback_used`, `fallback_reason`). The template
    is the default because it always works, costs nothing and gives the same text for the same ledger.
-6. **Founder free text never reaches a prompt or a code field.** Site labels and the names of other debt stay in
-   claim values and details; the words around the slots come from fixed tables, and anything read from config (a
-   metro name, a lever label) is run through the grammar validator before it is used.
+6. **Founder free text never reaches a prompt or a code field.** Site labels, the names of other debt and the notes on
+   edited ranges stay in claim details; the words around the slots come from fixed tables, and anything read from
+   config (a metro name, a lever label) is run through the grammar validator before it is used.
 7. **Assertion phrases are written for the checker.** The phrases the renderer prints ("meets the program's minimum",
    "falls short of the stress minimum") hold no digits, no decision words, and no comparator except "minimum" right
    before the threshold it describes. Otherwise the bound checker would read, say, "below" as the comparator of the
@@ -128,20 +150,38 @@ with the Studio disclaimer, and nothing in S4 approves, declines or recommends a
    ledger?". It cannot see a right number in the wrong place. The bound check asks "does this number equal a claim
    that THIS sentence cites through its footnote marker, with the threshold's comparator?". Rendered text always has
    the markers, so the binding is free.
-9. **Golden scenarios reuse the S5 generator.** The plan, loan and demand range come from
-   `path_to_approval/synthetic_plans.py` (anchored so plans span short / near / past the lender's stress), plus
-   SYNTHETIC founder facts. SiteIQ scores a seeded tract centroid when the metro has tracts here. The simulation uses
-   the generator's demand range (recorded as an ASSUMPTION sourced to the generator), not SiteIQ's estimate. A metro
-   without a prime rate in this environment gets a SYNTHETIC quoted rate, noted on the scenario.
-10. **hf_inference: three locks.** Disabled flag, token and model, verified price (cost cap). A refusal in
+9. **A target is checked against the probability measured for it.** The founder may edit the targets (a 1.40 DSCR,
+   an 18-month cash check). The S3 simulation measures its own DSCR target, the program's revenue stress and a
+   24-month cash window; the S5 search measures exactly the target it was given. `target_measures.py` uses the
+   simulation's number when it answers the target, the search's number when it does not, and otherwise an UNKNOWN
+   claim, so the check is "not evaluated" rather than wrong. The template prints whichever probability the check
+   used, so sentence and check always agree.
+10. **Golden scenarios reuse the S5 generator.** The plan, loan and demand range come from
+    `path_to_approval/synthetic_plans.py` (anchored so plans span short / near / past the lender's stress), plus
+    SYNTHETIC founder facts. SiteIQ scores a seeded tract centroid when the metro has tracts here. The simulation uses
+    the generator's demand range (recorded as a SYNTHETIC ASSUMPTION), not SiteIQ's estimate. A metro without a prime
+    rate in this environment gets a SYNTHETIC quoted rate, noted on the scenario.
+11. **hf_inference: three locks.** Disabled flag, token and model, verified price (cost cap). A refusal in
     `render_narrative` is a template fallback with the reason, never an error for the founder.
 
-## 4. How a narrative is made
+## 4. How a narrative is made (and how the web layer calls it)
 
-1. `build_founder_ledger(case, feasibility, site_score, path_result)` builds the claims (sections 2-3) and the checks.
+```python
+from uwcopilot.studio.narrative import build_founder_ledger, render_narrative
+
+ledger = build_founder_ledger(case, feasibility, site_score, path_result)  # PlanCase, simulate(), score_site(), find_paths()
+result = render_narrative(ledger)                                          # provider "template" (default)
+result.text, result.audit, result.fallback_used, result.prompt_id, result.prompt_sha256
+ledger.model_dump(mode="json"), result.model_dump(mode="json")             # both JSON-serializable
+```
+
+1. `build_founder_ledger` builds the claims (sections 2-3) and the checks. `site_score` and `path_result` are
+   optional; `documents` adds uploaded-document values; `data_label` defaults to SYNTHETIC (the web app passes its
+   own label for real founder inputs under docs/studio/privacy.md).
 2. `template_draft(ledger)` writes the slot-only draft from the ledger: the plan and eligibility checks; the site; the
-   simulated chances, the median second year and the break-even; the program's coverage checks; the top drivers;
-   the path search; open items (every UNKNOWN or CONFLICTING claim); a closing reminder that the lender decides.
+   simulated chances against the targets, the median second year and the break-even month; the program's coverage
+   checks; the top drivers; the path search (with all three chances after the change-set); open items (every UNKNOWN
+   or CONFLICTING claim); a closing reminder that the lender runs every rule and decides.
 3. With a model, `prompts.build_request` sends the rules, the slots with their meanings and statuses, the checks with
    their sections, the slots it must use and the template draft as an example of the style.
 4. `check_draft` validates; `render` fills the slots and adds one footnote per claim (label, provenance, inputs
@@ -158,25 +198,95 @@ reference sentence whose "section" is the evidence text of the claims its marker
 cross_section with a donor from another sentence of the same narrative) or keeps it (unmutated,
 equivalent_rewrite). wrong_row does not apply: a founder narrative has no tables. With an LLM provider it also asks
 the model for each narrative and records first-try validity, validity after the retry, the fallback and its reason,
-the validator's findings and latency. Rates are pooled over scenarios with Wilson 95% intervals and bootstrap 95%
-intervals that resample scenarios (1,000 resamples, seed 42).
+the validator's findings and latency; if the model never answered, the LLM rates are "not measured". Rates are pooled
+over scenarios with Wilson 95% intervals and bootstrap 95% intervals that resample scenarios (1,000 resamples, seed
+42).
 
 ## 6. Results
 
-RESULTS_PLACEHOLDER
+Every number below is copied from `results/studio_evidence_metrics.json` (template run) and
+`results/studio_evidence_metrics_ollama.json` (local-model run). All plans are SYNTHETIC; nothing here is a claim
+about real lending outcomes or about how a model behaves on real founders' plans.
+
+### 6.1 Template narrative on the golden scenarios (`results/studio_evidence_metrics.json`)
+
+Run: git `330ce3d439e2b7a3b81a5acb39709a777068623f` (dirty: True), generated 2026-10-14T10:31:43+00:00. Scenarios run: 36 of 36 (seed 4404). Metro modes: limited 30, synthetic 6. SiteIQ scored the site in 36 scenarios; SYNTHETIC quoted rate needed in 0. Path search status: already_meets_target 2, no_path_within_bounds 33, paths_found 1.
+
+| Measure | k / n | Rate | Wilson 95% | Bootstrap 95% (scenarios) |
+|---|---|---|---|---|
+| Narrative numbers that trace (round-trip audit) | 1673 / 1673 | 1.0 | [0.9977, 1.0] | [1.0, 1.0] |
+| Narrative numbers that trace (bound check) | 1673 / 1673 | 1.0 | [0.9977, 1.0] | [1.0, 1.0] |
+| Evidence-appendix numbers that trace (round-trip audit) | 13289 / 13289 | 1.0 | [0.9997, 1.0] | [1.0, 1.0] |
+| Evidence-appendix numbers that trace (bound check) | 13289 / 13289 | 1.0 | [0.9997, 1.0] | [1.0, 1.0] |
+| Template drafts that pass the narrative grammar | 36 / 36 | 1.0 | [0.9036, 1.0] | [1.0, 1.0] |
+
+LLM fallback rate in this run: not measured: the template provider makes no LLM call; an LLM run (--provider ollama ...) writes results/studio_evidence_metrics_<provider>.json
+
+Ledgers: 380 to 432 claims per plan (median 402.5). Claims by status over all scenarios: VERIFIED 963, MODEL_ESTIMATE 11619, CONFLICTING 0, UNKNOWN 22, USER_STATED 625, ASSUMPTION 1258.
+
+How often each check was a finding (the plan does not meet it) and how often it could not be evaluated:
+
+| Check | Scenarios with a finding | Scenarios not evaluated |
+|---|---|---|
+| `A-NSP-2.1` | 10 | 0 |
+| `A-NSP-2.2` | 9 | 0 |
+| `A-NSP-2.3` | 12 | 0 |
+| `A-NSP-3.1-statements` | 36 | 0 |
+| `A-NSP-4.1` | 8 | 0 |
+| `A-NSP-4.2-rate` | 5 | 0 |
+| `A-NSP-4.2-revenue` | 31 | 0 |
+| `A-NSP-5.1` | 15 | 0 |
+| `A-NSP-6.1-r1` | 36 | 0 |
+| `A-NSP-6.1-r2` | 36 | 0 |
+| `A-NSP-6.1-r3` | 36 | 0 |
+| `A-NSP-7.1` | 18 | 0 |
+| `A-NSP-8.1-amount` | 19 | 0 |
+| `A-TARGET-cash` | 32 | 0 |
+| `A-TARGET-dscr` | 15 | 0 |
+| `A-TARGET-stress` | 34 | 0 |
+
+No golden plan carries an uploaded document, so the bank-statement check (NSP-3.1) is a finding in every scenario, and a top driver (NSP-6.1) is backed only when it is public data. The path search runs in quick mode with the default lever bounds; its status counts above are S5's results, reported as they are.
+
+Checker on the founder sentence set (686 sentences with a number, from 36 narratives). Recall = share of mutated sentences flagged:
+
+| Mutation type | Round-trip audit | Bound check |
+|---|---|---|
+| value_perturb | 654 / 686 = 0.9534 (Wilson [0.9349, 0.9668]) | 686 / 686 = 1.0 (Wilson [0.9944, 1.0]) |
+| magnitude_x10 | 612 / 686 = 0.8921 (Wilson [0.8667, 0.9132]) | 686 / 686 = 1.0 (Wilson [0.9944, 1.0]) |
+| unit_swap | 320 / 321 = 0.9969 (Wilson [0.9826, 0.9994]) | 321 / 321 = 1.0 (Wilson [0.9882, 1.0]) |
+| comparator_flip | 0 / 164 = 0.0 (Wilson [0.0, 0.0229]) | 164 / 164 = 1.0 (Wilson [0.9771, 1.0]) |
+| cross_section | 0 / 686 = 0.0 (Wilson [0.0, 0.0056]) | 686 / 686 = 1.0 (Wilson [0.9944, 1.0]) |
+| wrong_row | not applicable (n = 0) | not applicable (n = 0) |
+
+False-flag rate on the controls (share of unchanged or reworded sentences flagged):
+
+| Control | Round-trip audit | Bound check |
+|---|---|---|
+| unmutated | 0 / 686 = 0.0 (Wilson [0.0, 0.0056]) | 0 / 686 = 0.0 (Wilson [0.0, 0.0056]) |
+| equivalent_rewrite | 0 / 383 = 0.0 (Wilson [0.0, 0.0099]) | 0 / 383 = 0.0 (Wilson [0.0, 0.0099]) |
+
+### 6.2 Local model run (`results/studio_evidence_metrics_ollama.json`)
+
+Not measured: no local-model results file exists.
+
+### 6.3 hf_inference
+
+not measured: the hf_inference provider is disabled by default (UWC_HF_INFERENCE_ENABLED, HF_TOKEN and a verified price are all required) and was never run in this build; the owners decided on no extra spending
 
 ## 7. Limits and open issues
 
 - **The template's numbers trace by construction.** The renderer types every number from the ledger, so a 100% traced
   share for the template is a check that the construction holds on every scenario, not evidence about how often a
-  model would write a wrong number. The LLM run (section 6) is the measurement of a model.
+  model would write a wrong number. The local-model run (section 6.2) is the measurement of a model, on
+  0 (not measured) scenarios only.
 - **The mutation test uses sentences we wrote.** The founder sentences come from the template, the same author wrote
   the mutations' rules, and the bound check's recall on cross_section follows from its design (the donor value is
   drawn so that it is absent from the cited claims). It shows the implementation has no gap (sentence splitting,
   marker mapping, comparators); it is not a held-out benchmark.
 - **Display rounding.** The renderer has one percent format with one decimal (`pct1`), so a note rate of 8.25% prints
   as 8.2%. The claim keeps the exact value and the template does not print the rate; S6 should print rates from the
-  claim value with two decimals or add a display format to the shared renderer.
+  claim value with two decimals or add a display format to the shared renderer. Negative dollars print as "$-53,735"
+  (the shared renderer's format).
 - **"(stated by the applicant)" on computed figures.** A CALC claim computed only from the founder's figures is
   USER_STATED, so the renderer prints that suffix (for example after the equity injection); its footnote says
   "calculated from the founder's figures". The suffix text belongs to the shared renderer and was not changed.
@@ -184,15 +294,17 @@ RESULTS_PLACEHOLDER
   a digit (a founder's site label "Lot 7") would show as untraced; the template therefore never prints a site label.
 - **Prompt registry.** The founder prompts are registered in `studio/narrative/prompts.py` with the same id + SHA-256
   convention as `rag/prompts.py`, not inside `rag.prompts.PROMPTS` (whose builders take a question and guideline
-  hits). Phase 6's release gate should read `narrative.prompts.all_prompt_hashes()` too.
+  hits). The hash of `founder_narrative_v1` covers the system prompt and the instruction; the template's hash covers
+  the template source (the example the model sees); the data-block builder code in `prompts.py` is not hashed yet
+  (the LLM cache key does cover every full request). Phase 6's release gate should read
+  `narrative.prompts.all_prompt_hashes()` too.
 - **Golden scenarios.** The demand comes from the S5 generator, not from SiteIQ; real metros run in this machine's
-  mode (all five were "limited" here, coverage below the 0.80 threshold, with snapshots present); the generated loan
-  amounts are often above the program's $500,000 maximum (the profiles' project sizes), so many narratives report
-  that finding. None of the golden plans carries a document, so CONFLICTING appears only in the unit tests.
+  mode (section 6.1 lists the modes); none of the golden plans carries a document, so CONFLICTING appears only in the
+  unit tests; with the generator's facts every owner fact is entered, so UNKNOWN claims come from SiteIQ factors
+  without data.
 - **hf_inference never ran.** It has no price in `config/llm_pricing.yaml`, so even with the flag and a token the
-  budget layer refuses the call. Its variables are documented here and in the module docstring, not in the shared
-  `.env.example`.
-- **Ledger size.** About 380-430 claims per plan, most of them monthly and yearly simulation bands. A ledger-wide
+  budget layer refuses the call.
+- **Ledger size.** Between 380 and 432 (median 402.5) claims per plan, most of them monthly and yearly simulation bands. A ledger-wide
   check gets weaker as the ledger grows (more values to match by accident), which is one reason for the bound check.
 
 ## 8. Likely interview questions
@@ -225,33 +337,37 @@ fills every slot from the ledger and adds a footnote, and the round-trip audit r
 **5. What happens when the model breaks the rules?**
 It gets one retry with the validator's findings ("V1_DIGIT: 250000"). If the second draft fails too, the model cannot
 be reached, or the rendered text fails the audit, the deterministic template is used and the result says so
-(`fallback_used`, `fallback_reason`). The local 1.5B model's fallback rate is in section 6.
+(`fallback_used`, `fallback_reason`). The local model's fallback rate was not measured in this build (section 6.2).
 
 **6. The round-trip audit already exists. Why add a bound check?**
-The audit asks whether a number equals some claim of the ledger. With about 400 claims, a wrong number often equals
-some other claim: on the founder sentences it missed every value moved between sentences and every flipped
-comparator, and some perturbed values (section 6). The bound check uses the footnote markers the renderer already
-writes: a number must equal a claim that its own sentence cites, with the threshold's comparator ("minimum 1.25").
+The audit asks whether a number equals some claim of the ledger. With hundreds of claims per plan, a wrong number
+often equals some other claim. On the founder sentences of the 36 golden narratives the round-trip audit flagged 0 of 686 values moved between sentences and 0 of 164 flipped comparators (section 6.1). The bound check uses the footnote markers the renderer already writes: a
+number must equal a claim that its own sentence cites, with the threshold's comparator ("minimum 1.25").
 
 **7. Is a recall of 1.0 a real result?**
-It shows the implementation holds on 686 sentences from 36 narratives, for the error types we can generate. It is not
-a claim about real errors: the mutations break the template's own sentences, the same author wrote both, and for
-cross_section the result follows from the design. We report the round-trip audit on the same mutations so the
-difference is visible, and wrong_row is reported as not applicable because a founder narrative has no tables.
+It shows the implementation holds on 686 sentences from 36 SYNTHETIC narratives, for the error types we can generate (bound check: value_perturb 686/686, magnitude_x10 686/686, unit_swap 321/321, comparator_flip 164/164, cross_section 686/686). It is not a claim about real errors: the mutations break the template's own sentences, the same author
+wrote both, and for cross_section the result follows from the design. We report the round-trip audit on the same
+mutations so the difference is visible, and wrong_row is reported as not applicable because a founder narrative has
+no tables.
 
-**8. Why is hf_inference disabled, and how would the owners turn it on?**
+**8. The founder edited a target. Which probability does the check use?**
+The one measured for that exact target. The simulation measures its own DSCR target, the program's 20% revenue stress
+and a 24-month cash window; if the founder asks for an 18-month cash window, the simulation's number answers a
+different question. The ledger then uses the path search's "before" probability, which S5 computes for the edited
+target; with no path search it records an UNKNOWN claim with the reason, and the check is "not evaluated". The
+sentence in the narrative prints the same probability the check used.
+
+**9. Why is hf_inference disabled, and how would the owners turn it on?**
 It can cost money and the owners decided on no extra spending. It needs `UWC_HF_INFERENCE_ENABLED=1`, `HF_TOKEN`, a
 model id, and the model's verified price in `config/llm_pricing.yaml`; without the price the cost-cap layer refuses
 every call before a request is sent. It goes through the same Cached(Budgeted(...)) wrapper as the other paid
 providers, and `UWC_LLM_PROVIDER` cannot select it. It is tested only against a mocked endpoint and never ran.
 
-**9. Could a founder's text inject instructions into the model?**
+**10. Could a founder's text inject instructions into the model, and why is the template the default?**
 Founder free text never reaches the prompt: the prompt holds slot ids, fixed meanings from code tables, statuses,
 section ids and the template draft, all built from code and config, and config phrases are checked with the grammar
-validator. A test checks that the site labels and the loan value are not in the prompt. The system prompt also says
-the data block is data, not instructions, and the validator would reject decision wording anyway.
-
-**10. Why is the template the default?**
-It always works, costs nothing, needs no network and gives the same text for the same ledger, which is what the Space
-needs. A model can make the prose read better, but on CPU it is slow and a small model often breaks the grammar; the
-fallback keeps the founder's page correct either way, and the results show how often it was needed.
+validator. A test checks that the site labels and the loan value are not in the prompt; the system prompt also says
+the data block is data, not instructions, and the validator would reject decision wording anyway. The template is the
+default because it always works, costs nothing, needs no network and gives the same text for the same ledger, which
+is what the Space needs; a model can make the prose read better, but on CPU it is slow and a small model often breaks
+the grammar.

@@ -43,6 +43,17 @@ PROJECTION_YEAR = 2
 # Phrases: (expression, true, false, unknown). No digits and no decision words: the renderer prints them as they are.
 
 
+def input_claim_of(name: str, claims: dict[str, Claim]) -> Claim | None:
+    """The claim of one simulator input, the one whose value the simulator used: a range the founder edited
+    (USER_STATED ASSUME.<name>), else the founder's typed figure, else the ASSUME.<name> claim (None when absent)."""
+    assumed = claims.get(ids.assume_id(name))
+    if assumed is not None and assumed.status == "USER_STATED":
+        return assumed
+    field = FIELD_FOR_INPUT.get(name)
+    founder = claims.get(claim_id_for_field(field)) if field is not None else None
+    return founder or assumed
+
+
 def cents(value: Decimal | float) -> float:
     """A dollar amount rounded half up to the cent (the program's convention)."""
     return half_up(value if isinstance(value, Decimal) else to_decimal(float(value)), 2)
@@ -79,13 +90,11 @@ class ProgramCalculations:
         return self.claims[claim_id]
 
     def input_claim(self, name: str) -> Claim:
-        """The claim of one simulator input: the founder's figure when typed, else its ASSUME.* claim."""
-        field = FIELD_FOR_INPUT.get(name)
-        if field is not None:
-            founder = self.claims.get(claim_id_for_field(field))
-            if founder is not None:
-                return founder
-        return self.get(ids.assume_id(name))
+        """The claim of one simulator input (input_claim_of)."""
+        claim = input_claim_of(name, self.claims)
+        if claim is None:
+            raise KeyError(f"the ledger has no claim for the simulator input {name}")
+        return claim
 
     def rate_bounds(self) -> tuple[float, float]:
         """(low, high) of the note rate's range (its value twice when it has none)."""
