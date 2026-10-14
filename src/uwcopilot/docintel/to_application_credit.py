@@ -12,7 +12,8 @@ reads what a careful reader of the documents would conclude):
   EVERY row (the agent's existing_annual_debt_service subtracts refinanced_monthly_payment itself, and only when a
   payoff letter is in the file, NBC-4.4); refinanced_monthly_payment = the payments of the rows marked "to be
   refinanced"; existing_total_debt_balance = the schedule's printed total balance (the sum of the rows when the
-  total is not printed); all 0 when the schedule lists no debt; observed loan payments and MCA remittances =
+  total is not printed); all 0 when the schedule lists no debt (the two payment figures are then cited to the
+  schedule's printed total monthly payment line); observed loan payments and MCA remittances =
   deposits.py averages over the months with a payment (NBC-4.1 "observed monthly total");
 - new_loans_last_90_days: deposits.new_loans_last_90_days over the 90 days ending on the last statement period end
   (NBC-4.4 "the most recent 90 days of statements");
@@ -143,8 +144,10 @@ def schedule_figures(packet: LoanPacket, builder: ApplicationBuilder) -> tuple[f
         if item.to_be_refinanced.value is True:
             refinanced += payment
     total = schedule.total_balance.value if schedule.total_balance.found else item_balance
-    builder.computed("debt.existing_monthly_payment_schedule", round(every_row, CENTS), payments)
-    builder.computed("debt.refinanced_monthly_payment", round(refinanced, CENTS), payments)
+    # A schedule with no rows ("No existing business debt.") is cited by its printed total monthly payment line.
+    payment_sources = payments or [schedule.total_monthly_payment]
+    builder.computed("debt.existing_monthly_payment_schedule", round(every_row, CENTS), payment_sources)
+    builder.computed("debt.refinanced_monthly_payment", round(refinanced, CENTS), payment_sources)
     builder.computed("debt.existing_total_debt_balance", round(float(total), CENTS), [schedule.total_balance])
     return round(every_row, CENTS), round(refinanced, CENTS), round(float(total), CENTS)
 

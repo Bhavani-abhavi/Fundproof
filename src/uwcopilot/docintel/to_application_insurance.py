@@ -3,7 +3,11 @@
 The derivation of every field follows the rules written down for the as-documented application:
 - application_id "APP-I-<nnn>"; dates, coverage, GL limits (None when the form says "Not requested"), stated TIV,
   revenue, payroll, subcontracted share, COI tracking, foreign products, stated claim count and incurred losses:
-  the insurance application form;
+  the insurance application form. Every one of them records its source (doc, page, line) in the provenance. A GL
+  limit the form leaves empty is None without an unknown entry (builder.value(..., optional=True)) ONLY when the
+  form's coverage was read and has no general liability (a property-only quote has no GL limits:
+  gl_limits_optional); on a GL or package request, or when the coverage itself was not read, an empty GL limit is
+  an unknown like any other unread value;
 - applicant: named insured, FEIN, years in business and business class (class_code) from the form;
   prior_experience_years 0 and fryer_suppression_inspected_within_6_months False (no document carries them);
 - locations: one per property schedule row with the fields the schedule prints. The fields no packet document
@@ -55,6 +59,8 @@ LOCATION_FIELDS: tuple[str, ...] = (
     "protection_class",
 )
 LOCATION_AMOUNTS: tuple[str, ...] = ("building_value", "contents_value", "business_income_value")
+# Coverages that include general liability (the same set as agent.policy_insurance.has_gl).
+GL_COVERAGES: frozenset[str] = frozenset({"general_liability", "package"})
 
 
 def next_year(start: date) -> date:
@@ -203,10 +209,16 @@ def insurance_documents(submission: InsuranceSubmission, builder: ApplicationBui
     return provided_codes(provided, INSURANCE_DOCUMENTS)
 
 
+def gl_limits_optional(form: InsuranceApplicationForm) -> bool:
+    """True when the form may leave its GL limits empty: its coverage was read and includes no general liability."""
+    return form.coverage.found and form.coverage.value not in GL_COVERAGES
+
+
 def insurance_application(submission: InsuranceSubmission) -> tuple[dict, Provenance, list[str]]:
     """The InsuranceApplication dict of an insurance submission extraction (see the module docstring)."""
     builder = ApplicationBuilder()
     form = submission.application or InsuranceApplicationForm(doc_id="")
+    gl_optional = gl_limits_optional(form)
     if submission.application is None:
         builder.unknowns.append("application_form")
     application = {
@@ -225,8 +237,10 @@ def insurance_application(submission: InsuranceSubmission) -> tuple[dict, Proven
             "fryer_suppression_inspected_within_6_months": False,
         },
         "coverage": builder.value("coverage", form.coverage),
-        "gl_limit_per_occurrence": money(form.gl_limit_per_occurrence.value),
-        "gl_limit_aggregate": money(form.gl_limit_aggregate.value),
+        "gl_limit_per_occurrence": builder.value(
+            "gl_limit_per_occurrence", form.gl_limit_per_occurrence, money, optional=gl_optional
+        ),
+        "gl_limit_aggregate": builder.value("gl_limit_aggregate", form.gl_limit_aggregate, money, optional=gl_optional),
         "stated_tiv": builder.value("stated_tiv", form.stated_tiv, money),
         "locations": locations(submission, builder),
         "loss_runs": loss_runs(submission, form.proposed_effective_date.value, builder),

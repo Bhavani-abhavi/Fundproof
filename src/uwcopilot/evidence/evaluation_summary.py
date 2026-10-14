@@ -34,7 +34,9 @@ CLAIM_NOTE = (
     "together with 'evaluable'. The claim id scheme of the table and of the ledger were written by the same author, "
     "so this measures detection and propagation, not an independent claim taxonomy: it is agreement with the "
     "documented status rules, and a status rule that is wrong in both tables is scored as correct. Table v2 adds "
-    "dependency-aware expectations (a calculation over a value no document provided is expected UNKNOWN)."
+    "dependency-aware expectations (a calculation over a value no document provided is expected UNKNOWN). NOT HELD "
+    "OUT: table v2 was written after the v1 test-split numbers had been seen (protocol.development_note), so the "
+    "test split is no longer untouched for this table and these numbers are not a held-out measurement."
 )
 CALC_NOTE = (
     "The reference policy's calculations on the engine's application against the same calculations on "

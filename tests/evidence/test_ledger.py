@@ -6,7 +6,13 @@ import json
 import re
 
 import pytest
-from evidence_case_helpers import application_dict, generated_truth, oracle_case, single_problem_packet
+from evidence_case_helpers import (
+    CASE_NUMBERS,
+    application_dict,
+    generated_truth,
+    oracle_case,
+    single_problem_packet,
+)
 from pydantic import ValidationError
 
 from uwcopilot.agent.applications import AnyApplication, parse_application, screened_parties
@@ -15,7 +21,8 @@ from uwcopilot.agent.policy_insurance import coverage_lines
 from uwcopilot.docintel.check_models import Evidence
 from uwcopilot.docintel.checks import run_checks
 from uwcopilot.docintel.contradictions import Contradiction, build_contradictions
-from uwcopilot.docintel.schemas import parse_extraction
+from uwcopilot.docintel.schemas import Cited, InsuranceSubmission, parse_extraction
+from uwcopilot.docintel.synthetic.problems import CREDIT_RATES, INSURANCE_RATES
 from uwcopilot.evidence import ledger_tables as tables
 from uwcopilot.evidence.ledger import (
     CLAIM_STATUSES,
@@ -33,6 +40,7 @@ from uwcopilot.evidence.ledger import (
     unknown_claim,
     user_stated_claim,
 )
+from uwcopilot.evidence.ledger_facts import CHECK_UNKNOWN_REASON, UNCITED_REASON, outcome_claim
 from uwcopilot.evidence.state import MODEL_NOT_EVALUATED_REASON, CaseState, apply, from_application, from_packet
 from uwcopilot.provenance.renderer import STATUS_SUFFIX, render, round_trip_audit
 
@@ -125,11 +133,25 @@ def revenue_contradiction() -> Contradiction:
     )
 
 
+def cited_everywhere(line: str, except_paths: tuple[str, ...] = ()) -> dict[str, list[dict[str, object]]]:
+    """Document provenance for every fact path of a line (a packet whose facts all have a citation), on made-up
+    lines of D09 page 9, except the listed paths (a value the mapping read but did not cite)."""
+    specs = (*tables.FACTS_BY_LINE[line], *tables.COUNT_FACTS_BY_LINE.get(line, ()))
+    return {
+        spec.path: [{"doc_id": "D09", "page": 9, "line": number}]
+        for number, spec in enumerate(specs, start=1)
+        if spec.path not in except_paths
+    }
+
+
 def conflicting_state() -> CaseState:
-    """APP-C-001 with document provenance for the stated revenue and an open revenue contradiction."""
+    """APP-C-001 with document provenance for every fact (the stated revenue on D01 p1 L7) and an open revenue
+    contradiction."""
+    provenance = cited_everywhere("credit")
+    provenance["stated_annual_revenue"] = [{"doc_id": "D01", "page": 1, "line": 7}]
     return state_with(
         "APP-C-001",
-        field_provenance={"stated_annual_revenue": [{"doc_id": "D01", "page": 1, "line": 7}]},
+        field_provenance=provenance,
         check_status={"revenue_vs_deposits": "fail", "name_consistency": "pass"},
     )
 
@@ -147,11 +169,94 @@ def test_a_contradiction_makes_its_facts_conflicting_and_marks_dependent_calcula
     assert gap.status == "VERIFIED" and gap.depends_on_conflicting == ("APP-stated_annual_revenue",)
     assert claim(ledger, "CALC-dscr_stated_revenue").depends_on_conflicting == ("APP-stated_annual_revenue",)
     assert claim(ledger, "CALC-dscr").depends_on_conflicting == ()
-    # A packet value whose citation the mapping did not record is VERIFIED and says so.
+    # A document check's claim is a rule's outcome, not a printed value: provenance kind "calculation".
+    assert claim(ledger, "CHK-name_consistency").provenance.kind == "calculation"
+
+
+def test_a_packet_value_without_a_citation_is_never_verified() -> None:
+    # The mapping read term_months (the state has document provenance) but recorded no citation for it.
+    state = state_with("APP-C-001", field_provenance=cited_everywhere("credit", except_paths=("term_months",)))
+    ledger = build_ledger(state)
     term = claim(ledger, "APP-term_months")
-    assert term.status == "VERIFIED" and term.provenance.details == {
-        "citations": "not recorded by docintel.to_application"
-    }
+    assert term.status == "UNKNOWN" and term.value is None and not term.imputed
+    assert term.reason == UNCITED_REASON and term.provenance.kind == "document"
+    assert term.provenance.details == {"uncited_value": application_dict("APP-C-001")["term_months"]}
+    assert "not available" in render("Term {{claim:APP-term_months}}.", ledger).body
+    # The DSCR reads the term (through the annual debt service), so it says it rests on an unknown value.
+    assert "APP-term_months" in claim(ledger, "CALC-dscr").depends_on_unknown
+    # Every other fact has its citation and is VERIFIED.
+    others = [item for item in ledger.claims if item.id.startswith("APP-") and item.id != "APP-term_months"]
+    assert others and {item.status for item in others} == {"VERIFIED"}
+
+
+def test_a_check_outcome_over_an_unread_value_is_unknown_not_verified() -> None:
+    # The revenue check passed, but statement month 1 was read and marked unreliable (its rows do not add up): the
+    # pass rests on that month, so it is UNKNOWN, like a calculation over it, and its outcome is kept in details.
+    state = state_with(
+        "APP-C-001",
+        field_provenance=cited_everywhere("credit"),
+        check_status={"revenue_vs_deposits": "pass", "name_consistency": "pass"},
+        unknown_paths=["bank_statements.months[1]"],
+    )
+    ledger = build_ledger(state)
+    check = claim(ledger, "CHK-revenue_vs_deposits")
+    assert check.status == "UNKNOWN" and check.value is None and not check.imputed
+    assert check.depends_on_unknown == ("APP-bank_statements.months.1",)
+    assert check.reason == CHECK_UNKNOWN_REASON.format(ids="APP-bank_statements.months.1")
+    assert check.provenance.kind == "calculation" and check.provenance.details == {"outcome_with_unread_inputs": "pass"}
+    assert "not available" in render("Revenue check {{claim:CHK-revenue_vs_deposits}}.", ledger).body
+    # A check that compares other values keeps its VERIFIED outcome.
+    name = claim(ledger, "CHK-name_consistency")
+    assert name.status == "VERIFIED" and name.value == "pass" and name.depends_on_unknown == ()
+
+
+def test_a_check_outcome_lists_the_conflicting_values_it_compares() -> None:
+    stated = Claim(
+        id="APP-debt.existing_monthly_payment_schedule",
+        label="Existing monthly debt payments (debt schedule)",
+        value=1000.0,
+        unit="USD",
+        display="usd2",
+        status="CONFLICTING",
+        provenance=Provenance(kind="document", ref="debt.existing_monthly_payment_schedule"),
+        conflict_ids=("CT-09",),
+    )
+    unrelated = stated.model_copy(update={"id": "APP-stated_annual_revenue"})
+    found = outcome_claim("debt_payment_consistency", "pass", [stated, unrelated])
+    assert found.status == "VERIFIED" and found.value == "pass"
+    assert found.depends_on_conflicting == ("APP-debt.existing_monthly_payment_schedule",)
+
+
+def test_a_generated_claims_history_check_over_an_unreliable_loss_run_is_unknown() -> None:
+    # A loss run whose summary differs from its claim lines: the claims-history check still passes against one of
+    # the two readings, but the policy year it read is UNKNOWN, so the pass is not shown as verified.
+    case = oracle_case(single_problem_packet("insurance", "loss_run_total_mismatch"))
+    ledger = build_ledger(case.state, contradictions=case.report)
+    check = claim(ledger, "CHK-claims_history_consistency")
+    assert check.status == "UNKNOWN" and check.depends_on_unknown
+    assert all(item.startswith("APP-loss_runs.years.") for item in check.depends_on_unknown)
+    assert claim(ledger, "CHK-loss_run_totals").status == "CONFLICTING"
+    assert round_trip_audit(render(full_memo(ledger), ledger), ledger) == []
+
+
+@pytest.mark.parametrize(
+    ("line", "problem_type"),
+    [("credit", problem_type) for problem_type in CREDIT_RATES]
+    + [("insurance", problem_type) for problem_type in INSURANCE_RATES],
+)
+def test_every_verified_document_claim_has_a_citation(line: str, problem_type: str) -> None:
+    # On a generated SYNTHETIC packet of every problem family the generator can plant on the line (the keys of its
+    # draw rates: 9 credit and 8 insurance families, missing_document included).
+    case = oracle_case(single_problem_packet(line, problem_type))
+    assert problem_type in {problem.problem_type for problem in case.truth.problems}
+    ledger = build_ledger(case.state, extraction=case.extraction, contradictions=case.report)
+    uncited = [
+        item.id
+        for item in ledger.claims
+        if item.status == "VERIFIED" and item.provenance.kind == "document" and not item.provenance.citations
+    ]
+    assert uncited == []
+    assert any(item.status == "VERIFIED" and item.provenance.kind == "document" for item in ledger.claims)
 
 
 def test_a_resolution_closes_the_contradiction() -> None:
@@ -198,7 +303,7 @@ def test_an_unread_value_with_a_default_is_unknown_and_marked_imputed() -> None:
     data["debt"]["existing_total_debt_balance"] = 0.0
     state = CaseState(
         application=data,
-        field_provenance={"requested_amount": [{"doc_id": "D01", "page": 1, "line": 3}]},
+        field_provenance=cited_everywhere("credit", except_paths=("debt.existing_total_debt_balance",)),
         unknown_paths=["debt.existing_total_debt_balance"],
     )
     ledger = build_ledger(state)
@@ -610,6 +715,30 @@ def test_every_unread_path_has_a_ledger_claim() -> None:
     assert score.status == "UNKNOWN" and not score.imputed
     missing = claim(ledger, "CALC-min_principal_credit_score")
     assert missing.status == "UNKNOWN" and "no credit score" in (missing.reason or "")
+
+
+def test_an_unread_gl_limit_on_a_gl_request_is_unknown_and_the_capacity_pass_is_not_shown() -> None:
+    # A seed-4040 packet whose form asks for GL, with both GL limits unread (as if OCR missed them): the policy counts
+    # an unread limit as 0, so the HM-1.1 capacity pass rests on it and is shown as not evaluated.
+    truth = next(
+        generated_truth(f"PKT-I-{number}", "insurance")
+        for number in CASE_NUMBERS
+        if generated_truth(f"PKT-I-{number}", "insurance").application_as_documented["gl_limit_per_occurrence"]
+    )
+    extraction = parse_extraction(truth.oracle_extraction)
+    assert isinstance(extraction, InsuranceSubmission) and extraction.application is not None
+    unread = extraction.application.model_copy(
+        update={"gl_limit_per_occurrence": Cited(), "gl_limit_aggregate": Cited()}
+    )
+    extraction = extraction.model_copy(update={"application": unread})
+    checks = run_checks(extraction)
+    state = from_packet(extraction, checks, build_contradictions(extraction, checks))
+    ledger = build_ledger(state)
+    for claim_id in ("APP-gl_limit_per_occurrence", "APP-gl_limit_aggregate"):
+        assert claim(ledger, claim_id).status == "UNKNOWN"
+    capacity = ledger.assertion("A-capacity")
+    assert capacity is not None and capacity.result is None
+    assert set(capacity.depends_on_unknown) == {"APP-gl_limit_per_occurrence", "APP-gl_limit_aggregate"}
 
 
 def test_undocumented_location_defaults_are_unknown_and_passes_resting_on_them_are_not_shown() -> None:

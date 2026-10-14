@@ -15,11 +15,35 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 PolicyName = Literal["voi", "voi_lookahead", "checklist", "random", "oracle"]
-PriorsVariant = Literal["documented", "latent_x0.5", "latent_x1.5", "latent_removed"]
+PriorsVariant = Literal[
+    "documented",
+    "latent_x0.5",
+    "latent_x1.5",
+    "latent_removed",
+    "empirical_dev",
+    "empirical_dev_smoothed",
+    "oracle_shares",
+]
 POLICIES: tuple[str, ...] = ("voi", "voi_lookahead", "checklist", "random", "oracle")
-PRIORS_VARIANTS: tuple[str, ...] = ("documented", "latent_x0.5", "latent_x1.5", "latent_removed")
+PRIORS_VARIANTS: tuple[str, ...] = (
+    "documented",
+    "latent_x0.5",
+    "latent_x1.5",
+    "latent_removed",
+    "empirical_dev",
+    "empirical_dev_smoothed",
+    "oracle_shares",
+)
 # The prior of the latent (true) option is multiplied by this factor, then all priors are renormalized to sum to 1.
 PRIOR_FACTORS: dict[str, float] = {"latent_x0.5": 0.5, "latent_x1.5": 1.5}
+# Variants whose priors are a table of latent shares the caller measures and passes in (simulator.py docstring):
+# empirical_dev (development split, unsmoothed), empirical_dev_smoothed (development split, add-one smoothing) and
+# oracle_shares (the evaluated group's own shares: an in-sample oracle reference).
+TABLE_VARIANTS: tuple[str, ...] = ("empirical_dev", "empirical_dev_smoothed", "oracle_shares")
+# Resolution template key -> option id -> prior (a latent share).
+EmpiricalPriors = dict[str, dict[str, float]]
+# Table variant -> its priors table.
+PriorTables = dict[str, EmpiricalPriors]
 # A run never makes more requests than this (a guard; no run is expected to reach it).
 MAX_REQUESTS = 20
 # The oracle brute-forces request orders only when the case starts with at most this many open requests.

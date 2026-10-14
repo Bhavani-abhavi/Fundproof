@@ -42,10 +42,18 @@ class ApplicationBuilder:
         self.provenance: Provenance = {}
         self.unknowns: list[str] = []
 
-    def value(self, path: str, cited: Cited, convert: Callable[[Any], Any] | None = None) -> Any:
-        """The cited value (converted), recording its source; None and an unknown when it was not found."""
+    def value(
+        self, path: str, cited: Cited, convert: Callable[[Any], Any] | None = None, *, optional: bool = False
+    ) -> Any:
+        """The cited value (converted), recording its source; None and an unknown when it was not found.
+
+        optional=True is for a value the document may legitimately leave empty (GL limits on a form that says "Not
+        requested"): when it was not found the result is None WITHOUT an unknown entry; when it was found, its
+        source is recorded like any other value.
+        """
         if not cited.found:
-            self.unknowns.append(path)
+            if not optional:
+                self.unknowns.append(path)
             return None
         self.provenance[path] = [source_of(cited)]
         return cited.value if convert is None else convert(cited.value)

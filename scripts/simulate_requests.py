@@ -12,7 +12,13 @@ What it does:
    The seed differs from the Phase 2 evaluation packets (seed 42) and the engine's test packets (seed 4040), so the
    same packet id names a different case here.
 2. runs every policy of evidence/simulator.py (voi, voi_lookahead, checklist, random, oracle) on every case, under
-   every priors variant (documented, latent_x0.5, latent_x1.5, latent_removed; the oracle under documented only);
+   every priors variant (documented, latent_x0.5, latent_x1.5, latent_removed, empirical_dev,
+   empirical_dev_smoothed, oracle_shares; the oracle policy under documented only). The three table variants take
+   their priors from latent shares measured BEFORE any case is simulated and written into the design block:
+   empirical_dev = the development split's shares, unsmoothed (an option never latent there gets no prior, which
+   removes the true option of some test problems: diagnostics.latent_without_prior); empirical_dev_smoothed = the
+   same counts with add-one smoothing (no option removed); oracle_shares = each evaluated group's own shares (an
+   in-sample oracle reference that never removes a true option; no real underwriter has these priors);
 3. writes the "simulator" section (see "Results files" below) and one JSON line per run to
    data/processed/evidence/simulator_runs.jsonl (gitignored). The section also holds "diagnostics"
    (evidence/simulator_diagnostics.py): the latent option vs the documented prior per problem family, the coupled
@@ -74,8 +80,11 @@ from uwcopilot.evidence.simulator_diagnostics import (
     case_row,
     coupling_summary,
     is_structural_cpa_case,
+    latent_shares,
     latent_vs_prior,
+    latent_without_prior,
     planted_problem_counts,
+    smoothed_shares,
 )
 from uwcopilot.evidence.simulator_models import (
     MAX_REQUESTS,
@@ -83,6 +92,8 @@ from uwcopilot.evidence.simulator_models import (
     ORACLE_MAX_POSITIONS,
     POLICIES,
     PRIORS_VARIANTS,
+    EmpiricalPriors,
+    PriorTables,
     SimulationResult,
 )
 from uwcopilot.evidence.simulator_summary import summarize
@@ -100,6 +111,7 @@ RESULTS_FILE = RESULTS_DIR / "evidence_metrics.json"
 STANDALONE_FILE = RESULTS_DIR / "evidence_metrics_simulator.json"
 SECTION = "simulator"
 RUNS_FILE = DATA_DIR / "processed" / "evidence" / "simulator_runs.jsonl"
+GROUPS: tuple[str, ...] = ("test_main", "held_out_family", "development")
 HEADLINE_METRICS: tuple[str, ...] = (
     "cost_weighted_requests",
     "n_requests",
@@ -125,7 +137,27 @@ VARIANT_DESCRIPTIONS: dict[str, str] = {
     "latent_x1.5": "prior of the generator's latent option x1.5, renormalized; where the documented prior of that "
     "option is below its latent share, this moves the priors TOWARD the truths",
     "latent_removed": "the generator's latent option removed from the option set, renormalized",
+    "empirical_dev": "development-split latent shares, UNSMOOTHED: every option's prior is the share of "
+    "development-split problems of its resolution template whose latent option it was (design.empirical_dev_priors). "
+    "Options never latent there (some templates have only 4 development problems) get no prior and leave the set, "
+    "which removes the TRUE option of some test problems (diagnostics.latent_without_prior.empirical_dev): for those "
+    "problems this variant acts like latent_removed. NOT a correct-prior reference. A template without development "
+    "problems keeps the documented priors",
+    "empirical_dev_smoothed": "development-split latent counts with add-one (Laplace) smoothing: (count + 1) / "
+    "(development problems of the template + its number of options) (design.empirical_dev_smoothed_priors); every "
+    "option keeps a prior above zero, so none leaves the set. An estimate a practitioner could make from past cases",
+    "oracle_shares": "in-sample ORACLE reference: priors equal to the latent shares of the evaluated group itself "
+    "(test_main, held_out_family or development; design.oracle_shares_priors). Options never latent in the group "
+    "leave the set, but the true option of every problem in the group keeps a prior above zero. No real underwriter "
+    "has these priors: the row shows what the VOI policy does when its template-level priors match the truths",
 }
+CASE_CAP_NOTE = (
+    "innovations.md S5 caps each case at 4 open items with 3 resolutions each. The resolution templates comply (2 or "
+    "3 options each), but the cases are NOT capped: the generator plants every problem its seeded draw gives, so "
+    "some cases carry 5 planted problems and start with 5 open requests (diagnostics.planted_problems and the "
+    "open_requests_at_start counts). Those cases are simulated like the others; only the oracle is not computed on "
+    f"them (it brute-forces request orders only up to {ORACLE_MAX_OPEN_REQUESTS} open requests)."
+)
 READING_NOTES: tuple[str, ...] = (
     "The voi policy only makes requests whose VOI is above zero, so its zero-value request count is 0 by "
     "construction; the comparison is how many zero-value requests the other policies make.",
@@ -149,7 +181,15 @@ READING_NOTES: tuple[str, ...] = (
     "Latent truths do not follow the documented priors (diagnostics.latent_vs_prior): the generator takes the "
     "option the cause implies or the nearest one, so for several families one option is latent in every case and "
     "another never. The 'documented' rows are therefore not a correct-prior baseline, and the x0.5 / x1.5 rows "
-    "measure robustness around priors that are already wrong (x1.5 can move a family toward its truth).",
+    "measure robustness around priors that are already wrong (x1.5 can move a family toward its truth). Three table "
+    "variants replace the priors with measured latent shares, so, unlike x0.5 / x1.5, they CAN change which "
+    "requests have a VOI above zero. empirical_dev uses the development split's shares UNSMOOTHED: an option never "
+    "latent on a small development sample gets no prior, so for some test problems the true option is removed "
+    "(diagnostics.latent_without_prior counts them); it is an estimate with that defect, not a correct-prior "
+    "reference. empirical_dev_smoothed is the same estimate with add-one smoothing (no option removed). "
+    "oracle_shares is the correct-prior reference: the evaluated group's own shares, which no real underwriter has "
+    "and which never remove a problem's true option.",
+    CASE_CAP_NOTE,
     "A reveal applies the generator's latent substitutions, which are not always the template option the engine "
     "values: insurance problems that change the claims of the latent world also set the stated claim count and "
     "total incurred to the true history (diagnostics.coupling). Revealing such a problem can therefore change the "
@@ -240,9 +280,43 @@ def case_rng(seed: int, case_id: str) -> random.Random:
     return random.Random(int(digest[:8], 16))
 
 
-def run_case(truth: PacketTruth, seed: int) -> tuple[list[SimulationResult], dict[str, Any]]:
+def development_truths(args: argparse.Namespace) -> list[PacketTruth]:
+    """Every development-split case of the design for the requested lines (ignores --split and --limit), with the
+    held-out family skipped as always: the cases the empirical_dev priors are measured on."""
+    full = argparse.Namespace(**{**vars(args), "split": "dev", "limit": None})
+    return [truth for line in args.lines for truth in build_cases(line, full)]
+
+
+def group_of(truth: PacketTruth) -> str:
+    """The case's reporting group: development, held_out_family (test cases with it) or test_main."""
+    if truth.split == "dev":
+        return "development"
+    return "held_out_family" if has_held_out_family(truth) else "test_main"
+
+
+def development_tables(development: list[PacketTruth]) -> PriorTables:
+    """The priors tables measured on the development split: empirical_dev (latent shares, unsmoothed) and
+    empirical_dev_smoothed (add-one smoothing) (simulator_diagnostics)."""
+    table = latent_vs_prior(development)
+    return {"empirical_dev": latent_shares(table), "empirical_dev_smoothed": smoothed_shares(table)}
+
+
+def oracle_tables(truths: list[PacketTruth]) -> dict[str, EmpiricalPriors]:
+    """Group -> the latent shares of the group's own cases (the oracle_shares priors of its cases)."""
+    return {
+        group: latent_shares(latent_vs_prior([truth for truth in truths if group_of(truth) == group]))
+        for group in GROUPS
+    }
+
+
+def case_tables(truth: PacketTruth, development: PriorTables, oracle: dict[str, EmpiricalPriors]) -> PriorTables:
+    """The three priors tables one case is simulated with (oracle_shares: its own group's shares)."""
+    return {**development, "oracle_shares": oracle[group_of(truth)]}
+
+
+def run_case(truth: PacketTruth, seed: int, tables: PriorTables) -> tuple[list[SimulationResult], dict[str, Any]]:
     """Every policy under every priors variant on one case (the oracle under the documented priors only), and the
-    case's diagnostics row (simulator_diagnostics.case_row)."""
+    case's diagnostics row (simulator_diagnostics.case_row). tables: the case's priors tables (case_tables)."""
     case = prepare_case(truth)
     row = case_row(case)
     try:
@@ -257,7 +331,7 @@ def run_case(truth: PacketTruth, seed: int) -> tuple[list[SimulationResult], dic
             if policy == "oracle" and variant != "documented":
                 continue
             rng = case_rng(seed, truth.packet_id) if policy == "random" else None
-            results.append(simulate(truth, policy, variant, rng, prepared=case, context=context))
+            results.append(simulate(truth, policy, variant, rng, prepared=case, context=context, tables=tables))
     return results, row
 
 
@@ -293,7 +367,9 @@ def group_summaries(results: list[SimulationResult]) -> dict[str, Any]:
     return summaries
 
 
-def design(args: argparse.Namespace) -> dict[str, Any]:
+def design(
+    args: argparse.Namespace, development: PriorTables, oracle: dict[str, EmpiricalPriors], n_development: int
+) -> dict[str, Any]:
     """The fixed design of the run (written before the results)."""
     return {
         "seed": args.seed,
@@ -317,6 +393,25 @@ def design(args: argparse.Namespace) -> dict[str, Any]:
         "policies": POLICY_DESCRIPTIONS,
         "headline_policy": "voi (the specified S5 stopping rule); voi_lookahead is reported as an addition",
         "priors_variants": VARIANT_DESCRIPTIONS,
+        "empirical_dev_priors": {
+            "what": "latent share per resolution template and option on the development split (the empirical_dev "
+            "variant's priors), measured before any test case was simulated",
+            "development_cases": n_development,
+            "smoothing": "none: an option never latent on the development split gets no prior and leaves the set",
+            "shares": development["empirical_dev"],
+        },
+        "empirical_dev_smoothed_priors": {
+            "what": "the empirical_dev_smoothed variant's priors, from the same development-split counts",
+            "development_cases": n_development,
+            "smoothing": "add-one: (latent count + 1) / (development problems of the template + its options)",
+            "shares": development["empirical_dev_smoothed"],
+        },
+        "oracle_shares_priors": {
+            "what": "the oracle_shares variant's priors: the latent shares of each reporting group's own cases (an "
+            "in-sample oracle reference, not available to a real underwriter)",
+            "shares_by_group": oracle,
+        },
+        "case_cap": CASE_CAP_NOTE,
         "max_requests_per_run": MAX_REQUESTS,
         "oracle_search_guard_positions": ORACLE_MAX_POSITIONS,
         "metrics": {
@@ -337,19 +432,36 @@ def design(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def diagnostics(
-    results: list[SimulationResult], truths: list[PacketTruth], rows: list[dict[str, Any]], held_out: set[str]
+    results: list[SimulationResult],
+    truths: list[PacketTruth],
+    rows: list[dict[str, Any]],
+    held_out: set[str],
+    tables: tuple[PriorTables, dict[str, EmpiricalPriors]],
 ) -> dict[str, Any]:
-    """The case diagnostics per group (simulator_diagnostics.py), and the structural CPA cases reported apart."""
+    """The case diagnostics per group (simulator_diagnostics.py), and the structural CPA cases reported apart.
+
+    tables: (the development-split tables, the oracle_shares table per group), for latent_without_prior.
+    """
+    development, oracle = tables
     groups = {
         "test_main": lambda case_id, split: split == "test" and case_id not in held_out,
         "held_out_family": lambda case_id, split: split == "test" and case_id in held_out,
         "development": lambda case_id, split: split == "dev",
     }
     section: dict[str, Any] = {"latent_vs_prior": {}, "coupling": {}, "planted_problems": {}}
+    section["latent_without_prior"] = {
+        "note": "planted problems whose TRUE option a table variant's priors leave out (the variant then acts like "
+        "latent_removed for that problem), per group; counted whether or not an open item stands for the problem",
+        "empirical_dev": {},
+        "empirical_dev_smoothed": {},
+        "oracle_shares": {},
+    }
     for name, chosen in groups.items():
         group_truths = [truth for truth in truths if chosen(truth.packet_id, truth.split)]
         group_rows = [row for row in rows if chosen(row["case_id"], row["split"])]
         section["latent_vs_prior"][name] = latent_vs_prior(group_truths)
+        for variant, table in (*development.items(), ("oracle_shares", oracle[name])):
+            section["latent_without_prior"][variant][name] = latent_without_prior(group_truths, table)
         section["coupling"][name] = coupling_summary(group_rows)
         section["planted_problems"][name] = planted_problem_counts(group_rows)
     cpa = {truth.packet_id for truth in truths if truth.split == "test" and is_structural_cpa_case(truth)}
@@ -384,8 +496,10 @@ def build_payload(
     rows: list[dict[str, Any]],
     args: argparse.Namespace,
     run: RunProvenance,
+    tables: tuple[PriorTables, dict[str, EmpiricalPriors]],
+    n_development: int,
 ) -> dict[str, Any]:
-    """The "simulator" section."""
+    """The "simulator" section. tables: (the development-split tables, the oracle_shares table per group)."""
     started = time.perf_counter()
     held_out = {truth.packet_id for truth in truths if has_held_out_family(truth)}
     development = [result for result in results if result.split == "dev"]
@@ -397,13 +511,13 @@ def build_payload(
         "data_label": "SYNTHETIC",
         "description": "Innovation S5: evidence-request policies on SYNTHETIC JSON-only cases with a hidden latent "
         "truth. Replaces the circular 'next-best-evidence top-1 vs resolving document' headline.",
-        "design": design(args),
+        "design": design(args, tables[0], tables[1], n_development),
         "case_set": cases,
         "headline": headline(test),
         "test": test,
         "held_out_family": group_summaries(test_held_out),
         "development": group_summaries(development),
-        "diagnostics": diagnostics(results, truths, rows, held_out),
+        "diagnostics": diagnostics(results, truths, rows, held_out, tables),
         "not_claimable": list(NOT_CLAIMABLE),
         "provenance": run.finish(data_snapshots={"simulator_case_set": cases}),
     }
@@ -460,17 +574,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     run = RunProvenance.start()
     started = time.perf_counter()
-    truths: list[PacketTruth] = []
+    development = development_truths(args)
+    development_priors = development_tables(development)
+    truths = [truth for line in args.lines for truth in build_cases(line, args)]
+    oracle_priors = oracle_tables(truths)
     results: list[SimulationResult] = []
     rows: list[dict[str, Any]] = []
-    for line in args.lines:
-        for truth in build_cases(line, args):
-            truths.append(truth)
-            case_results, row = run_case(truth, args.seed)
-            results.extend(case_results)
-            rows.append(row)
+    for truth in truths:
+        case_results, row = run_case(truth, args.seed, case_tables(truth, development_priors, oracle_priors))
+        results.extend(case_results)
+        rows.append(row)
     simulation_seconds = round(time.perf_counter() - started, 1)
-    payload = build_payload(results, truths, rows, args, run)
+    tables = (development_priors, oracle_priors)
+    payload = build_payload(results, truths, rows, args, run, tables, len(development))
     payload["simulation_seconds"] = simulation_seconds
     for text in headline_lines(payload):
         print(text)

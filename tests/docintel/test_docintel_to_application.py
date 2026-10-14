@@ -152,3 +152,70 @@ def test_insurance_application_id_and_defaults() -> None:
     assert application["applicant"]["prior_experience_years"] == 0
     assert all(location["flood_zone"] == "X" for location in application["locations"])
     assert all(owner["credit_score"] is None for owner in application["owners"])
+
+
+def gl_and_no_gl_truths() -> tuple[PacketTruth, PacketTruth]:
+    """A contract packet whose form prints GL limits and one whose form says "Not requested"."""
+    truths = [json_only_truth(f"PKT-I-{number:03d}", "insurance") for number in CONTRACT_IDS]
+    with_gl = [truth for truth in truths if truth.application_as_documented["gl_limit_per_occurrence"] is not None]
+    without_gl = [truth for truth in truths if truth.application_as_documented["gl_limit_per_occurrence"] is None]
+    assert with_gl and without_gl
+    return with_gl[0], without_gl[0]
+
+
+def test_gl_limits_record_their_source_and_not_requested_limits_are_not_unknown() -> None:
+    with_gl, without_gl = gl_and_no_gl_truths()
+    extraction = parse_extraction(with_gl.oracle_extraction)
+    assert isinstance(extraction, InsuranceSubmission) and extraction.application is not None
+    application, provenance, unknowns = to_application(extraction)
+    for name in ("gl_limit_per_occurrence", "gl_limit_aggregate"):
+        cited = getattr(extraction.application, name)
+        assert application[name] == cited.value
+        assert provenance[name] == [{"doc_id": cited.doc_id, "page": cited.page, "line": cited.line}]
+        assert name not in unknowns
+    # "Not requested": None, no source, and NOT an unknown (a property-only quote has no GL limits).
+    application, provenance, unknowns = to_application(parse_extraction(without_gl.oracle_extraction))
+    for name in ("gl_limit_per_occurrence", "gl_limit_aggregate"):
+        assert application[name] is None and name not in provenance and name not in unknowns
+
+
+def test_an_unread_gl_limit_on_a_gl_request_is_unknown() -> None:
+    # The form asks for GL (or a package), but OCR did not read its limits: they are unknown, never "Not requested".
+    with_gl, without_gl = gl_and_no_gl_truths()
+    extraction = parse_extraction(with_gl.oracle_extraction)
+    assert isinstance(extraction, InsuranceSubmission) and extraction.application is not None
+    assert extraction.application.coverage.value in ("general_liability", "package")
+    unread = extraction.application.model_copy(
+        update={"gl_limit_per_occurrence": Cited(), "gl_limit_aggregate": Cited()}
+    )
+    application, provenance, unknowns = to_application(extraction.model_copy(update={"application": unread}))
+    for name in ("gl_limit_per_occurrence", "gl_limit_aggregate"):
+        assert application[name] is None and name not in provenance and name in unknowns
+    # The same empty limits on a form whose coverage was not read: unknown too (GL may have been requested).
+    other = parse_extraction(without_gl.oracle_extraction)
+    assert isinstance(other, InsuranceSubmission) and other.application is not None
+    no_coverage = other.application.model_copy(update={"coverage": Cited()})
+    _, _, unknowns = to_application(other.model_copy(update={"application": no_coverage}))
+    assert {"coverage", "gl_limit_per_occurrence", "gl_limit_aggregate"} <= set(unknowns)
+
+
+def test_a_debt_schedule_without_rows_cites_its_total_monthly_payment_line() -> None:
+    truths = [json_only_truth(f"PKT-C-{number:03d}", "credit") for number in CONTRACT_IDS]
+    extractions = [parse_extraction(truth.oracle_extraction) for truth in truths]
+    empty = [
+        item
+        for item in extractions
+        if isinstance(item, LoanPacket) and item.debt_schedule is not None and not item.debt_schedule.items
+    ]
+    assert empty, "no contract packet has a debt schedule without rows"
+    schedule = empty[0].debt_schedule
+    assert schedule is not None and schedule.total_monthly_payment.found
+    application, provenance, unknowns = to_application(empty[0])
+    total_line = {
+        "doc_id": schedule.total_monthly_payment.doc_id,
+        "page": schedule.total_monthly_payment.page,
+        "line": schedule.total_monthly_payment.line,
+    }
+    for path in ("debt.existing_monthly_payment_schedule", "debt.refinanced_monthly_payment"):
+        assert provenance[path] == [total_line] and path not in unknowns
+    assert application["debt"]["existing_monthly_payment_schedule"] == 0.0

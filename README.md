@@ -27,9 +27,13 @@ recommendation. This project automates the reading and checking, and leaves the 
 The central question: how can a lender or insurer decide faster while showing that every important conclusion
 is supported by evidence, financially justified, consistent with policy, and safe to act on?
 
-The planned signature component is the **Evidence-to-Action Engine** (Phase 4). It will tag every claim as verified, model estimate,
-conflicting, or unknown; run stress scenarios through the risk models; check whether resolving each open
-question would change the recommendation; and recommend the next document to request.
+The signature component is the **Evidence-to-Action Engine** (Phase 4, built on SYNTHETIC packets). For one case
+it builds an evidence ledger that tags every value the recommendation rests on as verified (with its document, page
+and line), conflicting, unknown, or a model estimate; runs stress scenarios and counterfactuals through the
+deterministic reference policy (the Phase 1 risk models do not apply to these commercial packets, so model PD and
+expected loss stay unknown); checks whether resolving each open question would change the recommendation; and
+ranks the evidence requests by a rules-based, scenario-based value-of-information score. It prepares and
+explains; a person decides. See [docs/walkthrough_phase4.md](docs/walkthrough_phase4.md).
 
 ## Architecture
 
@@ -52,9 +56,9 @@ flowchart LR
 | Package | Phase | Purpose | Status |
 |---|---|---|---|
 | `src/uwcopilot/risk` | 1 | Credit-default (Lending Club) and claim frequency/severity (freMTPL2) models, scenario interface, model cards, `/score` API | Built ([walkthrough](docs/walkthrough_phase1.md), [model cards](docs/model_cards/)); `client.py` is the HTTP client of the `/score` service, shared by the agent and the MCP server |
-| `src/uwcopilot/docintel` | 2 | Synthetic packet generator, OCR, LLM field extraction with citations, deterministic checks, contradiction graph, prompt-injection detection | Not built |
+| `src/uwcopilot/docintel` | 2 | Synthetic packet generator, text layer + Tesseract OCR, rules field extraction with citations (an LLM extractor exists, tested with a fake LLM only), deterministic checks, contradiction graph, prompt-injection detection | Built ([walkthrough](docs/walkthrough_phase2.md)); measured with the rules extractor only |
 | `src/uwcopilot/kyc` | 3 | Watchlist loading, name matching, embedding reranker, adverse-media memo stub | Built ([walkthrough](docs/walkthrough_phase3.md)) |
-| `src/uwcopilot/evidence` | 4 | Evidence ledger, financial calculations, stress tests, next-best-evidence ranking, decision records | Not built |
+| `src/uwcopilot/evidence` | 4 | Evidence ledger, financial calculations, stress tests, next-best-evidence ranking, decision records, evidence-request simulator (innovation S5) | Built ([walkthrough](docs/walkthrough_phase4.md)) |
 | `src/uwcopilot/agent` | 5 | LangGraph agent with a human-approval checkpoint, role-based access, tracing, adversarial evaluation | Built ([design](docs/agent_design.md), [walkthrough](docs/walkthrough_phase5.md)) |
 | `src/uwcopilot/governance` | 6 | Versioning, monitoring, reviewer feedback, champion/challenger, CI release gate | Not built |
 | `src/uwcopilot/llm` | GenAI | Provider adapter (Anthropic, OpenAI, fake) with explicit settings, cost cap, response cache | Built ([walkthrough](docs/walkthrough_genai.md)) |
@@ -109,6 +113,16 @@ make agent-demo           # one fake-LLM run to the human checkpoint, then a scr
 make mcp                  # serve the tools to an MCP client over stdio
 ```
 
+The document and evidence steps (Phases 2 and 4; no LLM call):
+
+```bash
+make packets              # SYNTHETIC document packets (PDF + ground truth) -> data/processed/packets/
+make run-evidence         # the Evidence-to-Action Engine on one packet (PACKET=PKT-C-024): report + decision record
+make simulate-requests    # innovation S5 evidence-request simulator -> results/evidence_metrics.json ("simulator")
+make eval-evidence        # the engine on the 60 SYNTHETIC test packets -> results/evidence_metrics.json ("packets")
+make reports              # rewrite the model cards and the first results table below
+```
+
 There is no LLM API key in this environment, so no LLM call has been made; every metric that needs a model says
 "not measured". Run `make help` to see every target.
 
@@ -116,7 +130,7 @@ There is no LLM API key in this environment, so no LLM call has been made; every
 
 No number in these tables is typed by hand. Rows that have not been run say "not measured", with the reason.
 
-Phase 1 risk models and the phases not built yet, written by `make reports` from `results/risk_metrics.json`:
+Phase 1 risk models, the document pipeline (Phase 2), the Evidence-to-Action Engine (Phase 4) and the evidence-request simulator (innovation S5), written by `make reports` from `results/risk_metrics.json`, `results/docintel_metrics.json` and `results/evidence_metrics.json`:
 
 <!-- RESULTS:START -->
 | Component | Metric | Value |
@@ -132,11 +146,27 @@ Phase 1 risk models and the phases not built yet, written by `make reports` from
 | Expected loss = frequency x severity, LightGBM pair | Observed / predicted capped loss, test [95% CI] | 1.0437 [0.9808, 1.1093] |
 | Expected loss, pair served by the API (LightGBM frequency x GLM severity) | Observed / predicted capped loss, test [95% CI] | 1.0185 [0.9569, 1.0822] |
 | Fairness demo (UCI German Credit), logistic regression | Adverse impact ratio, age under 25 vs 25 and over [95% CI] | 0.855 [0.669, 1.051] |
-| Document extraction | Field F1 | not measured (Phase 2 not built yet) |
-| Contradiction detection | Recall | not measured (Phase 2 not built yet) |
-| Evidence-to-Action Engine | Next-best-evidence top-3 accuracy | not measured (Phase 4 not built yet) |
+| Document extraction, rules extractor on the PDF (text layer, OCR on scans), SYNTHETIC test packets | Field F1, micro-averaged over every value [95% CI] | 0.9936 [0.9889, 0.9971] |
+| Contradiction detection, same run | Recall: injected problems found [95% CI] (k/n problems) | 0.9412 [0.8723, 1.0000] (48/51) |
+| Contradiction detection, same run | Precision: contradictions that match an injected problem [95% CI] (k/n contradictions) | 0.7500 [0.6027, 0.8868] (51/68) |
+| Evidence-to-Action Engine, oracle extraction (SYNTHETIC test packets) | Claim-status agreement with the documented status rules (same author; not held out) [95% CI] (k/n claims) | 0.9935 [0.9857, 0.9987] (2,309/2,324) |
+| Evidence-to-Action Engine, pipeline extraction from the PDF (SYNTHETIC test packets) | Claim-status agreement with the documented status rules (same author; not held out) [95% CI] (k/n claims) | 0.9703 [0.9500, 0.9852] (1,926/1,985) |
+| Evidence-to-Action Engine, oracle extraction (SYNTHETIC test packets) | Calculation agreement with the as-documented application [95% CI] (k/n calculations) | 1.0000 exact [0.9938, 1.0000] (590/590) |
+| Evidence-to-Action Engine, pipeline extraction from the PDF (SYNTHETIC test packets) | Calculation agreement with the as-documented application [95% CI] (k/n calculations) | 0.8271 [0.7332, 0.9078] (488/590) |
+| Evidence-to-Action Engine, oracle extraction (SYNTHETIC test packets) | Top-ranked request answered with its hidden truth changes the recommendation [95% CI] (k/n) | 0.4186 [0.2856, 0.5714] (18/43) |
+| Evidence-to-Action Engine, pipeline extraction from the PDF (SYNTHETIC test packets) | Top-ranked request answered with its hidden truth changes the recommendation [95% CI] (k/n) | 0.3529 [0.2121, 0.5173] (12/34) |
+| Evidence-to-Action Engine, oracle extraction (SYNTHETIC test packets) | Share of evaluable packets stable across every tested shock [95% CI] (k/n) | 0.6667 [0.5333, 0.7833] (40/60) |
+| Evidence-to-Action Engine, pipeline extraction from the PDF (SYNTHETIC test packets) | Share of evaluable packets stable across every tested shock [95% CI] (k/n) | 0.6600 [0.5098, 0.7843] (33/50) |
+| Evidence-request simulator (innovation S5), SYNTHETIC test cases, documented priors | VOI minus checklist: cost-weighted requests per case, paired [95% CI] | -1.2689 [-1.4515, -1.0932] (n=370) |
+| Evidence-request simulator (innovation S5), SYNTHETIC test cases, documented priors | VOI minus checklist: decision error vs the full-information recommendation, paired [95% CI] | 0.0135 [0.0000, 0.0270] (n=370) |
+| Evidence-request simulator, held-out family (claims history mismatch) | VOI minus checklist: cost-weighted requests per case, paired [95% CI] | -2.2167 [-2.8004, -1.7496] (n=30) |
+| Evidence-request simulator, held-out family (claims history mismatch) | VOI minus checklist: decision error vs the full-information recommendation, paired [95% CI] | 0.1667 [0.0667, 0.3333] (n=30) |
 
 Written by `scripts/render_reports.py` from `results/risk_metrics.json`. Bootstrap: 1,000 resamples, seed 42. Model cards and the validation report are in [docs/model_cards/](docs/model_cards/).
+
+Document rows: written by the same script from `results/docintel_metrics.json` (`make eval-docintel`, the Phase 2 pipeline on SYNTHETIC packets; [walkthrough](docs/walkthrough_phase2.md)). Bank-statement transaction rows are most of the values, so the field F1 is mostly a transaction-table metric (per document type and page condition in the JSON). A share marked exact shows the exact Clopper-Pearson interval, because its bootstrap interval has zero width (every resample gave the same share). Simulated documents only: no real-world accuracy claim.
+
+Evidence-to-Action Engine and simulator rows: written by the same script from `results/evidence_metrics.json` (sections `packets` from `make eval-evidence` and `simulator` from `make simulate-requests`); every case is SYNTHETIC. Claim-status agreement compares the ledger with a status table written by the same author as the ledger, so it measures agreement with the documented rules, not an independent truth; it is also NOT a held-out measurement, because the table (v2) was written after the first test-split numbers had been seen (`packets.results.protocol.development_note`). The simulator compares request policies against the reference policy's full-information recommendation on cases with a hidden truth; a negative cost difference means the VOI policy asked for less, and a positive decision-error difference means it ended on the wrong recommendation more often than the checklist. Not claimable: real-world accuracy, time or cost savings, or that the VOI score is optimal. The circular next-best-evidence agreement is in the JSON, labelled circular, and not shown here.
 <!-- RESULTS:END -->
 
 GenAI track: retrieval, sanctions screening, the agent and the MCP server, written by `make readme-results`

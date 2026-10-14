@@ -1,7 +1,10 @@
 """Application-fact and document-check claims of the evidence ledger (Phase 4; ledger.py builds the whole ledger).
 
 What every application value becomes (fact_claim, unknown_path_claims, undocumented_default_claims):
-- read from a packet and undisputed: VERIFIED, with its document citations (doc id, page, line);
+- read from a packet and undisputed: VERIFIED, with its document citations (doc id, page, line). A document claim
+  is VERIFIED only with at least one citation: a packet value whose citation docintel.to_application did not
+  record is UNKNOWN with the reason UNCITED_REASON (the value read is kept in provenance.details, never in value),
+  because a value that cannot be traced to a page cannot be shown as verified;
 - in an open contradiction: CONFLICTING, linked to the contradiction ids;
 - not read by the extraction (state.unknown_paths): UNKNOWN; when docintel.to_application had to write a default
   the agent's model needed, the claim is marked imputed and the default is kept in provenance.details and inputs,
@@ -15,9 +18,17 @@ Every fact claim's inputs hold the path and the value, so inputs_sha256 pins the
 
 Contradictions close when a lever resolves their check or replaces a value they compare (is_closed); the check's
 claim is then an ASSUMPTION (lever_check_claim). Missing checklist documents are UNKNOWN "DOC-<code>" claims.
+
+A document check's own claim ("CHK-<check_id>", check_claims) is the outcome of a deterministic rule over values
+that carry their own citations, not a value printed on a page, so its provenance kind is "calculation" (ref = the
+check id), like a CALC-* claim; the contradictions it found link to the cited values. Like a calculation, a check
+outcome is only as good as the values it compares (tables.CHECK_INPUT_PATTERNS): one over an UNKNOWN value (a
+statement month marked unreliable, say) is UNKNOWN with depends_on_unknown, its pass or fail kept in
+provenance.details only; one over a CONFLICTING value lists it in depends_on_conflicting.
 """
 
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from uwcopilot.agent.applications import AnyApplication, CreditApplication, InsuranceApplication
@@ -47,7 +58,10 @@ IMPUTED_DEFAULT_METHOD = "default written by docintel.to_application (the applic
 MODEL_DEFAULT_METHOD = "the agent application model's default (no packet document prints this field)"
 
 
-CITATION_NOT_RECORDED = "not recorded by docintel.to_application"
+UNCITED_REASON = (
+    "read from the packet, but docintel.to_application recorded no document citation (doc, page, line) for it, so "
+    "it cannot be shown as verified"
+)
 
 
 PATH_INDEX = re.compile(r"\[([^\]]*)\]")
@@ -72,6 +86,12 @@ RESOLVED_CHECK_SOURCE = "resolution lever check:{check_id} = resolved (a hypothe
 
 
 SUPERSEDED_CHECK_SOURCE = "a resolution or scenario lever replaced a value this check compares ({paths})"
+
+
+CHECK_UNKNOWN_REASON = "the check compared values the documents did not provide or that were marked unreliable: {ids}"
+
+
+GAP_REASON = "the check found a gap in the documents (a missing document, page or period)"
 
 
 def citations_for(path: str, provenance: dict[str, list[dict[str, Any]]]) -> tuple[Citation, ...]:
@@ -170,6 +190,24 @@ def unread_fact_claim(spec: tables.FactSpec, value: Any, unread: list[str], cita
     return unread_claim(spec.claim_id, spec.label, spec.path, value, reason, citations, spec.unit, spec.display)
 
 
+def uncited_fact_claim(spec: tables.FactSpec, value: Any) -> Claim:
+    """UNKNOWN: a packet value with no document citation (UNCITED_REASON). Not imputed: the value was read, so it
+    is kept in provenance.details as "uncited_value" for a reviewer, never in value, and a memo prints "not
+    available"."""
+    kept = value if is_scalar(value) else None
+    return Claim(
+        id=spec.claim_id,
+        label=spec.label,
+        value=None,
+        unit=spec.unit,
+        display=spec.display,
+        status="UNKNOWN",
+        provenance=Provenance(kind="document", ref=spec.path, details={"uncited_value": kept}),
+        inputs={"application_path": spec.path, "value": kept},
+        reason=UNCITED_REASON,
+    )
+
+
 def point_range(value: Any) -> ValueRange | None:
     """A numeric value's range when the value is the whole assumption (low = high = value)."""
     return ValueRange(low=float(value), high=float(value)) if is_number(value) else None
@@ -218,8 +256,8 @@ def fact_claim(
     - UNKNOWN when the extraction could not read it (state.unknown_paths), imputed when a default was written;
     - ASSUMPTION when a resolution or scenario lever substituted it (state.substituted_paths);
     - CONFLICTING when an open contradiction involves it;
-    - VERIFIED when it was read from the packet (with its citations; a packet value whose citation the mapping did
-      not record is still VERIFIED, and its provenance says the citation was not recorded);
+    - VERIFIED when it was read from the packet AND has at least one citation;
+    - UNKNOWN (uncited_fact_claim) when it was read from the packet but the mapping recorded no citation for it;
     - USER_STATED when the state has no document provenance at all (an application typed by the applicant).
     The inputs hold the path and the value, so inputs_sha256 changes when the value does.
     """
@@ -232,15 +270,14 @@ def fact_claim(
     lever = substitution_lever(spec, state, is_count)
     if lever is not None:
         return substituted_fact_claim(spec, value, lever)
-    details: dict[str, InputValue] = {}
     if spec.claim_id in conflicts:
         status = "CONFLICTING"
-    elif citations or provenance:
+    elif citations:
         status = "VERIFIED"
+    elif provenance:
+        return uncited_fact_claim(spec, value)
     else:
         status = "USER_STATED"
-    if provenance and not citations:
-        details["citations"] = CITATION_NOT_RECORDED
     kind = "document" if provenance else "application"
     return Claim(
         id=spec.claim_id,
@@ -249,7 +286,7 @@ def fact_claim(
         unit=spec.unit,
         display=spec.display,
         status=status,
-        provenance=Provenance(kind=kind, ref=spec.path, citations=citations, details=details),
+        provenance=Provenance(kind=kind, ref=spec.path, citations=citations),
         inputs={"application_path": spec.path, "value": value if is_scalar(value) else None},
         conflict_ids=tuple(conflicts.get(spec.claim_id, ())),
     )
@@ -375,15 +412,54 @@ def lever_check_claim(check_id: str, state: CaseState) -> Claim | None:
     )
 
 
-def check_claims(state: CaseState, conflicts: dict[str, list[str]]) -> list[Claim]:
+def check_inputs(check_id: str, earlier: Sequence[Claim], status: str) -> tuple[str, ...]:
+    """Ids of the earlier claims with this status that the check compares (tables.CHECK_INPUT_PATTERNS)."""
+    patterns = [re.compile(pattern) for pattern in tables.CHECK_INPUT_PATTERNS.get(check_id, ())]
+    return tuple(
+        claim.id
+        for claim in earlier
+        if claim.status == status and any(pattern.search(claim.id) for pattern in patterns)
+    )
+
+
+def outcome_claim(check_id: str, status_text: str, earlier: Sequence[Claim]) -> Claim:
+    """A check outcome ("pass" or "fail") that no contradiction, lever or gap explains.
+
+    VERIFIED, unless the check compared an UNKNOWN value: then UNKNOWN (CHECK_UNKNOWN_REASON) with depends_on_unknown,
+    the outcome kept in provenance.details["outcome_with_unread_inputs"] and never in value. CONFLICTING inputs are
+    listed in depends_on_conflicting (the outcome itself stays VERIFIED, as for a calculation).
+    """
+    unknown = check_inputs(check_id, earlier, "UNKNOWN")
+    conflicting = check_inputs(check_id, earlier, "CONFLICTING")
+    details: dict[str, InputValue] = {"outcome_with_unread_inputs": status_text} if unknown else {}
+    return Claim(
+        id=f"CHK-{check_id}",
+        label=CHECK_TITLES.get(check_id, check_id),
+        value=None if unknown else status_text,
+        unit="TEXT",
+        display="text",
+        status="UNKNOWN" if unknown else "VERIFIED",
+        provenance=Provenance(kind="calculation", ref=check_id, details=details),
+        inputs={"check_id": check_id, "status": status_text},
+        reason=CHECK_UNKNOWN_REASON.format(ids=", ".join(unknown)) if unknown else None,
+        depends_on_unknown=unknown,
+        depends_on_conflicting=conflicting,
+    )
+
+
+def check_claims(state: CaseState, conflicts: dict[str, list[str]], earlier: Sequence[Claim] = ()) -> list[Claim]:
     """One claim "CHK-<check_id>" per document check that ran (state.check_status, plus any check with a conflict).
 
     The claim is the check's outcome. CONFLICTING with an open contradiction; ASSUMPTION when a resolution lever
     resolved it or replaced a value it compares (lever_check_claim: a hypothetical or reviewer-supplied outcome,
     not a document); UNKNOWN when a gap check failed (a missing document, page, period or out-of-date loss run:
-    GAP_CHECKS); otherwise VERIFIED with the value "pass" or "fail" (a deterministic result the policy also
-    evaluates from the application). A check that could not run (not_evaluated) creates no claim: the values it
-    compares appear once or not at all, and a missing document or value already shows as a DOC-* or UNKNOWN claim.
+    GAP_CHECKS); otherwise the value "pass" or "fail" (a deterministic result the policy also evaluates from the
+    application), VERIFIED unless it compared a value that is UNKNOWN among the earlier claims (outcome_claim).
+    Provenance kind "calculation": the claim is a rule's outcome, not a printed value (module docstring). A check
+    that could not run (not_evaluated) creates no claim: the values it compares appear once or not at all, and a
+    missing document or value already shows as a DOC-* or UNKNOWN claim.
+
+    earlier: the claims built before the checks (application facts and unread values); build_ledger passes them.
     """
     check_ids = list(state.check_status)
     for claim_id in conflicts:
@@ -394,31 +470,27 @@ def check_claims(state: CaseState, conflicts: dict[str, list[str]]) -> list[Clai
     for check_id in check_ids:
         claim_id = f"CHK-{check_id}"
         status_text = state.check_status.get(check_id, "fail")
-        reason = None
         lever_claim = None if claim_id in conflicts else lever_check_claim(check_id, state)
         if lever_claim is not None:
             claims.append(lever_claim)
             continue
-        if claim_id in conflicts:
-            status = "CONFLICTING"
-        elif status_text == "not_evaluated":
+        if status_text == "not_evaluated" and claim_id not in conflicts:
             continue
-        elif status_text == "fail" and check_id in tables.GAP_CHECKS:
-            status = "UNKNOWN"
-            reason = "the check found a gap in the documents (a missing document, page or period)"
-        else:
-            status = "VERIFIED"
+        if claim_id not in conflicts and not (status_text == "fail" and check_id in tables.GAP_CHECKS):
+            claims.append(outcome_claim(check_id, status_text, earlier))
+            continue
+        conflicting = claim_id in conflicts
         claims.append(
             Claim(
                 id=claim_id,
                 label=CHECK_TITLES.get(check_id, check_id),
-                value=None if status == "UNKNOWN" else status_text,
+                value=status_text if conflicting else None,
                 unit="TEXT",
                 display="text",
-                status=status,
-                provenance=Provenance(kind="document", ref=check_id),
+                status="CONFLICTING" if conflicting else "UNKNOWN",
+                provenance=Provenance(kind="calculation", ref=check_id),
                 inputs={"check_id": check_id, "status": status_text},
-                reason=reason,
+                reason=None if conflicting else GAP_REASON,
                 conflict_ids=tuple(conflicts.get(claim_id, ())),
             )
         )

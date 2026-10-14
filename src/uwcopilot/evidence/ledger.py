@@ -10,8 +10,9 @@ A Claim is one value with its status and provenance. Six statuses:
 - UNKNOWN: required but not present; reason says why. A value filled in for a model is marked imputed, with the
   imputation method; nothing is imputed silently. build_ledger keeps an imputed default OUT of the claim's value
   (it is in provenance.details["imputed_value"] and in the inputs), so a memo prints "not available", never the
-  default as if it were read. A calculation the policy ran over such a value is UNKNOWN too (depends_on_unknown),
-  and a rule that PASSED on such a value is shown as not evaluated (assertion result None);
+  default as if it were read. A calculation the policy ran over such a value is UNKNOWN too (depends_on_unknown), so
+  is a document check's outcome over one (ledger_facts.check_claims, ledger_tables.CHECK_INPUT_PATTERNS), and a rule
+  that PASSED on such a value is shown as not evaluated (assertion result None);
 - USER_STATED (Founder Studio, and any applicant figure no document supports): the applicant's own figure;
 - ASSUMPTION (Founder Studio): a labeled planning assumption, with its range when it is a number and its source or
   the word "unsourced".
@@ -450,7 +451,7 @@ def build_ledger(
         undocumented_default_claims(state, field_provenance, application.line, {claim.id for claim in claims})
     )
     claims.extend(missing_document_claims(application))
-    claims.extend(check_claims(state, conflicts))
+    claims.extend(check_claims(state, conflicts, claims))
     claims.extend(calculation_claims(result, claims))
     claims.extend(not_evaluated_claims(result, application, {claim.id for claim in claims}))
     claims.extend(model_claims(application, estimator))

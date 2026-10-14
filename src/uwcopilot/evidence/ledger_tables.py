@@ -18,7 +18,8 @@
 - UNDOCUMENTED_LOCATION_FIELDS: location fields no packet document prints (docintel to_application_insurance writes
   the agent model's defaults); ASSERTION_UNKNOWN_PATTERNS: the unread values each passed rule rests on.
 - CONTRADICTION_APPLICATION_PATHS: the application paths each contradiction compares; a resolution that replaces
-  one of them supersedes the contradiction.
+  one of them supersedes the contradiction. CHECK_INPUT_PATTERNS: the claim ids of the values each of those checks
+  reads; a check outcome over an UNKNOWN one is UNKNOWN (depends_on_unknown).
 - TOPIC_PHRASES and RULE_TOPIC: the expression and the three phrases of each rule's assertion. Phrases are what the
   renderer prints for {{assert:ID}}, so they contain no digits, number words, currency or percent signs. The
   expressions name no section: an assertion's section id is copied from the policy result it was built from.
@@ -329,6 +330,9 @@ ASSERTION_UNKNOWN_PATTERNS: dict[str, tuple[str, ...]] = {
     "documents_complete": (r"^APP-locations\.\d+\.flood_zone$",),  # HM-6.2: flood zones A/V need a certificate
     "principal_credit_scores": (r"^APP-owners\.\d+\.(credit_score|is_control_person)$",),
     "ownership": (r"^APP-owners\.\d+\.is_control_person$",),
+    # HM-1.1 / HM-7.1 read the GL limits (an unread limit counts as 0 in the policy, so a pass would rest on it).
+    "capacity": (r"^APP-gl_limit_(per_occurrence|aggregate)$",),
+    "general_liability": (r"^APP-gl_limit_(per_occurrence|aggregate)$",),
 }
 
 # Contradiction check -> the application paths it compares. A resolution that substitutes one of them supersedes the
@@ -342,6 +346,30 @@ CONTRADICTION_APPLICATION_PATHS: dict[str, tuple[str, ...]] = {
     ),
     "tiv_consistency": ("stated_tiv", "locations"),
     "claims_history_consistency": ("stated_claim_count", "stated_total_incurred", "loss_runs.current_term_claims"),
+}
+
+# Contradiction check -> regular expressions over the claim ids of the values it compares (the same comparisons as
+# CONTRADICTION_APPLICATION_PATHS, narrowed to the fields the check reads: the TIV check sums the locations' building,
+# contents and business-income values, not their wind tier or year built). A check whose outcome rests on an UNKNOWN
+# claim is UNKNOWN too (ledger_facts.check_claims), like a calculation over one.
+CHECK_INPUT_PATTERNS: dict[str, tuple[str, ...]] = {
+    "revenue_vs_deposits": (
+        r"^APP-stated_annual_revenue$",
+        r"^APP-bank_statements\.months_provided$",
+        STATEMENT_MONTH_PATTERN,
+    ),
+    "tax_return_vs_pnl": (r"^APP-debt\.ttm_pnl_revenue$",),
+    "debt_payment_consistency": (r"^APP-debt\.existing_monthly_payment_(schedule|observed)$",),
+    "tiv_consistency": (
+        r"^APP-stated_tiv$",
+        r"^APP-locations\.count$",
+        r"^APP-locations\.\d+\.(building|contents|business_income)_value$",
+    ),
+    "claims_history_consistency": (
+        r"^APP-stated_(claim_count|total_incurred)$",
+        r"^APP-loss_runs\.current_term_claims$",
+        r"^APP-loss_runs\.years\.",
+    ),
 }
 
 # Assertion phrases: topic -> (expression, phrase_true, phrase_false, phrase_unknown).

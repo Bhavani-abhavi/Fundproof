@@ -28,6 +28,7 @@ from uwcopilot.evidence.simulator import (
     Position,
     adjusted_choices,
     advance,
+    empirical_choices,
     open_requests,
     oracle_path,
     request_key,
@@ -37,7 +38,16 @@ from uwcopilot.evidence.simulator import (
     variant_choices,
 )
 from uwcopilot.evidence.simulator_cases import SimCase, full_information_state, latent_option_for, prepare_case
-from uwcopilot.evidence.simulator_diagnostics import case_row, coupling_summary, is_coupled, latent_vs_prior
+from uwcopilot.evidence.simulator_diagnostics import (
+    case_row,
+    coupling_summary,
+    is_coupled,
+    latent_shares,
+    latent_vs_prior,
+    latent_without_prior,
+    smoothed_shares,
+    template_key,
+)
 from uwcopilot.evidence.simulator_models import SimulationResult, requests_to_stable
 from uwcopilot.evidence.simulator_summary import decision_errors_by_kind, paired, policy_metrics, ratio_ci
 from uwcopilot.evidence.state import apply, evaluate, from_application
@@ -275,8 +285,49 @@ def test_variants_change_only_the_options_of_items_that_stand_for_a_planted_prob
         variant_choices(items, case.truth, "latent_x3")
 
 
+def test_empirical_choices_use_the_development_shares_and_drop_options_never_latent() -> None:
+    options = choices(0.6, 0.2, 0.2)
+    # Shares a 0.25, b 0.75, c never latent: c leaves the set; a and b renormalized over 1.0.
+    assert priors_of(empirical_choices(options, {"a": 0.25, "b": 0.75, "c": 0.0}) or []) == {"a": 0.25, "b": 0.75}
+    # Only b was ever latent: b alone with prior 1.
+    assert priors_of(empirical_choices(options, {"b": 1.0}) or []) == {"b": 1.0}
+    # Shares of options this item does not have are left out before renormalizing: a 0.2 and d 0.6 -> a alone.
+    assert priors_of(empirical_choices(options, {"a": 0.2, "d": 0.6}) or []) == {"a": 1.0}
+    # No option of the item has a share: None (the documented priors stay).
+    assert empirical_choices(options, {"d": 1.0}) is None
+
+
+def test_the_empirical_variant_changes_only_items_that_stand_for_a_planted_problem() -> None:
+    case = prepared(*THREE_REQUESTS_TWO_NEEDED)
+    items, _ = open_requests(case, start(case))
+    with pytest.raises(ValueError):
+        variant_choices(items, case.truth, "empirical_dev")  # the shares are required
+    # Shares that make every template's FIRST option the only latent one.
+    empirical = {}
+    for problem in case.truth.problems:
+        first = problem.resolution_options[0].option_id
+        empirical[template_key(problem)] = {first: 1.0}
+    replaced = variant_choices(items, case.truth, "empirical_dev", {"empirical_dev": empirical})
+    assert replaced is not None and replaced
+    for item in items:
+        if latent_option_for(item, case.truth) is None:
+            assert item.item_id not in replaced
+    for chosen in replaced.values():
+        assert len(chosen) == 1 and chosen[0].prior == 1.0
+    with pytest.raises(ValueError):
+        simulate(case.truth, "voi", "empirical_dev", prepared=case)
+    with pytest.raises(ValueError):  # each table variant needs its own table
+        simulate(case.truth, "voi", "oracle_shares", prepared=case, tables={"empirical_dev": empirical})
+
+
 def test_checklist_requests_do_not_depend_on_the_priors_variant() -> None:
     documented = run(THREE_REQUESTS_OTHER, "checklist")
+    case = prepared(*THREE_REQUESTS_OTHER)
+    empirical = {template_key(problem): {problem.latent_option_id: 1.0} for problem in case.truth.problems}
+    tables = {"empirical_dev": empirical, "empirical_dev_smoothed": empirical, "oracle_shares": empirical}
+    for variant in tables:
+        table_run = simulate(case.truth, "checklist", variant, prepared=case, tables=tables)
+        assert [step.item_ids for step in table_run.steps] == [step.item_ids for step in documented.steps]
     for variant in ("latent_x0.5", "latent_x1.5", "latent_removed"):
         other = run(THREE_REQUESTS_OTHER, "checklist", variant)
         assert [step.item_ids for step in other.steps] == [step.item_ids for step in documented.steps]
@@ -304,7 +355,11 @@ def test_runs_are_reproducible_with_the_same_seed() -> None:
         first = simulate(truth, policy, rng=random.Random(seed) if seed is not None else None)
         again = simulate(truth, policy, rng=random.Random(seed) if seed is not None else None)
         assert first == again
-    assert simulate_requests.run_case(truth, 4040) == simulate_requests.run_case(truth, 4040)
+    tables = simulate_requests.case_tables(
+        truth, simulate_requests.development_tables([truth]), simulate_requests.oracle_tables([truth])
+    )
+    assert set(tables) == {"empirical_dev", "empirical_dev_smoothed", "oracle_shares"}
+    assert simulate_requests.run_case(truth, 4040, tables) == simulate_requests.run_case(truth, 4040, tables)
 
 
 def test_the_random_policy_order_follows_its_seed() -> None:
@@ -466,7 +521,21 @@ def test_the_script_merges_its_section_and_keeps_the_others(tmp_path: Path) -> N
     assert results["design"]["held_out_family"]["problem_type"] == "claims_history_mismatch"
     assert results["case_set"]["credit_test"]["n_cases"] == 2
     lines = (tmp_path / "runs.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 4 * (4 * 4 + 1)  # 4 cases x (4 policies x 4 variants + the oracle once)
+    assert len(lines) == 4 * (4 * 7 + 1)  # 4 cases x (4 policies x 7 variants + the oracle once)
+    # The table variants' priors are written into the design block before any case is simulated.
+    design = results["design"]
+    empirical = design["empirical_dev_priors"]
+    assert empirical["development_cases"] == 2 and "empirical_dev" in design["priors_variants"]
+    for shares in empirical["shares"].values():
+        assert round(sum(shares.values()), 3) == 1.0
+    for shares in design["empirical_dev_smoothed_priors"]["shares"].values():
+        assert all(value > 0 for value in shares.values()) and round(sum(shares.values()), 2) == 1.0
+    assert set(design["oracle_shares_priors"]["shares_by_group"]) == {"test_main", "held_out_family", "development"}
+    # The in-sample oracle priors never leave a problem's true option out; the coverage of each table is reported.
+    coverage = results["diagnostics"]["latent_without_prior"]
+    assert coverage["oracle_shares"]["test_main"]["n_true_option_without_prior"] == 0
+    assert set(coverage) == {"note", "empirical_dev", "empirical_dev_smoothed", "oracle_shares"}
+    assert "NOT capped" in results["design"]["case_cap"]
 
 
 def test_the_script_refuses_to_write_the_default_files_with_another_design(tmp_path: Path) -> None:
@@ -561,6 +630,41 @@ def test_diagnostics_count_latent_options_against_the_documented_priors() -> Non
         options = entry["options"]
         assert sum(option["latent_count"] for option in options.values()) == entry["n_problems"]
         assert sum(option["documented_prior"] for option in options.values()) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_smoothed_shares_add_one_to_every_option_count() -> None:
+    table = {
+        "fam": {
+            "n_problems": 4,
+            "options": {
+                "a": {"documented_prior": 0.6, "latent_count": 4, "latent_share": 1.0},
+                "b": {"documented_prior": 0.4, "latent_count": 0, "latent_share": 0.0},
+            },
+        }
+    }
+    assert latent_shares(table) == {"fam": {"a": 1.0, "b": 0.0}}
+    # (4 + 1) / (4 + 2) and (0 + 1) / (4 + 2): an option never latent keeps a prior above zero.
+    assert smoothed_shares(table) == {"fam": {"a": round(5 / 6, 4), "b": round(1 / 6, 4)}}
+
+
+def test_latent_without_prior_counts_the_problems_whose_true_option_a_table_leaves_out() -> None:
+    truths = [generated_truth(f"PKT-C-{number}", "credit") for number in CASE_NUMBERS]
+    planted = sum(len(truth.problems) for truth in truths)
+    # Shares measured on the same cases (the oracle_shares construction) never leave a true option out.
+    own = latent_shares(latent_vs_prior(truths))
+    assert latent_without_prior(truths, own) == {
+        "n_problems": planted,
+        "n_true_option_without_prior": 0,
+        "by_template_option": {},
+    }
+    # A table that keeps only one option that is NOT the true one of a revenue_gap problem leaves it out.
+    gap = next(problem for truth in truths for problem in truth.problems if problem.problem_type == "revenue_gap")
+    other = next(option.option_id for option in gap.resolution_options if option.option_id != gap.latent_option_id)
+    gaps = [problem for truth in truths for problem in truth.problems if problem.problem_type == "revenue_gap"]
+    found = latent_without_prior(truths, {"revenue_gap": {other: 1.0}})
+    assert found["n_true_option_without_prior"] == sum(1 for problem in gaps if problem.latent_option_id != other)
+    # A template missing from the table keeps the documented priors: nothing is counted.
+    assert latent_without_prior(truths, {})["n_true_option_without_prior"] == 0
 
 
 def test_diagnostics_find_insurance_reveals_that_also_rewrite_the_stated_history() -> None:

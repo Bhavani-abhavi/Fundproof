@@ -28,6 +28,13 @@ judge how the S5 results should be read. Three things are measured:
 
 Plus planted_problem_counts: the mean number of planted problems per case of a group (the held-out family's cases
 carry more co-planted problems than the main test split, which explains part of its larger VOI error).
+
+4. Priors tables of the simulator's table variants, and their coverage (latent_shares, smoothed_shares,
+   latent_without_prior). latent_shares turns a latent_vs_prior table into priors (template -> option -> share);
+   smoothed_shares adds one to every option's latent count first, (count + 1) / (n + number of options), so no
+   option has a zero prior. latent_without_prior counts the planted problems whose TRUE option a table gives no
+   prior, i.e. the problems for which that variant behaves like latent_removed (a template missing from the table,
+   or with no option above zero, keeps the documented priors and is not counted).
 """
 
 from collections import Counter
@@ -36,6 +43,7 @@ from typing import Any
 
 from uwcopilot.docintel.truth import InjectedProblem, PacketTruth
 from uwcopilot.evidence.simulator_cases import SimCase, revealed_state
+from uwcopilot.evidence.simulator_models import EmpiricalPriors
 from uwcopilot.evidence.state import IncompleteApplicationError, evaluate
 
 STATED_HISTORY_PATHS: frozenset[str] = frozenset({"stated_claim_count", "stated_total_incurred"})
@@ -169,4 +177,57 @@ def coupling_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "coupled_problems_by_type": dict(sorted(by_type.items())),
         "n_cases_with_claims_history_problem": sum(1 for row in rows if row["has_claims_history_problem"]),
         "cases_where_a_coupled_reveal_alone_removes_the_reconciliation_finding": removing,
+    }
+
+
+# --------------------------------------------------------------------------------------------------------------
+# 4. Priors tables of the table variants, and their coverage
+# --------------------------------------------------------------------------------------------------------------
+
+
+def latent_shares(table: dict[str, Any]) -> EmpiricalPriors:
+    """Template -> option -> latent share, from a latent_vs_prior table (the empirical_dev and oracle_shares
+    priors)."""
+    return {
+        key: {option_id: row["latent_share"] for option_id, row in entry["options"].items()}
+        for key, entry in table.items()
+    }
+
+
+def smoothed_shares(table: dict[str, Any]) -> EmpiricalPriors:
+    """Template -> option -> (latent count + 1) / (problems + options), from a latent_vs_prior table (add-one
+    smoothing: every option of the template keeps a prior above zero; the empirical_dev_smoothed priors)."""
+    smoothed: EmpiricalPriors = {}
+    for key, entry in table.items():
+        options = entry["options"]
+        denominator = entry["n_problems"] + len(options)
+        smoothed[key] = {
+            option_id: round((row["latent_count"] + 1) / denominator, DIGITS) for option_id, row in options.items()
+        }
+    return smoothed
+
+
+def removes_latent_option(problem: InjectedProblem, shares: EmpiricalPriors) -> bool:
+    """True when the table gives the problem's true option no prior while giving one to another of its options."""
+    options = shares.get(template_key(problem))
+    if options is None:
+        return False  # the template keeps the documented priors
+    kept = [option.option_id for option in problem.resolution_options if options.get(option.option_id, 0.0) > 0]
+    return bool(kept) and problem.latent_option_id not in kept
+
+
+def latent_without_prior(truths: Iterable[PacketTruth], shares: EmpiricalPriors) -> dict[str, Any]:
+    """How many planted problems of a group a priors table leaves without a prior on their true option, per
+    template and option (whether or not an open item stands for the problem)."""
+    total = 0
+    removed: Counter = Counter()
+    for truth in truths:
+        for problem in truth.problems:
+            total += 1
+            if removes_latent_option(problem, shares):
+                removed[f"{template_key(problem)}.{problem.latent_option_id}"] += 1
+    return {
+        "n_problems": total,
+        "n_true_option_without_prior": sum(removed.values()),
+        "by_template_option": dict(sorted(removed.items())),
     }

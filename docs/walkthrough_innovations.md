@@ -152,6 +152,9 @@ revealed (the full-information recommendation).
 
 **Numbers** (copied from `results/evidence_metrics.json`, section `simulator`; 370 test cases without the held-out
 family, documented priors; case-level bootstrap, 1,000 resamples, seed 42):
+- **the S5 headline metrics** (innovations.md section 2): requests to a stable decision, VOI minus checklist
+  (paired, on the 359 cases both policies end on the full-information recommendation): -0.0529 [-0.0808, -0.0279];
+  zero-value share of requests: VOI 0.0 (by construction) against checklist 0.6136 [0.5631, 0.6595];
 - requests per case: VOI 0.3838 [0.3243, 0.4405], checklist 1.0703 [0.9703, 1.173];
 - cost-weighted requests, VOI minus checklist (paired): -1.2689 [-1.4515, -1.0932];
 - zero-value requests per case (VOI 0 and no change after the reveal), VOI minus checklist: -0.6568
@@ -161,6 +164,11 @@ family, documented priors; case-level bootstrap, 1,000 resamples, seed 42):
   policy can request them) and 6 stops with every open request at VOI 0;
 - the oracle (cheapest request sequence that reaches the full-information recommendation, brute force) was
   computed on 368 of 370 cases (2 had 5 open requests, above its limit of 4) and reached the target on all 368;
+- **case cap not enforced (a departure from the S5 design).** innovations.md S5 caps each case at 4 open items with
+  3 resolutions each. The resolution templates comply (2 or 3 options each), but the cases are not capped: 3 of
+  the 370 main test cases carry 5 planted problems and 2 start with 5 open requests
+  (`diagnostics.planted_problems`, `test.all.cases.open_requests_at_start`). They are simulated like every other
+  case; only the oracle is not computed on them. The results file states this in `design.case_cap`;
 - held-out family (claims_history_mismatch, 30 cases, chosen before any simulation): VOI decision error 0.1667
   [0.0667, 0.3333], checklist 0.0; VOI with lookahead 0.0333 [0.0, 0.1].
 
@@ -209,11 +217,41 @@ the held-out cases carry more co-planted problems (1.7333 per case against 1.116
      family-specific weakness, and in 5 of its 30 cases another problem's reveal also fixes the stated history.
      Both are reported next to the number, so it is not read as more than it is.
 
-6. **How robust is the ranking to wrong priors?**
+6. **How robust is the ranking to wrong priors, and what does a correct prior give?**
    - Scaling the true answer's prior by 0.5 or 1.5 changed nothing in the headline rows: positive priors stay
-     positive, so the same requests keep a nonzero VOI.
+     positive, so the same requests keep a nonzero VOI. Those two rows are therefore uninformative for the VOI
+     policy, and the results say so.
    - Removing the true answer from the option set does change things: the VOI-minus-checklist decision error
-     becomes 0.0919 [0.0622, 0.1243]. Caveat: the documented priors are not the truth's distribution to begin with.
+     becomes 0.0919 [0.0622, 0.1243].
+   - The documented priors are not the truth's distribution to begin with, so three rows replace them with
+     measured shares of the true answers (`design.*_priors`; all measured before any case was simulated). The
+     paired VOI-minus-checklist differences on the 370 main test cases:
+
+     | Priors | What they are | True answer given no prior (test problems) | Cost-weighted requests | Decision error |
+     |---|---|---|---|---|
+     | `documented` | the template priors (the headline) | none: every documented prior is above zero (`diagnostics.latent_vs_prior`) | -1.2689 [-1.4515, -1.0932] | +0.0135 [0.0, 0.027] |
+     | `empirical_dev` | development-split shares, unsmoothed | 19 of 413 | -1.4054 [-1.6081, -1.2175] | +0.0189 [0.0027, 0.0378] |
+     | `empirical_dev_smoothed` | the same counts, add-one smoothing | 0 of 413 | -1.2689 [-1.4515, -1.0932] | +0.0135 [0.0, 0.027] |
+     | `oracle_shares` | the test group's own shares (an oracle) | 0 of 413 | -1.3297 [-1.523, -1.1513] | +0.0162 [0.0027, 0.0324] |
+
+   - `empirical_dev` is **not** a correct-prior reference. Some families have tiny development samples (4
+     balance-discontinuity and 4 missing-loss-run problems), and an answer never seen there gets no prior. For 19
+     of the 413 main test problems that removes the TRUE answer (`diagnostics.latent_without_prior`: 10
+     balance_discontinuity / bank_confirms and 9 missing_loss_run / adverse_losses), so for those problems the row
+     acts partly like `latent_removed`. Its higher error says that dropping answers is harmful; it says nothing
+     about well-matched priors.
+   - `empirical_dev_smoothed` gives every answer a prior above zero, so, like x0.5 / x1.5, it cannot change which
+     requests have a VOI above zero, and its headline rows equal the documented ones.
+   - `oracle_shares` is the genuine correct-prior reference: each group is simulated with its own true-answer
+     shares, which no real underwriter has, and no problem loses its true answer. Even so, VOI's decision error
+     was 0.0297 [0.0135, 0.0459] against 0.027 [0.0135, 0.0432] with the documented priors (no paired comparison
+     between priors variants was computed; the intervals overlap). Its errors split into 4 undetected planted
+     problems and 7 stops with every open request at VOI 0 (`decision_errors_by_kind`); the checklist's 5 errors
+     are all undetected planted problems, and `voi_lookahead` under the same priors had the checklist's error
+     (paired difference 0.0 [0.0, 0.0]). So on this split, priors that
+     match the truths at the template level did not remove VOI's extra errors: they are stops at VOI 0, a limit of
+     the one-step (myopic) stopping rule rather than of the priors.
+   - On the held-out family the decision error difference was the same under all four (0.1667 [0.0667, 0.3333]).
 
 7. **Why is the oracle useful if it cheats?**
    - It knows the hidden truth and searches every order of requests for the cheapest one that reaches the

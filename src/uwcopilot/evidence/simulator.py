@@ -36,9 +36,22 @@ Priors variants (robustness of the VOI score to wrong priors; the truth and the 
 - documented: the template priors of config/resolution_templates.yaml;
 - latent_x0.5 / latent_x1.5: the prior of the latent (true) option of every open item that stands for a planted
   problem is multiplied by 0.5 or 1.5, then the item's priors are renormalized to sum to 1;
-- latent_removed: the latent option is removed from the item's option set (the remaining priors renormalized).
-Checklist, random and oracle choose the same requests under every variant; only the VOI they are valued at (and so
-the zero-value count) changes.
+- latent_removed: the latent option is removed from the item's option set (the remaining priors renormalized);
+- three TABLE variants (TABLE_VARIANTS) take their priors from a table of latent shares per resolution template
+  and option, which simulate_requests.py measures (simulator_diagnostics) and passes in as `tables`:
+  - empirical_dev: the shares on the development split, UNSMOOTHED. Options never latent there get no prior and
+    leave the set, so for a test problem whose true option was never seen on the (sometimes tiny) development
+    sample, the true option is removed, as in latent_removed (counted in the results' diagnostics);
+  - empirical_dev_smoothed: the development counts with add-one smoothing, (count + 1) / (n + number of options),
+    so every option keeps a prior above zero and none leaves the set;
+  - oracle_shares: the shares of the evaluated group itself (an in-sample ORACLE reference no real underwriter
+    has). Options never latent in the group leave the set, but the true option of every problem in the group has
+    a share above zero, so it is never removed.
+  An item whose template has no share in the table (or none above zero for its options) keeps the documented
+  priors.
+As in the other variants, only items that stand for a planted problem are changed (the truth and the reveals never
+change). Checklist, random and oracle choose the same requests under every variant; only the VOI they are valued
+at (and so the zero-value count) changes.
 
 Not claimable: real time or cost savings; that the VOI score is optimal or an economic model; extraction accuracy
 (extraction is an oracle). Cost weights and priors are planning assumptions written by the project author.
@@ -59,11 +72,13 @@ from uwcopilot.evidence.simulator_cases import (
     SimCase,
     full_information_state,
     latent_option_for,
+    matches,
     matching_problems,
     prepare_case,
     revealed_state,
     undetected_problems,
 )
+from uwcopilot.evidence.simulator_diagnostics import template_key
 from uwcopilot.evidence.simulator_models import (
     MAX_REQUESTS,
     ORACLE_MAX_OPEN_REQUESTS,
@@ -71,6 +86,9 @@ from uwcopilot.evidence.simulator_models import (
     POLICIES,
     PRIOR_FACTORS,
     PRIORS_VARIANTS,
+    TABLE_VARIANTS,
+    EmpiricalPriors,
+    PriorTables,
     SimStep,
     SimulationResult,
     StopReason,
@@ -155,12 +173,59 @@ def adjusted_choices(choices: list[ResolutionChoice], latent: str, variant: str)
     return [choice.model_copy(update={"prior": round(weight / total, 6)}) for choice, weight in kept]
 
 
-def variant_choices(items: list[OpenItem], truth: PacketTruth, variant: str) -> ChoicesByItem | None:
-    """The option sets the engine values items with under a priors variant (None: the documented templates)."""
+def empirical_choices(choices: list[ResolutionChoice], shares: dict[str, float]) -> list[ResolutionChoice] | None:
+    """An item's options with a table variant's latent shares as priors (renormalized over the options the item
+    has); options with no share leave the set. None when no option of the item has a share above zero."""
+    kept = [(choice, shares.get(choice.option_id, 0.0)) for choice in choices]
+    kept = [(choice, share) for choice, share in kept if share > 0]
+    total = sum(share for _, share in kept)
+    if total <= 0:
+        return None
+    return [choice.model_copy(update={"prior": round(share / total, 6)}) for choice, share in kept]
+
+
+def template_of(item: OpenItem, truth: PacketTruth) -> str | None:
+    """The resolution template key of the first planted problem the item stands for (None when unmatched)."""
+    for problem in truth.problems:
+        if matches(item, problem):
+            return template_key(problem)
+    return None
+
+
+def table_variant_choices(items: list[OpenItem], truth: PacketTruth, shares: EmpiricalPriors) -> ChoicesByItem:
+    """A table variant's option sets (module docstring): only items that stand for a planted problem change."""
+    replaced: ChoicesByItem = {}
+    for item in items:
+        key = template_of(item, truth)
+        if key is None or key not in shares:
+            continue
+        choices, _ = resolution_choices(item)
+        adjusted = empirical_choices(choices, shares[key])
+        if adjusted is not None:
+            replaced[item.item_id] = adjusted
+    return replaced
+
+
+def table_for(variant: str, tables: PriorTables | None) -> EmpiricalPriors:
+    """A table variant's priors table (ValueError when the caller did not pass it)."""
+    if tables is None or variant not in tables:
+        raise ValueError(f"the {variant} variant needs its table of latent shares")
+    return tables[variant]
+
+
+def variant_choices(
+    items: list[OpenItem], truth: PacketTruth, variant: str, tables: PriorTables | None = None
+) -> ChoicesByItem | None:
+    """The option sets the engine values items with under a priors variant (None: the documented templates).
+
+    tables (variant -> template -> option -> prior) must hold the table of a TABLE_VARIANTS variant.
+    """
     if variant == "documented":
         return None
     if variant not in PRIORS_VARIANTS:
         raise ValueError(f"unknown priors variant {variant!r}")
+    if variant in TABLE_VARIANTS:
+        return table_variant_choices(items, truth, table_for(variant, tables))
     replaced: ChoicesByItem = {}
     for item in items:
         latent = latent_option_for(item, truth)
@@ -350,7 +415,7 @@ def finished(
     )
 
 
-def run_oracle(header: dict, run: RunContext, variant: str) -> SimulationResult:
+def run_oracle(header: dict, run: RunContext, variant: str, tables: PriorTables | None) -> SimulationResult:
     """The oracle's run (see the module docstring); requests are valued under the variant for the zero-value count."""
     if run.n_open_requests > ORACLE_MAX_OPEN_REQUESTS:
         reason = f"oracle not computed: {run.n_open_requests} open requests (more than {ORACLE_MAX_OPEN_REQUESTS})"
@@ -365,7 +430,7 @@ def run_oracle(header: dict, run: RunContext, variant: str) -> SimulationResult:
     steps = []
     for group in search.path:
         items, _ = open_requests(run.case, position)
-        choices = variant_choices(items, run.case.truth, variant)
+        choices = variant_choices(items, run.case.truth, variant, tables)
         pick = value_pick(position, group, choices)
         following = advance(run.case, position, group)
         steps.append(step_after(position, pick, following, run.case))
@@ -373,7 +438,14 @@ def run_oracle(header: dict, run: RunContext, variant: str) -> SimulationResult:
     return finished(header, run, steps, "oracle_reached", position.result.recommendation)
 
 
-def run_policy(header: dict, run: RunContext, policy: str, variant: str, rng: random.Random | None) -> SimulationResult:
+def run_policy(
+    header: dict,
+    run: RunContext,
+    policy: str,
+    variant: str,
+    rng: random.Random | None,
+    tables: PriorTables | None = None,
+) -> SimulationResult:
     """A voi, voi_lookahead, checklist or random run (see the module docstring)."""
     if policy == "random" and rng is None:
         raise ValueError("the random policy needs a seeded random.Random")
@@ -386,7 +458,7 @@ def run_policy(header: dict, run: RunContext, policy: str, variant: str, rng: ra
         if not groups:
             stop = "list_exhausted"
             break
-        choices = variant_choices(items, run.case.truth, variant)
+        choices = variant_choices(items, run.case.truth, variant, tables)
         if policy == "voi":
             pick = choose_voi(position, items, groups, choices)
         elif policy == "voi_lookahead":
@@ -425,17 +497,21 @@ def simulate(
     rng: random.Random | None = None,
     prepared: SimCase | None = None,
     context: RunContext | None = None,
+    tables: PriorTables | None = None,
 ) -> SimulationResult:
     """One policy on one case under one priors variant (see the module docstring).
 
     prepared and context let a caller reuse the case preparation and the shared start across runs; both are
-    rebuilt from case_truth when omitted. A case whose application does not validate, or whose truth cannot be
+    rebuilt from case_truth when omitted. tables holds the latent-share tables the TABLE_VARIANTS variants need
+    (variant -> template -> option -> prior). A case whose application does not validate, or whose truth cannot be
     revealed, is returned with computed=False and the reason (never guessed).
     """
     if policy_name not in POLICIES:
         raise ValueError(f"unknown policy {policy_name!r}")
     if priors_variant not in PRIORS_VARIANTS:
         raise ValueError(f"unknown priors variant {priors_variant!r}")
+    if priors_variant in TABLE_VARIANTS:
+        table_for(priors_variant, tables)
     header = {
         "case_id": case_truth.packet_id,
         "line": case_truth.line,
@@ -448,7 +524,7 @@ def simulate(
         case = prepared if prepared is not None else prepare_case(case_truth)
         run = context if context is not None else run_context(case)
         if policy_name == "oracle":
-            return run_oracle(header, run, priors_variant)
-        return run_policy(header, run, policy_name, priors_variant, rng)
+            return run_oracle(header, run, priors_variant, tables)
+        return run_policy(header, run, policy_name, priors_variant, rng, tables)
     except (IncompleteApplicationError, LeverError) as error:
         return SimulationResult(**header, computed=False, not_computed_reason=f"{type(error).__name__}: {error}")
