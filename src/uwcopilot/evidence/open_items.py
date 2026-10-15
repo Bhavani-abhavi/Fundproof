@@ -25,6 +25,10 @@ Item -> request (config/evidence_requests.yaml) and template (config/resolution_
   missing_loss_run template.
 - tax_return_vs_pnl (NBC-9.1 integrity indicator) is listed as an open item with NO request: no catalog request or
   template resolves it, so it stays with Fraud Operations.
+- startup credit (Founder Studio S6, open_items_startup.py): missing_equity_verification (NSP-3.1),
+  missing_experience_evidence (NSP-2.1), unsupported_material_assumption (NSP-6.1, one per top driver) and
+  missing_quotes, with the requests and templates of config/studio/startup_evidence_requests.yaml
+  (startup_requests.py); a missing NSP-1.3 checklist document uses the shared missing_document item.
 
 An item's detail text is built from ids, codes and numbers only, never from document text. Request params may hold
 a carrier name read from a document: it is untrusted data, used only to say which loss run is asked for, and every
@@ -54,6 +58,7 @@ from uwcopilot.evidence.open_item_models import (
     packet_context,
 )
 from uwcopilot.evidence.open_items_insurance import insurance_items
+from uwcopilot.evidence.open_items_startup import startup_items
 from uwcopilot.evidence.state import EMBEDDED_INSTRUCTIONS_CHECK, CaseState, evaluate
 
 REVENUE_GAP_REQUESTS: dict[str, str] = {
@@ -86,6 +91,10 @@ PROBLEM_ORDER: tuple[str, ...] = (
     "tiv_mismatch",
     "claims_history_mismatch",
     "debt_payment_mismatch",
+    "missing_equity_verification",
+    "missing_experience_evidence",
+    "unsupported_material_assumption",
+    "missing_quotes",
     "missing_pages",
     "missing_loss_run",
     "missing_document",
@@ -336,6 +345,8 @@ def detect_open_items(
         items += credit_items(state, packet, result)
     elif line == "insurance":
         items += insurance_items(state, packet, result)
+    elif line == "startup_credit":
+        items += startup_items(state, result)
     items += identity_items(state, packet)
     items += injection_items(state, packet)
     covered = {STATEMENTS_CODE} if any(item.problem_type == "missing_pages" for item in items) else set()

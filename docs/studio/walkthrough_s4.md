@@ -31,7 +31,8 @@ own decisions."), and nothing in S4 approves, declines or recommends a lender.
   printed as a duration ("after 1 months") although it is a month number; (5) a generated plan's demand range in a
   real metro was labelled "SYNTHETIC city data"; (6) a model run in which the model never answered would have
   reported a fallback rate of 100%; it is now "not measured"; (7) `make studio-narrative-test` deselected the
-  hf_inference tests by its `-k narrative` filter.
+  hf_inference tests by its `-k narrative` filter; (8) the hf_inference client cited a documentation page with no
+  record of reading it; the page was read again and its retrieval time and SHA-256 are now in the docstring.
 - Not done here (S6 owns them): the PDF package, `to_application`, the agent handoff and the startup items of
   `evidence/open_items.py`. S4's "share of package numbers with provenance" is measured on the rendered narrative and
   on an evidence appendix of every claim; the PDF itself is measured by S6.
@@ -267,7 +268,23 @@ False-flag rate on the controls (share of unchanged or reworded sentences flagge
 
 ### 6.2 Local model run (`results/studio_evidence_metrics_ollama.json`)
 
-Not measured: no local-model results file exists.
+Run: git `9415cfc5494c4cfaa5e7eb8f838b77a7c3809788` (dirty: False), generated 2026-10-14T11:20:39+00:00; provider ollama, model qwen2.5-1.5b-instruct-f16 (Ollama digest 75a307d2fa0d, ollama 0.40.3); the first 6 golden scenarios (limit 6).
+
+| Measure | k / n | Rate | Wilson 95% | Bootstrap 95% (scenarios) |
+|---|---|---|---|---|
+| Narratives that fell back to the template | 6 / 6 | 1.0 | [0.6097, 1.0] | [1.0, 1.0] |
+| First drafts that passed the grammar | 0 / 6 | 0.0 | [0.0, 0.3903] | [0.0, 0.0] |
+| Retry drafts that passed the grammar | 0 / 6 | 0.0 | [0.0, 0.3903] | [0.0, 0.0] |
+| Final-text numbers that trace (round-trip audit) | 285 / 285 | 1.0 | [0.9867, 1.0] | [1.0, 1.0] |
+| Final-text numbers that trace (bound check) | 285 / 285 | 1.0 | [0.9867, 1.0] | [1.0, 1.0] |
+
+Model calls: 12 (0 answered from the cache); calls that failed: 0. Latency per call: median 210.686 s, maximum 885.644 s (wall time on a shared 4-CPU machine; cached calls take milliseconds).
+
+Validator findings over all drafts, by code: V3_SYMBOL 687, V5_UNSLOTTED_COMPARATIVE 40, V6_OMISSION 20.
+
+Fallback reasons: the draft broke the narrative grammar twice.
+
+What the drafts show: the model copies the example's sentences but types a dollar sign in front of most claim slots, including slots that are not dollar amounts (months, a credit score), so V3_SYMBOL is by far its most frequent finding; the retry with the validator's findings repeats the same pattern. Every final text is therefore the template, which is why the final-text numbers trace. The run started on the uncommitted tree and the WIP checkpoint was committed while it ran, so its provenance block names the tree at the end of the run; re-running the same scenarios with that commit answered every call from the LLM cache and reproduced every per-scenario outcome.
 
 ### 6.3 hf_inference
 
@@ -278,7 +295,7 @@ not measured: the hf_inference provider is disabled by default (UWC_HF_INFERENCE
 - **The template's numbers trace by construction.** The renderer types every number from the ledger, so a 100% traced
   share for the template is a check that the construction holds on every scenario, not evidence about how often a
   model would write a wrong number. The local-model run (section 6.2) is the measurement of a model, on
-  0 (not measured) scenarios only.
+  6 scenarios only.
 - **The mutation test uses sentences we wrote.** The founder sentences come from the template, the same author wrote
   the mutations' rules, and the bound check's recall on cross_section follows from its design (the donor value is
   drawn so that it is absent from the cited claims). It shows the implementation has no gap (sentence splitting,
@@ -302,6 +319,11 @@ not measured: the hf_inference provider is disabled by default (UWC_HF_INFERENCE
   mode (section 6.1 lists the modes); none of the golden plans carries a document, so CONFLICTING appears only in the
   unit tests; with the generator's facts every owner fact is entered, so UNKNOWN claims come from SiteIQ factors
   without data.
+- **The local 1.5B model never wrote a usable draft** (section 6.2): it types a dollar sign before slots. Options for
+  the owners, none built here: a larger local model (the 3B model is installed but slower on this CPU), a prompt
+  change measured as a new prompt id, or a deterministic repair that deletes a "$" or "%" typed right before a slot
+  (the renderer prints the unit itself), counted and reported as a repair rather than hidden. Until one of them is
+  measured, the template is the only writer that passes, which is why it is the default.
 - **hf_inference never ran.** It has no price in `config/llm_pricing.yaml`, so even with the flag and a token the
   budget layer refuses the call.
 - **Ledger size.** Between 380 and 432 (median 402.5) claims per plan, most of them monthly and yearly simulation bands. A ledger-wide
@@ -337,7 +359,7 @@ fills every slot from the ledger and adds a footnote, and the round-trip audit r
 **5. What happens when the model breaks the rules?**
 It gets one retry with the validator's findings ("V1_DIGIT: 250000"). If the second draft fails too, the model cannot
 be reached, or the rendered text fails the audit, the deterministic template is used and the result says so
-(`fallback_used`, `fallback_reason`). The local model's fallback rate was not measured in this build (section 6.2).
+(`fallback_used`, `fallback_reason`). In the local run (qwen2.5-1.5b-instruct-f16 on the first 6 SYNTHETIC golden scenarios) the template was used for 6 of 6 narratives (section 6.2).
 
 **6. The round-trip audit already exists. Why add a bound check?**
 The audit asks whether a number equals some claim of the ledger. With hundreds of claims per plan, a wrong number
