@@ -1,7 +1,8 @@
 """Render the lender-ready package of one golden SYNTHETIC founder scenario (Studio S6).
 
     uv run python scripts/render_studio_package.py --metro synthetic_metro --type car_wash --output package.pdf
-    uv run python scripts/render_studio_package.py --metro chicago_il_in --type laundromat --output out.pdf --json out.json
+    uv run python scripts/render_studio_package.py --metro chicago_il_in --type laundromat \
+        --output out.pdf --json out.json
 
 Builds the golden scenario (studio/narrative/golden.py), its SYNTHETIC project (studio/package/golden.py), the
 package and the PDF, re-reads the PDF's own text through the round-trip audit, and writes the PDF (and, with --json,

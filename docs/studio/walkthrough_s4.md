@@ -170,10 +170,13 @@ own decisions."), and nothing in S4 approves, declines or recommends a lender.
 ```python
 from uwcopilot.studio.narrative import build_founder_ledger, render_narrative
 
-ledger = build_founder_ledger(case, feasibility, site_score, path_result)  # PlanCase, simulate(), score_site(), find_paths()
-result = render_narrative(ledger)                                          # provider "template" (default)
+# Inputs: a PlanCase plus the outputs of simulate(), score_site() and find_paths().
+ledger = build_founder_ledger(case, feasibility, site_score, path_result)
+# The default provider is "template".
+result = render_narrative(ledger)
 result.text, result.audit, result.fallback_used, result.prompt_id, result.prompt_sha256
-ledger.model_dump(mode="json"), result.model_dump(mode="json")             # both JSON-serializable
+# Both are JSON-serializable.
+ledger.model_dump(mode="json"), result.model_dump(mode="json")
 ```
 
 1. `build_founder_ledger` builds the claims (sections 2-3) and the checks. `site_score` and `path_result` are
