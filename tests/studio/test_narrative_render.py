@@ -171,3 +171,37 @@ def test_a_rendered_llm_narrative_never_holds_a_number_outside_the_ledger(ledger
     fake = FakeLLM([template_draft(ledger)])
     result = render_narrative(ledger, "fake", client_factory=factory_of(fake))
     assert round_trip_audit(RenderedMemo(body=result.body), ledger) == []
+
+
+# Review findings (S4 review, B1/S1): drafts that are slot-only on the surface but state a false comparison or pair one
+# check's verdict with another check's fact. Each must fall back to the template.
+ADVERSARIAL_DRAFTS = {
+    "borrowed verdict": "The owner experience of {{claim:FOUNDER.experience_months}} {{assert:A-NSP-4.1}} [NSP-2.1].",
+    "typed comparative": "The second-year ratio is comfortably above the minimum, so it {{assert:A-NSP-4.1}}.",
+    "ordinal": "Cash turns positive in the eighteenth month.",
+    "multiplier": "Revenue grows twofold over the plan.",
+    "numeric character": "About ½ of the cost is equipment.",
+    "vague count": "Several competitors operate nearby.",
+}
+
+
+@pytest.mark.parametrize("name", sorted(ADVERSARIAL_DRAFTS))
+def test_adversarial_drafts_fall_back_to_the_template(ledger: Ledger, name: str) -> None:
+    """A draft with any of the reviewed tricks is rejected twice and the template is rendered."""
+    draft = ADVERSARIAL_DRAFTS[name] + "\n\n" + template_draft(ledger)
+    result = render_narrative(ledger, "fake", client=FakeLLM([draft, draft]))
+    assert result.fallback_used
+    assert result.prompt_id == TEMPLATE_ID
+    assert result.attempts[0].violations
+
+
+def test_a_draft_that_fails_the_bound_check_falls_back(ledger: Ledger, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bound check runs on every model draft that passed the grammar and the audit, and a flag means fallback."""
+    from types import SimpleNamespace
+
+    from uwcopilot.studio.narrative import generate
+
+    monkeypatch.setattr(generate, "bound_check", lambda text, led, claims_used: SimpleNamespace(flagged=True))
+    result = render_narrative(ledger, "fake", client=FakeLLM([template_draft(ledger)]))
+    assert result.fallback_used
+    assert result.fallback_reason == "the rendered draft failed the bound check"

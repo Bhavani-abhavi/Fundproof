@@ -245,7 +245,8 @@ class ProgramChecks:
                 "equity_injection",
                 ("NSP-3.1",),
                 meets,
-                [share, self.get(ids.PROGRAM_MIN_EQUITY)],
+                # The share is computed from the owner's equity and the total project cost, so both are evidence too.
+                [share, self.get(ids.PROGRAM_MIN_EQUITY), equity, self.get(ids.CALC_PROJECT_COST)],
                 trigger_ids=() if meets else ("R-NSP-05",),
             ),
             make_assertion(

@@ -154,7 +154,7 @@ class TemplateWriter:
             sentences.append(
                 f"With the stress test of the targets, which cuts revenue by {self.slot(ids.TARGET_STRESS_SHARE)} "
                 f"and net operating income by the same dollars, the simulated chance that the second-year ratio "
-                f"stays at or above {self.slot(ids.TARGET_STRESSED_MIN)} is {self.slot(p_stressed)}, which "
+                f"reaches {self.slot(ids.TARGET_STRESSED_MIN)} is {self.slot(p_stressed)}, which "
                 f"{a(ids.A_TARGET_STRESS)} of {self.slot(ids.TARGET_P_STRESSED)}."
             )
         p_cash = self.measured(ids.A_TARGET_CASH)

@@ -6,13 +6,14 @@
 Flow for a model ("fake", "ollama" or "hf_inference", or any LLMClient passed as `client`):
 1. build the request (prompts.build_request): rules, the slots the model may use, the template draft as an example;
 2. the model writes a slot-only draft; it is validated (provenance.memo_grammar.validate: digits, number words,
-   symbols, unknown or malformed slots, comparatives outside assert sentences, omitted findings and open claims,
-   decision wording, unknown citations);
+   symbols, unknown or malformed slots, comparatives typed by the model, omitted findings and open claims,
+   decision wording, unknown citations, and an assert slot stated with another check's claim or section);
 3. a rejected draft gets ONE retry, with the validator's findings sent back to the model;
 4. a draft that passes is rendered (provenance.renderer.render): every slot becomes the ledger value in its display
    format with its status suffix and a footnote; the round-trip audit then re-reads every number of the body and
-   must find it in the ledger (empty audit);
-5. if the second draft also fails, the model cannot be reached or errors, or the audit is not empty, the
+   must find it in the ledger (empty audit), and the bound check (checker.bound_check) must tie every number to a
+   claim its own sentence points to, with the threshold's own comparator;
+5. if the second draft also fails, the model cannot be reached or errors, or either check flags the rendered text, the
    deterministic TEMPLATE draft (template.py) is rendered instead and fallback_used is True, with the reason.
 The template is the default and always works: it is built to pass the validator, and a test checks that it does on
 every golden scenario. The rendered text ends with the simulation label and the Studio disclaimer (rule C, rule E).
@@ -27,9 +28,10 @@ from uwcopilot.evidence.ledger_models import Ledger
 from uwcopilot.llm.base import LLMClient
 from uwcopilot.llm.factory import get_llm_client
 from uwcopilot.llm.ollama_client import OllamaOptions
-from uwcopilot.provenance.memo_grammar import SLOT, Violation, validate
+from uwcopilot.provenance.memo_grammar import SLOT, AssertionScope, Violation, validate
 from uwcopilot.provenance.renderer import render, round_trip_audit
 from uwcopilot.studio import DISCLAIMER, SIMULATION_LABEL
+from uwcopilot.studio.narrative.checker import bound_check
 from uwcopilot.studio.narrative.models import AttemptRecord, NarrativeResult
 from uwcopilot.studio.narrative.prompts import (
     NARRATIVE_PROMPT_ID,
@@ -57,13 +59,31 @@ class UnknownNarrativeProvider(ValueError):
     """The provider is not template, fake, ollama or hf_inference."""
 
 
+def assertion_scopes(ledger: Ledger) -> dict[str, AssertionScope]:
+    """Each assertion's own claims and sections: what a sentence with its assert slot may be stated with."""
+    return {
+        item.id: AssertionScope(
+            evidence_ids=frozenset(item.evidence_ids),
+            section_ids=frozenset(item.section_ids) | ({item.section_id} if item.section_id else set()),
+        )
+        for item in ledger.assertions
+    }
+
+
 def check_draft(ledger: Ledger, draft: str) -> list[Violation]:
     """Every grammar violation of a slot-only draft against this ledger (empty = valid)."""
     if not draft.strip():
         return [Violation("V6_OMISSION", "", "the draft is empty")]
     claim_ids = {claim.id for claim in ledger.claims}
     assertion_ids = {item.id for item in ledger.assertions}
-    return validate(draft, claim_ids, assertion_ids, required_refs(ledger), allowed_sections(ledger))
+    return validate(
+        draft,
+        claim_ids,
+        assertion_ids,
+        required_refs(ledger),
+        allowed_sections(ledger),
+        assertion_scopes(ledger),
+    )
 
 
 def default_client(provider: str, model: str | None) -> LLMClient:
@@ -145,6 +165,8 @@ def ask_model(ledger: Ledger, llm: LLMClient, provider: str, model: str | None, 
             result = finish(ledger, draft, provider, response.model, NARRATIVE_PROMPT_ID, attempts, None)
             if result.audit:
                 return fallback(ledger, provider, model, attempts, "the rendered draft failed the round-trip audit")
+            if bound_check(result.body, ledger, result.claims_used).flagged:
+                return fallback(ledger, provider, model, attempts, "the rendered draft failed the bound check")
             return result
         messages = retry_messages(messages, draft, violations)
     return fallback(ledger, provider, model, attempts, "the draft broke the narrative grammar twice")

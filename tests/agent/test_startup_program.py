@@ -127,7 +127,7 @@ def test_claim_checker_treats_program_ids_as_ids_not_numbers() -> None:
 
 def test_sig_validator_accepts_program_citations_from_the_citable_set() -> None:
     allowed = citable_section_ids()
-    assert validate("The plan meets the program {{assert:R-NSP-06}} [NSP-4.1].", set(), {"R-NSP-06"}, [], allowed) == []
+    assert validate("The plan {{assert:R-NSP-06}} [NSP-4.1].", set(), {"R-NSP-06"}, [], allowed) == []
     violations = validate("See the program [NSP-99.1].", set(), set(), [], allowed)
     assert [violation.code for violation in violations] == ["V9_UNKNOWN_CITATION"]
 
