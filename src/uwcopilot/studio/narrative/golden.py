@@ -108,18 +108,13 @@ def site_of(metro_id: str, profile_id: str, seed: int) -> tuple[SiteScore | None
     return score, (lat, lon)
 
 
-def with_quoted_rate(case: PlanCase, metro_id: str) -> tuple[PlanCase, tuple[str, ...]]:
-    """The plan with a SYNTHETIC quoted rate when the metro has no prime rate here (module docstring, step 4)."""
-    if case.loan.annual_rate_pct is not None:
-        return case, ()
-    profile = profile_for(case.profile_id, metro_id)
-    prime = fabric_for(metro_id).metro_inputs(profile).get("prime_rate")
+def synthetic_quoted_rate(profile_id: str, metro_id: str) -> float | None:
+    """A SYNTHETIC quoted rate when the metro has no prime rate here, else None (module docstring, step 4)."""
+    prime = fabric_for(metro_id).metro_inputs(profile_for(profile_id, metro_id)).get("prime_rate")
     if prime is not None and prime.value is not None:
-        return case, ()
-    synthetic = fabric_for(SYNTHETIC_METRO).metro_inputs(profile_for(case.profile_id, SYNTHETIC_METRO))["prime_rate"]
-    rate = round(float(synthetic.value) + default_assumptions().rate_spread_over_prime_pct.point(), 4)
-    loan = case.loan.model_copy(update={"annual_rate_pct": rate})
-    return case.model_copy(update={"loan": loan}), (QUOTED_RATE_NOTE,)
+        return None
+    synthetic = fabric_for(SYNTHETIC_METRO).metro_inputs(profile_for(profile_id, SYNTHETIC_METRO))["prime_rate"]
+    return round(float(synthetic.value) + default_assumptions().rate_spread_over_prime_pct.point(), 4)
 
 
 def build_golden_scenario(
@@ -129,10 +124,19 @@ def build_golden_scenario(
     seed = scenario_seed(metro_id, profile_id)
     fabric = fabric_for(metro_id)
     profile = profile_for(profile_id, metro_id)
+    # Step 4 must happen before the plan is generated: generating it already simulates the loan.
+    quoted_rate = synthetic_quoted_rate(profile_id, metro_id)
     generated = synthetic_plans.generate_plan(
-        profile, metro_id, fabric.data_label, fabric.metro_inputs(profile), default_assumptions(), seed
+        profile,
+        metro_id,
+        fabric.data_label,
+        fabric.metro_inputs(profile),
+        default_assumptions(),
+        seed,
+        quoted_rate_pct=quoted_rate,
     )
-    case, notes = with_quoted_rate(synthetic_plans.with_synthetic_facts(generated.case, seed), metro_id)
+    case = synthetic_plans.with_synthetic_facts(generated.case, seed)
+    notes = (QUOTED_RATE_NOTE,) if quoted_rate is not None else ()
     site_score, location = site_of(metro_id, profile_id, seed)
     feasibility = simulate(profile_id, fabric, case.site, case.plan, case.loan, n=n_paths, months=MONTHS, seed=seed)
     path_result = None

@@ -219,10 +219,17 @@ def generate_plan(
     assumptions: FeasibilityAssumptions,
     seed: int,
     months: int = 36,
+    quoted_rate_pct: float | None = None,
 ) -> SyntheticPlan:
-    """One SYNTHETIC plan with its candidate sites (see the module docstring)."""
+    """One SYNTHETIC plan with its candidate sites (see the module docstring).
+
+    quoted_rate_pct, when given, becomes the loan's annual rate before the plan is simulated. Callers pass it for
+    a metro that has no prime rate here, which would otherwise have no note rate to simulate with.
+    """
     rng = np.random.default_rng(seed)
     plan, loan = draw_plan(profile, metro_inputs, rng)
+    if quoted_rate_pct is not None and loan.annual_rate_pct is None:
+        loan = loan.model_copy(update={"annual_rate_pct": quoted_rate_pct})
     staffing = bool(rng.uniform() < STAFFING_PLAN_SHARE)
     if staffing:
         plan = with_staffing_plan(profile, plan)
