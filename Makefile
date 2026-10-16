@@ -466,10 +466,13 @@ docker-build-bundle: override DOCKER_BUILD_FLAGS += --no-cache-filter studio-sna
 # Founder Studio S4: the founder ledger and the provenance-locked narrative (src/uwcopilot/studio/narrative). The
 # template run is offline and writes results/studio_evidence_metrics.json; the local-model run needs `ollama serve`
 # and writes results/studio_evidence_metrics_ollama.json (hf_inference stays disabled unless the owners opt in).
-.PHONY: studio-evidence studio-evidence-ollama studio-narrative-test
+.PHONY: studio-evidence studio-evidence-synthetic studio-evidence-ollama studio-narrative-test
 
 studio-evidence:  ## Founder ledger + template narrative on the 36 golden scenarios -> results/studio_evidence_metrics.json
 	uv run python scripts/eval_studio_evidence.py
+
+studio-evidence-synthetic:  ## The template run on the 6 SYNTHETIC-city scenarios only (no data snapshots needed)
+	uv run python scripts/eval_studio_evidence.py --limit 6 --output results/studio_evidence_metrics_synthetic.json
 
 studio-evidence-ollama:  ## The same with the local 1.5B model on 6 scenarios -> results/studio_evidence_metrics_ollama.json
 	uv run python scripts/eval_studio_evidence.py --provider ollama --model qwen2.5-1.5b-instruct-f16 --limit 6
