@@ -76,3 +76,23 @@ def test_synthetic_facts_are_seeded_and_only_verify_typed_figures() -> None:
         seed for seed in range(20) if synthetic_plans.with_synthetic_facts(plan.case, seed).facts.other_debt
     ]
     assert 0 < len(seeds_with_debt) < 20
+
+
+def test_a_quoted_rate_is_set_before_the_plan_is_simulated() -> None:
+    """generate_plan uses quoted_rate_pct when the drawn loan has no rate, and leaves the draws unchanged otherwise."""
+    fabric = get_fabric(METRO)
+    profile = load_profile("car_wash", metro_id=METRO)
+    inputs = fabric.metro_inputs(profile)
+    plain = generate_plan(profile, METRO, fabric.data_label, inputs, load_assumptions(), 7)
+    quoted = generate_plan(profile, METRO, fabric.data_label, inputs, load_assumptions(), 7, quoted_rate_pct=9.25)
+    assert plain.case.loan.annual_rate_pct is None
+    assert quoted.case.loan.annual_rate_pct == 9.25
+    assert quoted.case.loan.amount == plain.case.loan.amount
+    assert quoted.case.plan == plain.case.plan
+
+
+def test_the_synthetic_metro_needs_no_quoted_rate() -> None:
+    """The SYNTHETIC city has a prime rate, so the golden builder adds no SYNTHETIC quoted rate there."""
+    from uwcopilot.studio.narrative.golden import synthetic_quoted_rate
+
+    assert synthetic_quoted_rate("car_wash", METRO) is None
