@@ -133,12 +133,14 @@ own decisions."), and nothing in S4 approves, declines or recommends a lender.
 3. **The program's own arithmetic.** Ratios and percentages use `policy_startup.program_ratio` / `program_pct` (exact
    decimals, rounded half up) and the NBC-4.1 payment, so the founder sees the number the lender copilot will compute.
 4. **Slots only, values never in the prompt.** The model sees slot ids and what each one means, never a value, so it
-   has nothing to copy. The renderer types every number. The grammar (provenance/memo_grammar.py) rejects digits,
-   number words, currency and percent symbols, unknown or malformed slots, comparative words outside a sentence with
-   an assert slot, omitted findings or open claims, decision wording and unknown citations.
+   has nothing to copy. The renderer types every number. The grammar (provenance/memo_grammar.py) rejects digits
+   (and any other numeric character, such as "½"), number words (including ordinals from "third", "twofold",
+   "several"), currency and percent symbols, unknown or malformed slots, comparative words the model typed anywhere
+   (only an assert slot's own phrase may judge), a claim or section of a different check in a sentence with an assert
+   slot (V10, added after the S4 review), omitted findings or open claims, decision wording and unknown citations.
 5. **One retry, then the template.** A rejected draft goes back once with the validator's findings (code and the text
    that broke it). If the second draft fails too, or the model cannot be reached, or the rendered text fails the
-   audit, the deterministic template is used and the result says so (`fallback_used`, `fallback_reason`). The template
+   audit or the bound check, the deterministic template is used and the result says so (`fallback_used`, `fallback_reason`). The template
    is the default because it always works, costs nothing and gives the same text for the same ledger.
 6. **Founder free text never reaches a prompt or a code field.** Site labels, the names of other debt and the notes on
    edited ranges stay in claim details; the words around the slots come from fixed tables, and anything read from
@@ -202,7 +204,11 @@ reference sentence whose "section" is the evidence text of the claims its marker
 cross_section with a donor from another sentence of the same narrative) or keeps it (unmutated,
 equivalent_rewrite). wrong_row does not apply: a founder narrative has no tables. With an LLM provider it also asks
 the model for each narrative and records first-try validity, validity after the retry, the fallback and its reason,
-the validator's findings and latency; if the model never answered, the LLM rates are "not measured". Rates are pooled
+the validator's findings and latency; if the model never answered, the LLM rates are "not measured".
+
+The wrong-slot test (added after the S4 review) measures what none of the checks can see: up to 10 drafts per
+scenario in which ONE claim slot of the template draft points to another claim with the same display format (a rent
+sentence that shows the loan amount). Each check reports whether it flags the draft. Rates are pooled
 over scenarios with Wilson 95% intervals and bootstrap 95% intervals that resample scenarios (1,000 resamples, seed
 42).
 
@@ -287,13 +293,54 @@ Validator findings over all drafts, by code: V3_SYMBOL 687, V5_UNSLOTTED_COMPARA
 
 Fallback reasons: the draft broke the narrative grammar twice.
 
-What the drafts show: the model copies the example's sentences but types a dollar sign in front of most claim slots, including slots that are not dollar amounts (months, a credit score), so V3_SYMBOL is by far its most frequent finding; the retry with the validator's findings repeats the same pattern. Every final text is therefore the template, which is why the final-text numbers trace. The run started on the uncommitted tree and the WIP checkpoint was committed while it ran, so its provenance block names the tree at the end of the run; re-running the same scenarios with that commit answered every call from the LLM cache and reproduced every per-scenario outcome.
+These numbers were measured before the S4 review fixes; the stricter grammar can only add findings, and every
+narrative already fell back. What the drafts show: the model copies the example's sentences but types a dollar sign in front of most claim slots, including slots that are not dollar amounts (months, a credit score), so V3_SYMBOL is by far its most frequent finding; the retry with the validator's findings repeats the same pattern. Every final text is therefore the template, which is why the final-text numbers trace. The run started on an uncommitted tree and a WIP checkpoint was committed while it ran, so the commit its provenance block names is not the code that ran: the file's per-scenario ledger blocks lack the "findings" and "not_evaluated" keys that commit writes. No results file records a re-run at that commit, so treat this file as approximate until `make studio-evidence-ollama` is re-run at a clean commit. Since the S4 review, a results file names the commit its run STARTED on, and a change during the run marks it dirty.
 
-### 6.3 hf_inference
+### 6.3 After the S4 review (`results/studio_evidence_metrics_synthetic.json`)
+
+The review fixes (section 7, "Review fixes") changed the grammar, one template sentence and the equity check's
+evidence list. This run re-measures the first 6 golden scenarios (the SYNTHETIC city; the real cities need the data
+snapshots of 2026-10-13, which are not on the machine that made the fixes). Run: git
+`0d03cdcfcb9f217003891f81a42e9dbcc5879c7e` (dirty: False), generated 2026-10-16T15:16:06+00:00.
+
+- Every template and ledger count of the 6 scenarios equals the matching rows of section 6.1, so those rows still
+  hold after the fixes. The 30 real-city rows of section 6.1 were measured before the fixes and have not been re-run.
+- **The measured blind spot (wrong slot).** Share of the 60 wrong-slot drafts each check flags:
+
+| Check | k / n | Rate | Wilson 95% | Bootstrap 95% (scenarios) |
+|---|---|---|---|---|
+| Grammar (V10 catches a slot owned by another check) | 3 / 60 | 0.05 | [0.0171, 0.137] | [0.0167, 0.0833] |
+| Round-trip audit | 0 / 60 | 0.0 | [0.0, 0.0602] | [0.0, 0.0] |
+| Bound check | 2 / 60 | 0.0333 | [0.0092, 0.1136] | [0.0, 0.0667] |
+| Any of the three | 5 / 60 | 0.0833 | [0.0361, 0.1807] | [0.0333, 0.1333] |
+
+  A model that picks the wrong slot of the right kind produces a true ledger value, cited to the claim it came from,
+  so the checks miss it almost every time. This is the limit of slot-level provenance, stated rather than hidden;
+  the human reviewer and the evidence appendix (every claim with its label) are the defence.
+
+### 6.4 hf_inference
 
 not measured: the hf_inference provider is disabled by default (UWC_HF_INFERENCE_ENABLED, HF_TOKEN and a verified price are all required) and was never run in this build; the owners decided on no extra spending
 
 ## 7. Limits and open issues
+
+**Review fixes (independent S4 review, 2026-10-16).** Fixed: on the model path a draft could pair one check's verdict
+with another check's fact ("experience of 4 months ... meets the program's minimum") or type its own comparison next
+to an assert slot ("well below 1.00 and meets the stress minimum"), and every gate passed. Now V5 checks
+comparatives in every sentence, V10 binds an assert slot to its own claims and sections, the number-word list is
+wider, and the bound check gates every model draft. A target the founder edited is USER_STATED (it was VERIFIED);
+simulated figures list a CONFLICTING founder figure they rest on (depends_on_conflicting). Not fixed yet, and needed
+before S6 relies on them: per-claim metro and snapshot date (most claims leave `metro_id` and `snapshot_date` empty,
+and the run identity records no snapshot fingerprint); a structured P10-P90 range on MODEL_ESTIMATE claims (the
+uncertainty is free text today); a fixed phrase for document claims (the narrative says "the item listed in the
+evidence appendix"); golden scenarios with documents (CONFLICTING appears only in unit tests).
+
+- **Closed word lists (known limits of the grammar).** "first", "second", "most" and "least" are allowed because
+  ordinary prose needs them; a bare "over" or "under" is allowed and only flagged next to a threshold word ("over the
+  target"); Roman numerals typed in ASCII letters ("IV") are not detected.
+- **Wrong slot of the right kind.** Measured in section 6.3: the checks flag 5 of 60 such drafts. The grammar checks
+  which words the model typed, the audits check that each number is a true, cited ledger value; none can tell that a
+  rent sentence points to the loan amount's slot.
 
 - **The template's numbers trace by construction.** The renderer types every number from the ledger, so a 100% traced
   share for the template is a check that the construction holds on every scenario, not evidence about how often a
@@ -356,8 +403,10 @@ it stays USER_STATED. A test fails if any computed figure of a golden plan is VE
 **4. How can a model write a narrative full of numbers if it may not type a digit?**
 It writes slots, `{{claim:SIM.p_dscr_year2}}`, and checks, `{{assert:A-NSP-4.1}}`. The prompt lists each slot with
 what it means, never its value. The validator rejects digits, number words, currency and percent signs, unknown
-slots, comparative words outside a sentence with a check, missing findings and decision wording. The renderer then
-fills every slot from the ledger and adds a footnote, and the round-trip audit re-reads every number.
+slots, any comparative word the model typed (only a check's own phrase may judge), a check stated with another
+check's fact or section, missing findings and decision wording. The renderer then fills every slot from the ledger
+and adds a footnote, and both the round-trip audit and the bound check re-read every number. The word lists are
+closed, so section 7 lists what they allow on purpose.
 
 **5. What happens when the model breaks the rules?**
 It gets one retry with the validator's findings ("V1_DIGIT: 250000"). If the second draft fails too, the model cannot
@@ -373,7 +422,8 @@ number must equal a claim that its own sentence cites, with the threshold's comp
 It shows the implementation holds on 686 sentences from 36 SYNTHETIC narratives, for the error types we can generate (bound check: value_perturb 686/686, magnitude_x10 686/686, unit_swap 321/321, comparator_flip 164/164, cross_section 686/686). It is not a claim about real errors: the mutations break the template's own sentences, the same author
 wrote both, and for cross_section the result follows from the design. We report the round-trip audit on the same
 mutations so the difference is visible, and wrong_row is reported as not applicable because a founder narrative has
-no tables.
+no tables. The error the checks cannot see is measured too: a slot pointing to the wrong claim of the same kind is
+flagged in 5 of 60 drafts (section 6.3).
 
 **8. The founder edited a target. Which probability does the check use?**
 The one measured for that exact target. The simulation measures its own DSCR target, the program's 20% revenue stress
