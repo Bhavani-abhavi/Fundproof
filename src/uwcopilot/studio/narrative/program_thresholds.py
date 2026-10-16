@@ -26,10 +26,11 @@ from uwcopilot.agent.policy_startup import (
     STARTUP_MIN_AMOUNT,
     STARTUP_MIN_TERM_MONTHS,
 )
-from uwcopilot.evidence.ledger_models import Claim
+from uwcopilot.evidence.ledger_models import Claim, Provenance
 from uwcopilot.studio.narrative import ids
 from uwcopilot.studio.narrative.derive import percent_of, policy_claim
 from uwcopilot.studio.path_to_approval.models import Target
+from uwcopilot.studio.path_to_approval.targets import EDITED_BY_USER
 
 PROGRAM_SOURCE = (
     "corpus/programs/northwind_startup_program.md {section} (SYNTHETIC program of a fictional institution; "
@@ -187,7 +188,12 @@ def target_claims(target: Target) -> list[Claim]:
         claim_id: str, label: str, value: float, unit: str, display: str, field: str, comparator: str | None
     ) -> Claim:
         source = target.sources.get(field, "Studio target (editable design choice)")
-        return policy_claim(claim_id, label, value, unit, display, f"Studio target {field}", source, comparator)
+        claim = policy_claim(claim_id, label, value, unit, display, f"Studio target {field}", source, comparator)
+        if source != EDITED_BY_USER:
+            return claim
+        # A target the founder edited is their own figure, not the Studio's: USER_STATED, so it reads as stated.
+        edited = Provenance(kind="user_input", ref=f"target.{field}", source=source, details=claim.provenance.details)
+        return Claim.model_validate({**claim.model_dump(), "status": "USER_STATED", "provenance": edited})
 
     return [
         target_claim(

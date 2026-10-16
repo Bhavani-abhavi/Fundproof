@@ -77,6 +77,27 @@ def run_identity(case: PlanCase, result: FeasibilityResult) -> dict[str, InputVa
     }
 
 
+def conflicting_input_ids(claims: dict[str, Claim]) -> tuple[str, ...]:
+    """The CONFLICTING inputs so far: a founder figure a document contradicts, and that document's value."""
+    return tuple(claim.id for claim in claims.values() if claim.status == "CONFLICTING")
+
+
+def with_conflicts(items: Sequence[Claim], conflicting: tuple[str, ...]) -> list[Claim]:
+    """Simulation claims that list the CONFLICTING inputs they rest on (as Phase 4 does for a calculation).
+
+    The simulator reads the plan as the founder stated it, so every simulated figure rests on any stated figure a
+    document disagrees with; the claim keeps its MODEL_ESTIMATE status and says what it depends on.
+    """
+    if not conflicting:
+        return list(items)
+    return [
+        Claim.model_validate({**item.model_dump(), "depends_on_conflicting": conflicting})
+        if item.status == "MODEL_ESTIMATE"
+        else item
+        for item in items
+    ]
+
+
 def check_same_plan(
     case: PlanCase, result: FeasibilityResult, site_score: SiteScore | None, path_result: PathResult | None
 ) -> None:
@@ -143,7 +164,7 @@ def build_founder_ledger(
     overridden = frozenset(case.plan.assumption_overrides)
     keep(assumption_claims(feasibility, claims.get(ids.FOUNDER_RATE), claims.get(ids.FOUNDER_SPREAD), run, overridden))
     keep(site_claims(site_score))
-    keep(simulation_claims(feasibility, run, monthly_months))
+    keep(with_conflicts(simulation_claims(feasibility, run, monthly_months), conflicting_input_ids(claims)))
     keep(path_claims(path_result))
     keep(program_threshold_claims(case.loan.rate_type))
     target = path_result.target if path_result is not None else default_target()

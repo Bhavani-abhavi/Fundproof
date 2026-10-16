@@ -307,3 +307,35 @@ def test_a_range_the_founder_edited_is_user_stated_and_feeds_the_arithmetic(scen
     assert "SYNTHETIC test edit" not in burden.label
     fixed = claim(ledger, ids.CALC_FIXED_COSTS)
     assert burden.id in fixed.inputs and fixed.status != "VERIFIED"
+
+
+def test_simulated_figures_list_a_document_conflict_they_rest_on(scenario: GoldenScenario) -> None:
+    """The simulator ran on the stated equity, so a contradicting document must show on every simulated figure."""
+    quote = FounderDocumentValue(
+        field="plan.owner_equity",
+        value=scenario.case.plan.owner_equity - 5_000,
+        doc_id="U-BANK-2",
+        document_type="equity_bank_statements",
+        page=1,
+    )
+    ledger = build_founder_ledger(scenario.case, scenario.feasibility, documents=[quote])
+    simulated = [item for item in ledger.claims if item.id.startswith("SIM.") and item.status == "MODEL_ESTIMATE"]
+    assert simulated
+    assert all(ids.FOUNDER_EQUITY in item.depends_on_conflicting for item in simulated)
+
+
+def test_simulated_figures_have_no_conflict_without_a_document(ledger: Ledger) -> None:
+    assert all(not item.depends_on_conflicting for item in ledger.claims if item.id.startswith("SIM."))
+
+
+def test_a_target_the_founder_edited_is_user_stated() -> None:
+    """An edited target is the founder's own figure, so it must not read as a verified Studio value."""
+    from uwcopilot.studio.narrative.program_thresholds import target_claims
+    from uwcopilot.studio.path_to_approval.targets import custom_target, default_target
+
+    edited = {item.id: item for item in target_claims(custom_target(p_dscr_min=0.5))}
+    default = {item.id: item for item in target_claims(default_target())}
+    assert edited[ids.TARGET_P_DSCR].status == "USER_STATED"
+    assert edited[ids.TARGET_P_DSCR].provenance.kind == "user_input"
+    assert edited[ids.TARGET_DSCR_MIN].status == "VERIFIED"
+    assert default[ids.TARGET_P_DSCR].status == "VERIFIED"

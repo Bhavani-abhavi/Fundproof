@@ -65,6 +65,10 @@ def default_target() -> Target:
     )
 
 
+# The source a target field gets when the founder edits it; the ledger shows such a target as USER_STATED.
+EDITED_BY_USER = "edited by the user"
+
+
 def custom_target(**changes: float | int) -> Target:
     """The default target with some fields edited by the user (each edited source says so)."""
     base = default_target()
@@ -74,7 +78,7 @@ def custom_target(**changes: float | int) -> Target:
         raise ValueError(f"cannot edit {unknown}; editable: {sorted(editable)}")
     sources = dict(base.sources)
     for name in changes:
-        sources[name] = "edited by the user"
+        sources[name] = EDITED_BY_USER
     return Target.model_validate({**base.model_dump(), **changes, "sources": sources})
 
 
