@@ -47,6 +47,7 @@ from uwcopilot.studio.narrative.evaluation import (
     pooled,
     recall_block,
     traced_share,
+    wrong_slot_block,
 )
 from uwcopilot.studio.narrative.founder_ledger import FOUNDER_LEDGER_VERSION
 from uwcopilot.studio.narrative.generate import (
@@ -89,6 +90,13 @@ CHECKER_NOTE = (
     "bound "
     "check's recall there follows from its design. The mutation sentences come from the template narratives the same "
     "author wrote, so this is a test of the implementation, not a held-out benchmark."
+)
+WRONG_SLOT_NOTE = (
+    "The measured blind spot. One claim slot of each template draft is pointed at another claim with the same display "
+    "format (up to 10 per scenario, seeded), the way a model could pick the wrong slot. The rendered number is a true "
+    "ledger value cited to the claim it came from, so the round-trip audit and the bound check cannot see it; the "
+    "grammar catches it only when the slot belongs to a different check in a sentence with an assert slot (V10). "
+    "A low recall here is the expected, disclosed limit of slot-level provenance."
 )
 
 
@@ -195,6 +203,7 @@ def build_report(rows: list[dict[str, Any]], provider: str, model: str | None, l
             "note": CHECKER_NOTE,
             "sentences": sum(row["sentences"] for row in rows),
             **{check: recall_block(rows, check) for check in CHECKS},
+            "wrong_slot_blind_spot": {"note": WRONG_SLOT_NOTE, **wrong_slot_block(rows)},
         },
         "llm": llm if llm["measured"] or "reason" in llm else {"measured": False, "reason": NOT_MEASURED_TEMPLATE},
         "statistics": {

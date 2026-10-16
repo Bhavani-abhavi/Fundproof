@@ -7,6 +7,10 @@ Per scenario (evaluate_scenario):
 - the evidence appendix: every claim of the ledger rendered on its own line, the same counts (the numbers a package
   can show, as the renderer prints them);
 - the mutation test on the template narrative's sentences (checker.score_scenario), for both checks;
+- the wrong-slot test (score_wrong_slot): one claim slot of the template DRAFT points to another claim with the same
+  display format, the way a model could pick the wrong slot; which check notices (grammar, round-trip audit, bound
+  check). It measures the blind spot of all three: the rendered number is a true ledger value, cited to the claim
+  it came from, so only a slot owned by a different check in an assert sentence (grammar rule V10) is caught;
 - when a model was asked: whether its first draft passed, whether the retry passed, the fallback and its reason,
   the validator's findings, and the same trace counts for the final text.
 Aggregates (pooled over scenarios): rates with a Wilson 95% interval and a bootstrap 95% interval that resamples
@@ -22,10 +26,11 @@ import numpy as np
 from uwcopilot.common.stats import rate_summary
 from uwcopilot.evidence.ledger_models import Ledger
 from uwcopilot.llm.base import LLMClient
+from uwcopilot.provenance.memo_grammar import SLOT
 from uwcopilot.provenance.mutations import CONTROL_TYPES, MUTATION_TYPES
-from uwcopilot.provenance.renderer import render
+from uwcopilot.provenance.renderer import format_value, render, round_trip_audit
 from uwcopilot.risk.bootstrap import bootstrap_ci
-from uwcopilot.studio.narrative.checker import score_scenario, trace_count
+from uwcopilot.studio.narrative.checker import bound_check, score_scenario, trace_count
 from uwcopilot.studio.narrative.generate import TEMPLATE_PROVIDER, check_draft, render_narrative
 from uwcopilot.studio.narrative.golden import GoldenScenario
 from uwcopilot.studio.narrative.models import NarrativeResult
@@ -33,6 +38,8 @@ from uwcopilot.studio.narrative.models import NarrativeResult
 BOOTSTRAP_RESAMPLES = 1000
 BOOTSTRAP_SEED = 42
 CHECKS: tuple[str, ...] = ("round_trip", "bound")
+WRONG_SLOT_PER_SCENARIO = 10
+WRONG_SLOT_CHECKS: tuple[str, ...] = ("grammar", "round_trip", "bound", "any")
 ClientFactory = Callable[[str, str | None], LLMClient]
 
 
@@ -130,6 +137,61 @@ def mutation_row(scores: Any) -> dict[str, dict[str, list[int]]]:
     }
 
 
+def wrong_slot_drafts(draft: str, ledger: Ledger, seed: int) -> list[str]:
+    """Up to WRONG_SLOT_PER_SCENARIO drafts, each with ONE claim slot pointing to another claim of the same display.
+
+    The donor prints a different value in the same format (a rent slot shows the loan amount), so the rendered text
+    reads naturally and every number in it is still a true ledger value. Slots and donors are drawn with the seed.
+    """
+    rng = np.random.default_rng(seed)
+    slots = [match for match in SLOT.finditer(draft) if match.group("kind") == "claim"]
+    drafts = []
+    for index in rng.permutation(len(slots)):
+        match = slots[int(index)]
+        claim = ledger.claim(match.group("id"))
+        if claim is None or claim.value is None:
+            continue
+        shown = format_value(claim.value, claim.display)
+        donors = [
+            other.id
+            for other in ledger.claims
+            if other.id != claim.id
+            and other.display == claim.display
+            and other.value is not None
+            and format_value(other.value, other.display) != shown
+        ]
+        if not donors:
+            continue
+        donor = donors[int(rng.integers(0, len(donors)))]
+        drafts.append(draft[: match.start()] + "{{claim:" + donor + "}}" + draft[match.end() :])
+        if len(drafts) == WRONG_SLOT_PER_SCENARIO:
+            break
+    return drafts
+
+
+def score_wrong_slot(draft: str, ledger: Ledger, seed: int) -> dict[str, int]:
+    """How many wrong-slot drafts each check flags: the grammar, the round-trip audit, the bound check, or any."""
+    counts = dict.fromkeys(("n", *WRONG_SLOT_CHECKS), 0)
+    for mutated in wrong_slot_drafts(draft, ledger, seed):
+        memo = render(mutated, ledger)
+        flags = {
+            "grammar": bool(check_draft(ledger, mutated)),
+            "round_trip": bool(round_trip_audit(memo, ledger)),
+            "bound": bound_check(memo.body, ledger, memo.claims_used).flagged,
+        }
+        flags["any"] = any(flags.values())
+        counts["n"] += 1
+        for check, flagged in flags.items():
+            counts[check] += int(flagged)
+    return counts
+
+
+def wrong_slot_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Recall of each check on the wrong-slot drafts, pooled over scenarios (the measured blind spot)."""
+    n = [row["wrong_slot"]["n"] for row in rows]
+    return {check: pooled([row["wrong_slot"][check] for row in rows], n) for check in WRONG_SLOT_CHECKS}
+
+
 def evaluate_scenario(
     scenario: GoldenScenario,
     provider: str = TEMPLATE_PROVIDER,
@@ -158,6 +220,7 @@ def evaluate_scenario(
         },
         "appendix": appendix_counts(ledger),
         "mutations": mutation_row(scores),
+        "wrong_slot": score_wrong_slot(template.draft, ledger, scenario.seed),
         "sentences": scores.n_sentences,
         "llm": None,
     }
