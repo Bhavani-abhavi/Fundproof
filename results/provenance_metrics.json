@@ -304,12 +304,12 @@
   "memo": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)",
   "kyc_memo": "not measured: needs the Phase 4 evidence ledger and LLM runs (pending)",
   "provenance": {
-    "git_sha": "cefd1433f55a096fd7353a7043f4888dcff1e451",
-    "git_dirty": true,
-    "generated_at_utc": "2026-10-13T13:51:35+00:00",
+    "git_sha": "0d03cdcfcb9f217003891f81a42e9dbcc5879c7e",
+    "git_dirty": false,
+    "generated_at_utc": "2026-10-16T15:15:49+00:00",
     "generated_by": "scripts/eval_provenance.py",
     "prompts": {},
-    "corpus_checksum": "1a0f3d051a1f9ead4d3b0f288b2f521d8661b55e38e74ad79143dd8e302b4fea",
+    "corpus_checksum": "79a71528663e5c46548ef8281e45acda961e315508fe74077edd893c8be67302",
     "eval_sets": {
       "eval/provenance/reference_sentences.jsonl": "6670827a6cf4e2f8c4cb05d99cf6bd5847e94e6543397964d8029c5096adaa2d",
       "eval/provenance/mutations.jsonl": "9127302431e446ea5259c75331ead0941c617bf9316aa2a656ae6e1307e0a9ad",
@@ -335,14 +335,14 @@
     "environment": {
       "cpu_count": 4,
       "load_average_start": [
-        0.35,
-        0.32,
-        0.18
+        0.63,
+        0.7,
+        0.58
       ],
       "load_average_end": [
-        0.35,
-        0.32,
-        0.18
+        0.66,
+        0.71,
+        0.58
       ]
     }
   }
