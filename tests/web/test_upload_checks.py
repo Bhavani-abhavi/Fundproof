@@ -215,6 +215,20 @@ def test_the_pdf_minimum_is_the_threshold_docintel_uses_for_a_page_without_a_tex
         "Owner id １２３-４５-６７８９ (SYNTHETIC, fullwidth digits)",
         "Owner id 123​-45-6789 (SYNTHETIC, zero-width space)",
         "Owner id 123–45–6789 (SYNTHETIC, en dashes)",
+        # UP-4: spaced dashes, a hyphen before the digits, comb boxes and the usual label variants
+        "Owner id 123 - 45 - 6789 (SYNTHETIC)",
+        "Owner id 123-45 - 6789 (SYNTHETIC)",
+        "Owner id 123\t-\t45\t-\t6789 (SYNTHETIC)",
+        "SSN-123-45-6789 (SYNTHETIC)",
+        "Owner-123-45-6789 (SYNTHETIC)",
+        "Owner id 1 2 3 - 4 5 - 6 7 8 9 (SYNTHETIC, comb boxes)",
+        "SSN: 1 2 3 4 5 6 7 8 9 (SYNTHETIC, comb boxes)",
+        "Social Security Number (SSN): 123456789 (SYNTHETIC)",
+        "SSN - 123456789 (SYNTHETIC)",
+        "SSN No. 123456789 (SYNTHETIC)",
+        "SSN/TIN: 123456789 (SYNTHETIC)",
+        "Social-Security Number: 123456789 (SYNTHETIC)",
+        "SSN" + " " * 40 + "123456789 (SYNTHETIC, fixed-width columns)",
     ],
 )
 def test_ssn_shaped_numbers_are_refused(body: str) -> None:
@@ -243,6 +257,15 @@ def test_what_typed_text_refuses_as_an_ssn_or_labeled_account_is_refused_in_an_u
         "Account Number: 000123456789 (SYNTHETIC)",
         "acct 1234-5678 (SYNTHETIC)",
         "A/C No. 98765432 (SYNTHETIC)",
+        # UP-7: label writings the typed-text pattern misses (typed text catches them as long digit runs)
+        "Acct. 12345678 (SYNTHETIC)",
+        "Acct. No. 12345678 (SYNTHETIC)",
+        "Account Number - 12345678 (SYNTHETIC)",
+        "Account Number – 12345678 (SYNTHETIC, en dash)",
+        "Account number is 12345678 (SYNTHETIC)",
+        "Account ID 12345678 (SYNTHETIC)",
+        "Acc# 12345678 (SYNTHETIC)",
+        "account=12345678 (SYNTHETIC)",
     ],
 )
 def test_labeled_account_numbers_are_refused(body: str) -> None:
@@ -252,6 +275,18 @@ def test_labeled_account_numbers_are_refused(body: str) -> None:
 
 def test_a_masked_account_number_is_allowed() -> None:
     assert text_file("Checking account ending in 1234; Account ****5678 (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "ACC 2025-26 season schedule (SYNTHETIC; a sports conference, not the label)",
+        "Account balance 1250.00 (SYNTHETIC)",
+        "Account Number: 0001.2345.6789 (SYNTHETIC; dotted, a documented limit)",
+    ],
+)
+def test_text_near_a_labeled_account_number_but_not_one_is_allowed(body: str) -> None:
+    assert text_file(body).allowed, body
 
 
 @pytest.mark.parametrize(
@@ -302,6 +337,10 @@ def test_the_two_counts_the_module_docstring_states_for_routing_numbers() -> Non
         f"Wire to routing {SYNTHETIC_ROUTING} (SYNTHETIC)",
         f"bank,routing\nSYNTHETIC Bank,{SYNTHETIC_ROUTING}\n",
         f"Payments: {with_check_digit('21000000')} (SYNTHETIC thrift prefix)",
+        # UP-5: a CSV comma next to the digits is a delimiter, not digit grouping
+        f"bank,routing,balance\nSYNTHETIC Bank,{SYNTHETIC_ROUTING},4500\n",
+        f"amount,routing\n4500,{SYNTHETIC_ROUTING}\n",
+        f"amount,routing,balance\n4500,{SYNTHETIC_ROUTING},120\n",
     ],
 )
 def test_nine_digit_numbers_that_pass_the_aba_checksum_are_refused(body: str) -> None:
@@ -320,6 +359,29 @@ def test_nine_digit_numbers_that_fail_the_checksum_or_the_prefix_are_allowed() -
 def test_a_bare_nine_digit_ssn_without_a_label_is_a_documented_limit() -> None:
     # Not SSN-shaped (no separators), not labeled, and it fails the ABA checksum: the screen does not find it.
     assert text_file("Owner reference 123456789 (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Owner id 123.45.6789 (SYNTHETIC; dotted)",
+        "Owner id 1 2 3 4 5 6 7 8 9 (SYNTHETIC; one per box, no dashes, no label)",
+    ],
+)
+def test_the_ssn_writings_the_module_docstring_lists_as_not_found_pass(body: str) -> None:
+    assert text_file(body).allowed, body
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Month 1 2 3 4 5 6 7 8 9 10 11 12 (SYNTHETIC column numbers)",
+        "Part 12-123-45-6789 (SYNTHETIC; a longer dashed number)",
+        "Ssnake 123456789 (SYNTHETIC; not the SSN label)",
+    ],
+)
+def test_text_near_an_ssn_but_not_one_is_allowed(body: str) -> None:
+    assert text_file(body).allowed, body
 
 
 # --- tax returns ---
@@ -432,6 +494,9 @@ def adversarial_bodies() -> dict[str, Callable[[int], str]]:
         "account label then line breaks": lambda size: "Account No." + "\n" * size + "x",
         "account label then spaces, non-ASCII text": lambda size: "café account" + " " * size + "x",
         "schedule k then spaces": lambda size: "Schedule K" + " " * size + "x",
+        "acct. no. then spaces": lambda size: "Acct. No." + " " * size + "x",
+        "ssn label then spaces": lambda size: "SSN" + " " * size + "x",
+        "social security number then spaces": lambda size: "Social Security Number" + " " * size + "x",
         "agency lines far from many form numbers": lambda size: (
             "Form 941 " * (size // 9) + " " * (NEAR_CHARS + 1) + f"{AGENCY_LINE} " * (size // len(AGENCY_LINE))
         ),

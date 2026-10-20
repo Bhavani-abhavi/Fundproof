@@ -63,25 +63,35 @@ whitespace are NOT collapsed (security.normalize.normalize_text would collapse t
 of a table ("120    45    2026") are not joined into an SSN shape. The file name is also read with its separators
 turned into spaces (agent.injection.code_as_words: "Form_1040_2025.pdf" is read as "Form 1040 2025 pdf").
 
-5. ssn: an SSN-shaped number, the shapes typed text refuses (web/services/text_checks.py): 123-45-6789
-   (observability.redaction.SSN) and 123 45 6789 or mixed separators (text_checks.SPACED_SSN); plus nine digits
-   right after an SSN label: "SSN", "SS#", "Social Security", "Social Security Number" or "Social Security No.",
-   then optional spaces, ":" or "#" (LABELED_SSN). Only the shape is checked, not whether the Social Security
-   Administration could issue the number, so a part number written 123-45-6789 is refused too.
-6. bank_account: a labeled account number, the typed-text rule (observability.redaction.LABELED_ACCOUNT, rewritten
-   here as UPLOAD_LABELED_ACCOUNT so that it runs in linear time): the word "account", "acct" or "a/c", optionally
-   "no.", "number" or "#", then a number of at least five digits, spaces or dashes that starts and ends with a digit
-   ("Account Number: 000123456789", "acct 1234-5678"). A masked number ("Account ending in 1234",
-   "Account ****5678") is not refused.
+5. ssn: an SSN-shaped number. First the shapes typed text refuses (web/services/text_checks.py): 123-45-6789
+   (observability.redaction.SSN) and 123 45 6789 or mixed separators (text_checks.SPACED_SSN). Uploads also refuse
+   dashes with up to two spaces or tabs on each side ("123 - 45 - 6789") and these shapes right after a word and a
+   hyphen ("SSN-123-45-6789") (SEPARATED_SSN), and the digits one per box with the dashes kept, as the comb fields
+   of a paper form extract ("1 2 3 - 4 5 - 6 7 8 9", COMB_SSN). Then nine digits, also one per box
+   ("1 2 3 4 5 6 7 8 9"), after an SSN label: "SSN", "SS#", "Social Security" (also "Social-Security"), "Social
+   Security Number" or "Social Security No.", then up to 12 characters of short filler (letters, spaces and
+   : # = ( ) . - /, as in "SSN/TIN: ", "Social Security Number (SSN): ", "SSN No. " or "SSN - ") and any run of
+   spaces, ":" or "#" (LABELED_SSN). Only the shape is checked, not whether the Social Security Administration could
+   issue the number, so a part number written 123-45-6789 is refused too.
+6. bank_account: a labeled account number (UPLOAD_LABELED_ACCOUNT): the word "account", "acct", "a/c" or "acc"
+   (only before "." or "#", as in "Acc# "), an optional ".", optionally "no.", "number", "#" or "ID", then
+   optionally ":", "#", "=", "-" (an en or em dash is folded to "-") or "is", then a number of at least five digits,
+   spaces or dashes that starts and ends with a digit ("Account Number: 000123456789", "acct 1234-5678",
+   "Acct. No. 12345678", "Account number is 12345678"). This widens the typed-text rule
+   (observability.redaction.LABELED_ACCOUNT) and runs in linear time; typed text needs it less, because it also
+   refuses every run of 8 to 17 digits, which uploads do not (see "Not refused"). A masked number ("Account ending
+   in 1234", "Account ****5678") is not refused.
 7. routing_number: a nine-digit number that has the form of an ABA routing transit number: its first two digits are
    in ROUTING_PREFIXES (01-12, 21-32, 61-72 or 80) AND it passes the ABA check digit,
    3 x (d1 + d4 + d7) + 7 x (d2 + d5 + d8) + (d3 + d6 + d9) is divisible by 10. The two tests cut false positives:
    37 of the 100 two-digit prefixes are allowed and, for any first eight digits, exactly one ninth digit of ten
    passes the checksum, so a random nine-digit number passes both with probability 37/100 x 1/10 (a test checks
    both counts). Digits that are part of a longer digit run, of a dashed number (a ZIP+4 such as 60601-1234), of a
-   decimal or comma-grouped number, or that follow a "$" (an amount) are not candidates. The prefix 00 (reserved for
-   the U.S. government) is left out: zero-padded ids such as 000000000 are common in tables, and a government
-   routing number is not a person's bank detail.
+   decimal number, or that follow a "$" (an amount) are not candidates. A comma next to the digits does not stop
+   them: in a CSV it is a delimiter ("SYNTHETIC Bank,123456780,4500"), and a nine-digit run can never be one group of
+   a comma-grouped number such as 123,456,780. The prefix 00 (reserved for the U.S. government) is left out:
+   zero-padded ids such as 000000000 are common in tables, and a government routing number is not a person's bank
+   detail.
    Source of the checksum and the prefix ranges: the Wikipedia article "ABA routing transit number" (read
    2026-10-20), which cites Bankers' Hotline (2004), "Training Page: Learning the Bank Numbering System", for the
    check digit and gives no citation for the prefix list. Neither was checked against the routing number registrar's
@@ -119,6 +129,10 @@ Known limits (a future route must not rely on this screen for more):
 - an unlabeled account number, or an SSN written as nine bare digits without a label, is not found; nor is a column
   of them under a header (an "ssn" header on the first row of a CSV), because the label must come right before the
   number;
+- these SSN writings are not found either: dotted (123.45.6789), and the digits one per box without dashes and
+  without a label ("1 2 3 4 5 6 7 8 9"), because a row of numbered table columns looks the same;
+- an account number written with dots (0001.2345.6789) is not found: allowing dots in the number would also refuse an
+  amount such as "account 1250.00";
 - the magic-byte check proves only the first bytes; it is not a parser, so a malformed or polyglot file can pass.
   Open uploads only with a maintained parser, never execute them, and serve them back only as downloads;
 - the screen is only as good as the text it is given: an OCR error ("Form 1O40" with a letter O) defeats it;
@@ -177,22 +191,41 @@ ALLOWED_KINDS: tuple[FileKind, ...] = (
     FileKind("text", (".txt",), ("text/plain",), None),
 )
 
-# Nine digits right after an SSN label (rule 5). The dashed and spaced shapes come from SSN and SPACED_SSN.
+# Rule 5 (the typed-text shapes SSN and SPACED_SSN are checked too). One separator inside an SSN: a dash with up to
+# two spaces or tabs on each side ("123 - 45 - 6789"), or one space ("123 45 6789").
+SSN_SEPARATOR = r"(?:[ \t]{0,2}-[ \t]{0,2}| )"
+# An SSN with those separators. It may follow a word and a hyphen ("SSN-123-45-6789"; the typed-text shapes refuse
+# any hyphen before the digits). It is not found inside a longer number: a digit, or a digit and a dash, right before
+# it, or a digit, or a dash and a digit, right after it.
+SEPARATED_SSN = re.compile(rf"(?<!\d)(?<!\d-)\d{{3}}{SSN_SEPARATOR}\d{{2}}{SSN_SEPARATOR}\d{{4}}(?!-?\d)")
+# The same with each digit in its own box and the dashes kept, as the comb fields of a paper form extract
+# ("1 2 3 - 4 5 - 6 7 8 9").
+COMB_SSN = re.compile(r"(?<!\d)\d \d \d[ \t]{0,2}-[ \t]{0,2}\d \d[ \t]{0,2}-[ \t]{0,2}\d \d \d \d(?!\d)")
+# Nine digits (or nine digits one per box: "1 2 3 4 5 6 7 8 9") after an SSN label. Between the label and the digits
+# stand at most 12 characters of short filler (letters, spaces and : # = ( ) . - /, as in "SSN/TIN: ",
+# " (SSN): " or " No. "), then any run of spaces, ":" or "#". The filler is bounded and the run is possessive
+# ("*+", see UPLOAD_LABELED_ACCOUNT), so the time stays linear. "ssn" must not run on into a word ("ssnake").
 LABELED_SSN = re.compile(
-    r"\b(?:ssn|ss\s*#|social\s+security(?:\s+(?:number|no\.?))?)[\s:#]*\d{9}(?!\d)",
+    r"\b(?:ssn(?![a-z])|ss\s*#|social[\s-]+security(?:\s+(?:number|no\.?))?)"
+    r"[\s:#=().\-/a-z]{0,12}?[\s:#]*+\d(?: ?\d){8}(?!\d)",
     re.IGNORECASE,
 )
-# Rule 6: the typed-text rule (observability.redaction.LABELED_ACCOUNT) with the same matches, written so that it runs
-# in linear time. In "\s*+" the "+" makes the run of whitespace possessive: once read it is never given back. The
+# Rule 6: the typed-text rule (observability.redaction.LABELED_ACCOUNT), widened for uploads and written so that it
+# runs in linear time. In "\s*+" the "+" makes the run of whitespace possessive: once read it is never given back. The
 # typed-text pattern has two plain "\s*" next to each other (around an optional ":" or "#"), and on "account" followed
 # by a long run of spaces the regex engine tries every way to split that run between them, which takes time that
 # grows with the square of the run (UP-1). Nothing after a whitespace run can be whitespace, so giving it back never
-# finds a match that keeping it misses.
+# finds a match that keeping it misses. Widened (UP-7): a "." after the label ("Acct. No."), "acc" before "." or "#"
+# ("Acc# "; plain "ACC 2025-26" is a sports conference), "ID" as well as "no.", "number" and "#", and "=", "-" or
+# "is" before the number ("Account Number - 1234...", "account number is 1234...").
 UPLOAD_LABELED_ACCOUNT = re.compile(
-    r"\b(?:acct|account|a/c)(?:\s*+(?:no\.?|number|#))?\s*+(?:[:#]\s*+)?\d[\d -]{3,}\d", re.IGNORECASE
+    r"\b(?:account|acct|acc(?=[.#])|a/c)\.?(?:\s*+(?:no\.?|number|#|id))?\s*+(?:(?:[:#=-]|\bis\b)\s*+)?"
+    r"\d[\d -]{3,}\d",
+    re.IGNORECASE,
 )
-# Exactly nine digits, not inside a longer or dashed number, a decimal or grouped number, or an amount (rule 7).
-NINE_DIGITS = re.compile(r"(?<![\d$-])(?<!\d[.,])\d{9}(?![\d-]|[.,]\d)")
+# Exactly nine digits, not inside a longer or dashed number, a decimal number, or an amount (rule 7). A comma next to
+# the digits is a CSV delimiter, not digit grouping: a nine-digit run can never be one group of a grouped number.
+NINE_DIGITS = re.compile(r"(?<![\d$-])(?<!\d\.)\d{9}(?![\d-]|\.\d)")
 ROUTING_PREFIXES: frozenset[int] = frozenset([*range(1, 13), *range(21, 33), *range(61, 73), 80])
 ABA_WEIGHTS: tuple[int, ...] = (3, 7, 1, 3, 7, 1, 3, 7, 1)
 
@@ -323,12 +356,15 @@ def readings(text: str) -> list[str]:
 
 
 def has_ssn(text: str) -> bool:
-    """Rule 5: an SSN-shaped number (dashes, spaces or mixed) or nine digits right after an SSN label."""
-    return bool(SSN.search(text) or SPACED_SSN.search(text) or LABELED_SSN.search(text))
+    """Rule 5: an SSN-shaped number (dashes, spaces, spaced dashes, comb boxes) or nine digits after an SSN label."""
+    for pattern in (SSN, SPACED_SSN, SEPARATED_SSN, COMB_SSN, LABELED_SSN):
+        if pattern.search(text):
+            return True
+    return False
 
 
 def has_bank_account(text: str) -> bool:
-    """Rule 6: a labeled account number (UPLOAD_LABELED_ACCOUNT, the typed-text rule in linear time)."""
+    """Rule 6: a labeled account number (UPLOAD_LABELED_ACCOUNT: the typed-text rule, widened, in linear time)."""
     return UPLOAD_LABELED_ACCOUNT.search(text) is not None
 
 
