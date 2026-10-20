@@ -5,7 +5,8 @@
 
 Startup refuses unsafe settings (see settings.py): the dev login inside a Space, a Space without a session
 secret, or the dataset store without an encryption key. The store is opened in the lifespan (startup) and the
-dataset store flushes its last batch at shutdown.
+dataset store flushes its last batch at shutdown. Every access to a founder's plan is written to the plan access log
+(audit_log.py, UWC_WEB_AUDIT_LOG) before it happens.
 
 Retention: expired objects are deleted once at startup and then every UWC_PURGE_EVERY_S seconds (default one
 hour) by a background task, so data does not outlive UWC_RETENTION_DAYS by more than that interval while the app
@@ -25,6 +26,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from uwcopilot.web.access_log import AccessLogMiddleware, configure_web_logging
+from uwcopilot.web.audit_log import PlanAccessLog
 from uwcopilot.web.auth import HfOAuthClient, rate_limit_user_key, session_serializer
 from uwcopilot.web.cookies import CookiePolicy
 from uwcopilot.web.crypto import encryptor_for_settings
@@ -215,6 +217,7 @@ def create_app(
     app.state.static_site = StaticSite(settings.static_dir, settings.product_name, settings.disclaimer)
     app.state.store = store
     app.state.hub_api = hub_api
+    app.state.access_log = PlanAccessLog(settings.web_audit_log)
     install_services(app)
 
     app.include_router(system_router.router)

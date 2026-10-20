@@ -12,6 +12,9 @@ address lookups (one batch at a time per user, a small per-user budget); 503 = a
 UWC_COMPUTE_TIMEOUT_S (default 60 s; it keeps running and its result is cached for the next try), the server is
 busy (also: one user may have at most 3 heavy jobs running or queued), or the Census Geocoder is unreachable.
 Heavy work runs in worker threads and is cached per plan version; address lookups run in their own small pool.
+Access log: every route that reads, changes, deletes or computes on a plan first writes an access event
+(web/audit_log.py: the owner digest, the action, the plan id, nothing else). When it cannot be written the request
+is refused with 503 and nothing is read out or changed.
 
 GET /api/studio/options -> 200
     {"metros": [{"id": "synthetic_metro", "name": "Synthetic Metro (SYNTHETIC)", "mode": "synthetic"|"limited"|"full",
@@ -170,6 +173,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from uwcopilot.studio.siteiq.models import Suggestions
+from uwcopilot.web.audit_log import PlanAccessLog, get_access_log
 from uwcopilot.web.auth import Principal, require_role
 from uwcopilot.web.schemas_studio import (
     PROJECT_ID_PATTERN,
@@ -198,6 +202,7 @@ router = APIRouter(prefix="/api/studio", tags=["studio"])
 SignedIn = Annotated[Principal, Depends(require_role())]
 Services = Annotated[WebServices, Depends(get_services)]
 StoreDep = Annotated[Store, Depends(get_store)]
+AccessLog = Annotated[PlanAccessLog, Depends(get_access_log)]
 ProjectId = Annotated[str, Path(pattern=PROJECT_ID_PATTERN)]
 MetroId = Annotated[str, Path(pattern=STUDIO_ID_PATTERN)]
 GEOJSON_MEDIA_TYPE = "application/geo+json"
@@ -221,43 +226,56 @@ async def options(services: Services) -> OptionsResponse:
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(no_store)],
 )
-async def create_project(body: ProjectIn, principal: SignedIn, services: Services, store: StoreDep) -> ProjectOut:
+async def create_project(
+    body: ProjectIn, principal: SignedIn, services: Services, store: StoreDep, access_log: AccessLog
+) -> ProjectOut:
     """Create a plan (sites are checked, real-metro addresses geocoded) and store it for this user.
 
     Order: the cheap checks of the site text (nothing with an SSN or account number is ever sent to the geocoder),
-    the address lookups (their own pool, per-user limits), then building and saving the plan in a worker thread
-    (the store may wait on disk or on the dataset store's lock; the event loop never does)."""
+    the address lookups (their own pool, per-user limits), the access event (with the new plan's id, picked here),
+    then building and saving the plan in a worker thread (the store may wait on disk or on the dataset store's lock;
+    the event loop never does)."""
     await services.compute.run(studio_options, key=("studio", "options"))
     owner = principal.owner_id
     await run_in_threadpool(projects.check_plan_count, store, owner)
     await run_in_threadpool(projects.check_sites_text, body.metro_id, body.sites)
     geocoder = await services.geocoding.prefetch(owner, projects.addresses_to_geocode(body.sites))
-    record, meta = await run_in_threadpool(projects.create, store, owner, body, geocoder)
+    project_id = projects.new_project_id()
+    await run_in_threadpool(access_log.record_owner_access, principal, "create_plan", project_id)
+    record, meta = await run_in_threadpool(projects.create, store, owner, body, geocoder, project_id)
     return await run_in_threadpool(projects.project_out, record, meta)
 
 
 @router.get("/projects", response_model=ProjectList, dependencies=[Depends(no_store)])
-def list_projects(principal: SignedIn, store: StoreDep) -> ProjectList:
+def list_projects(principal: SignedIn, store: StoreDep, access_log: AccessLog) -> ProjectList:
     """The user's plans, newest change first."""
+    access_log.record_owner_access(principal, "list_plans")
     items = projects.list_records(store, principal.owner_id)
     summaries = [projects.project_summary(record, meta) for record, meta in items]
     return ProjectList(projects=summaries, total=len(summaries))
 
 
 @router.get("/projects/{project_id}", response_model=ProjectOut, dependencies=[Depends(no_store)])
-def get_project(project_id: ProjectId, principal: SignedIn, store: StoreDep) -> ProjectOut:
+def get_project(project_id: ProjectId, principal: SignedIn, store: StoreDep, access_log: AccessLog) -> ProjectOut:
     """One plan of the user (404 for any other id)."""
     record = projects.load(store, principal.owner_id, project_id)
+    access_log.record_owner_access(principal, "read_plan", project_id)
     return projects.project_out(record, projects.meta_for(store, principal.owner_id, project_id))
 
 
 @router.put("/projects/{project_id}", response_model=ProjectOut, dependencies=[Depends(no_store)])
 async def update_project(
-    project_id: ProjectId, body: ProjectUpdate, principal: SignedIn, services: Services, store: StoreDep
+    project_id: ProjectId,
+    body: ProjectUpdate,
+    principal: SignedIn,
+    services: Services,
+    store: StoreDep,
+    access_log: AccessLog,
 ) -> ProjectOut:
     """Change a plan; the version goes up by one, so its results are computed afresh (same seed: see projects.py)."""
     owner = principal.owner_id
     current = await run_in_threadpool(projects.load, store, owner, project_id)
+    await run_in_threadpool(access_log.record_owner_access, principal, "update_plan", project_id)
     geocoder = PrefetchedGeocoder()  # a PUT without new sites looks nothing up (stored addresses are reused)
     if body.sites is not None:
         metro_id = body.metro_id or current.metro_id
@@ -270,9 +288,12 @@ async def update_project(
 
 
 @router.delete("/projects/{project_id}", response_model=ProjectDeleted, dependencies=[Depends(no_store)])
-def delete_project(project_id: ProjectId, principal: SignedIn, services: Services, store: StoreDep) -> ProjectDeleted:
+def delete_project(
+    project_id: ProjectId, principal: SignedIn, services: Services, store: StoreDep, access_log: AccessLog
+) -> ProjectDeleted:
     """Delete a plan and every result kept for it (DeletionPending -> 202 with an honest message)."""
     projects.load(store, principal.owner_id, project_id)
+    access_log.record_owner_access(principal, "delete_plan", project_id)
     services.compute.forget(("studio", principal.owner_id, project_id))
     store.delete(principal.owner_id, projects.PROJECTS_NAMESPACE, project_id)
     return ProjectDeleted(
@@ -281,9 +302,12 @@ def delete_project(project_id: ProjectId, principal: SignedIn, services: Service
 
 
 @router.post("/projects/{project_id}/sites/score", response_model=SiteScoresResponse, dependencies=[Depends(no_store)])
-async def score_sites(project_id: ProjectId, principal: SignedIn, services: Services, store: StoreDep) -> Any:
+async def score_sites(
+    project_id: ProjectId, principal: SignedIn, services: Services, store: StoreDep, access_log: AccessLog
+) -> Any:
     """SiteIQ for every site of the plan."""
     record = await run_in_threadpool(projects.load, store, principal.owner_id, project_id)
+    await run_in_threadpool(access_log.record_owner_access, principal, "score_sites", project_id)
     key = project_key(principal, record, "sites")
     work = partial(studio_runs.score_project_sites, record)
     return await services.compute.run(work, key=key, owner=principal.owner_id)
@@ -291,10 +315,16 @@ async def score_sites(project_id: ProjectId, principal: SignedIn, services: Serv
 
 @router.post("/projects/{project_id}/feasibility", response_model=FeasibilityResponse, dependencies=[Depends(no_store)])
 async def feasibility(
-    project_id: ProjectId, body: FeasibilityRequest, principal: SignedIn, services: Services, store: StoreDep
+    project_id: ProjectId,
+    body: FeasibilityRequest,
+    principal: SignedIn,
+    services: Services,
+    store: StoreDep,
+    access_log: AccessLog,
 ) -> Any:
     """The Monte Carlo feasibility of one site (1,000 paths, seed fixed per plan version)."""
     record = await run_in_threadpool(projects.load, store, principal.owner_id, project_id)
+    await run_in_threadpool(access_log.record_owner_access, principal, "run_feasibility", project_id)
     key = project_key(principal, record, "feasibility", body.site_index)
     work = partial(studio_runs.run_feasibility, record, body.site_index)
     return await services.compute.run(work, key=key, owner=principal.owner_id)
@@ -302,10 +332,16 @@ async def feasibility(
 
 @router.post("/projects/{project_id}/path-to-approval", response_model=PathResponse, dependencies=[Depends(no_store)])
 async def path_to_approval(
-    project_id: ProjectId, body: PathRequest, principal: SignedIn, services: Services, store: StoreDep
+    project_id: ProjectId,
+    body: PathRequest,
+    principal: SignedIn,
+    services: Services,
+    store: StoreDep,
+    access_log: AccessLog,
 ) -> Any:
     """The smallest plan changes that reach the targets (QUICK mode)."""
     record = await run_in_threadpool(projects.load, store, principal.owner_id, project_id)
+    await run_in_threadpool(access_log.record_owner_access, principal, "run_path_to_approval", project_id)
     targets = body.targets.model_dump_json(exclude_none=True) if body.targets else ""
     key = project_key(principal, record, "paths", body.site_index, targets, body.max_extra_owner_cash)
     work = partial(studio_runs.run_path_to_approval, record, body.site_index, body.targets, body.max_extra_owner_cash)

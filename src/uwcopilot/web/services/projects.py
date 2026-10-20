@@ -349,9 +349,12 @@ def check_text(name: str | None, idea_text: str | None) -> list[str]:
     return injection_flags(idea_text)
 
 
-def build_record(body: ProjectIn, geocoder: Geocoder, now: datetime | None = None) -> ProjectRecord:
+def build_record(
+    body: ProjectIn, geocoder: Geocoder, now: datetime | None = None, project_id: str | None = None
+) -> ProjectRecord:
     """A new, checked ProjectRecord (version 1) from a POST body. Addresses are looked up through geocoder (the
-    router passes a PrefetchedGeocoder, so no network call happens here)."""
+    router passes a PrefetchedGeocoder, so no network call happens here). project_id: the id to use (the router
+    picks it first, so the access event names the plan before it is stored); None picks a new one."""
     created = now or utc_now()
     entry = metro_entry(body.metro_id)
     profile_for(body.business_type_id, body.metro_id)
@@ -359,7 +362,7 @@ def build_record(body: ProjectIn, geocoder: Geocoder, now: datetime | None = Non
         check_opening_date(body.opening_date, created.date())
     flags = check_text(body.name, body.idea_text)
     record = ProjectRecord(
-        id=new_project_id(),
+        id=project_id or new_project_id(),
         version=1,
         created_at=created,
         updated_at=created,
@@ -454,10 +457,12 @@ def check_plan_count(store: Store, owner: str) -> None:
         )
 
 
-def create(store: Store, owner: str, body: ProjectIn, geocoder: Geocoder) -> tuple[ProjectRecord, ObjectMeta]:
+def create(
+    store: Store, owner: str, body: ProjectIn, geocoder: Geocoder, project_id: str | None = None
+) -> tuple[ProjectRecord, ObjectMeta]:
     """Check the plan count, build the record and save it (blocking: the router runs it in a worker thread)."""
     check_plan_count(store, owner)
-    record = build_record(body, geocoder)
+    record = build_record(body, geocoder, project_id=project_id)
     return record, save(store, owner, record)
 
 
