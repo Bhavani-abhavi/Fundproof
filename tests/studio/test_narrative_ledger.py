@@ -155,6 +155,11 @@ def test_program_arithmetic_matches_the_lender_side(scenario: GoldenScenario, le
     assert cost == pytest.approx(scenario.case.plan.owner_equity + scenario.case.loan.amount + other, abs=0.01)
 
 
+def test_the_stressed_noi_formula_text_names_the_policy_share(ledger: Ledger) -> None:
+    formula = claim(ledger, ids.CALC_REVENUE_STRESSED_NOI).inputs["formula"]
+    assert f"{REVENUE_STRESS_SHARE * 100:g}% of year-2 median revenue" in str(formula)
+
+
 def test_thresholds_are_the_program_constants_and_checks_agree_with_them(ledger: Ledger) -> None:
     assert claim(ledger, ids.PROGRAM_MIN_DSCR).value == STARTUP_DSCR_MINIMUM
     assert claim(ledger, ids.PROGRAM_MIN_EQUITY).value == MIN_EQUITY_INJECTION_PCT

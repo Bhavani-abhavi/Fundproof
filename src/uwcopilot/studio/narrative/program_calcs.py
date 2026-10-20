@@ -22,6 +22,7 @@ from decimal import Decimal
 from uwcopilot.agent.credit_calculations import proposed_annual_debt_service
 from uwcopilot.agent.policy_credit import (
     RATE_STRESS_ADD_PCT,
+    REVENUE_STRESS_SHARE,
 )
 from uwcopilot.agent.policy_startup import (
     DEBT_SERVICE_PRODUCT,
@@ -68,6 +69,12 @@ def loan_service(amount: float, rate_pct: float, term: int, other_monthly: float
 def monthly_fixed_cost(hours: float, wage: float, burden_share: float, rent: float) -> float:
     """Staff (paid hours x wage x (1 + payroll burden)) plus rent for one month, to the cent."""
     return cents(hours * wage * (1.0 + burden_share) + rent)
+
+
+def stressed_noi_formula() -> str:
+    """The revenue-stressed NOI formula, written from the policy's own REVENUE_STRESS_SHARE (never typed by hand)."""
+    share = half_up(to_decimal(REVENUE_STRESS_SHARE) * 100, 1)
+    return f"year-2 median NOI - {share:g}% of year-2 median revenue"
 
 
 class ProgramCalculations:
@@ -295,7 +302,7 @@ class ProgramCalculations:
                 stressed_noi,
                 "USD",
                 "usd0",
-                "year-2 median NOI - 20% of year-2 median revenue",
+                stressed_noi_formula(),
                 [noi_claim, revenue_claim, self.get(ids.PROGRAM_REVENUE_STRESS_SHARE)],
             )
         )
