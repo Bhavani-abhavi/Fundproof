@@ -9,6 +9,8 @@ DELETE /api/me/data  (signed in; X-CSRF-Token) -> 200 {"deleted_objects": 3, "pe
     it is deleted here and the dataset deletion is retried automatically, but until then the data is not fully gone,
     and the page must say so. 401 when signed out; 403 without the CSRF token; 503 (and nothing deleted) when the
     access event cannot be written.
+    A plan create that was still waiting for its address lookups when the deletion ran saves nothing and answers 409
+    (services/deletions.py, with its limits: a deletion in the last milliseconds before a save is not caught).
 
 What stays after "Delete all my data" (and after retention deletion): the plan access log (UWC_WEB_AUDIT_LOG,
 web/audit_log.py) keeps its events about you. They hold your owner digest (the first 32 hex characters of SHA-256 of
@@ -46,6 +48,7 @@ def delete_my_data(
     """Delete every object you stored, forget your results, and sign you out."""
     owner = principal.owner_id
     access_log.record_owner_access(principal, "delete_all_data")
+    services.deletions.record(owner)  # a create still waiting for address lookups now saves nothing (409)
     services.compute.forget(("studio", owner))
     try:
         deleted_objects, pending = store.delete_owner(owner), False

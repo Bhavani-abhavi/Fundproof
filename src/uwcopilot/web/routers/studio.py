@@ -193,6 +193,7 @@ from uwcopilot.web.schemas_studio import (
     SiteScoresResponse,
 )
 from uwcopilot.web.services import WebServices, get_services, projects, studio_runs
+from uwcopilot.web.services.errors import Conflict
 from uwcopilot.web.services.geocoding import PrefetchedGeocoder
 from uwcopilot.web.services.http import get_share_links, get_store, no_store
 from uwcopilot.web.services.share_links import ShareLinks
@@ -237,12 +238,16 @@ async def create_project(
     Order: the cheap checks of the site text (nothing with an SSN or account number is ever sent to the geocoder),
     the address lookups (their own pool, per-user limits), the access event (with the new plan's id, picked here),
     then building and saving the plan in a worker thread (the store may wait on disk or on the dataset store's lock;
-    the event loop never does)."""
+    the event loop never does). 409, nothing saved, when the founder deleted all their data while this request
+    waited for the lookups (services/deletions.py)."""
+    started = services.deletions.now()
     await services.compute.run(studio_options, key=("studio", "options"))
     owner = principal.owner_id
     await run_in_threadpool(projects.check_plan_count, store, owner)
     await run_in_threadpool(projects.check_sites_text, body.metro_id, body.sites)
     geocoder = await services.geocoding.prefetch(owner, projects.addresses_to_geocode(body.sites))
+    if services.deletions.deleted_since(owner, started):
+        raise Conflict("your data was deleted while this plan was being prepared, so the plan was not saved")
     project_id = projects.new_project_id()
     await run_in_threadpool(access_log.record_owner_access, principal, "create_plan", project_id)
     record, meta = await run_in_threadpool(projects.create, store, owner, body, geocoder, project_id)

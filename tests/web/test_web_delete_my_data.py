@@ -7,6 +7,8 @@ Every plan is SYNTHETIC test input on the SYNTHETIC metro; the DEMO decision rec
 written straight into the store.
 """
 
+import asyncio
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,7 @@ from uwcopilot.web.app import create_app
 from uwcopilot.web.audit_log import AUDIT_UNAVAILABLE_MESSAGE
 from uwcopilot.web.crypto import generate_key
 from uwcopilot.web.hf_store import PENDING_DELETES_FILE, HFDatasetStore
+from uwcopilot.web.services.geocoding import PrefetchedGeocoder
 from uwcopilot.web.services.lender_demo import DECISIONS_NAMESPACE
 from uwcopilot.web.services.projects import PROJECTS_NAMESPACE
 from uwcopilot.web.services.share_links import SHARES_NAMESPACE
@@ -167,6 +170,42 @@ def test_nothing_is_deleted_when_the_event_cannot_be_written(
     monkeypatch.undo()
     assert app_client.get(f"/api/share/{ids['token']}").status_code == 200
     assert app_client.get("/api/me").json()["signed_in"] is True
+
+
+def test_a_create_still_waiting_for_lookups_saves_nothing_after_delete_all(
+    app_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S8-DEL-3: tab A creates a plan and waits for the Census Geocoder while tab B deletes everything. The create
+    used to finish afterwards and store a new plan after the deletion had answered that everything was deleted."""
+    dev_login(app_client, "founder_a", "founder")
+    headers = csrf_headers(app_client)
+    waiting, release = threading.Event(), threading.Event()
+
+    async def slow_prefetch(owner: str, addresses: Any) -> PrefetchedGeocoder:
+        waiting.set()
+        await asyncio.to_thread(release.wait, 10)  # the lookups take a while (without blocking the event loop)
+        return PrefetchedGeocoder()
+
+    monkeypatch.setattr(app_client.app.state.services.geocoding, "prefetch", slow_prefetch)
+    answers: dict[str, Any] = {}
+
+    def tab_a() -> None:
+        answers["create"] = app_client.post("/api/studio/projects", json=plan_body(), headers=headers)
+
+    creating = threading.Thread(target=tab_a)
+    creating.start()
+    assert waiting.wait(10)
+    deleted = delete_my_data(app_client)  # tab B
+    release.set()
+    creating.join(10)
+
+    assert deleted.status_code == 200 and deleted.json()["pending"] is False
+    assert answers["create"].status_code == 409, answers["create"].text
+    assert "not saved" in answers["create"].json()["detail"]
+    assert app_client.app.state.store.list(OWNER_A, PROJECTS_NAMESPACE) == []
+    assert [event["action"] for event in app_client.app.state.access_log.events()] == ["delete_all_data"]
+    dev_login(app_client, "founder_a", "founder")  # a create that starts after the deletion works as usual
+    create_plan(app_client)
 
 
 # --- the Hugging Face dataset store ---
