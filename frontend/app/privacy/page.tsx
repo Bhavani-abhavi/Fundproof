@@ -23,12 +23,12 @@ export const metadata: Metadata = {
 /** The facts that matter most, repeated in detail in the sections below. */
 const SHORT_VERSION = [
   <>
-    <strong>Collected:</strong> your Hugging Face account id, username and display name (no e-mail address), and the plans
-    and DEMO decisions you save.
+    <strong>Collected:</strong> your Hugging Face account id, username and display name (no e-mail address), the plans and
+    DEMO decisions you save, and a record of each share link you create.
   </>,
   <>
-    <strong>Stored encrypted,</strong> under your account only, and deleted automatically after the retention period (30
-    days by default), or sooner when you delete it.
+    <strong>Stored under your account only,</strong> with plans and decisions encrypted, and deleted automatically after
+    the retention period (30 days by default), or sooner when you delete it.
   </>,
   <>
     <strong>Shared</strong> in two ways only: a street address for a real city is sent to the US Census Bureau Geocoder,
@@ -138,9 +138,8 @@ export default function PrivacyPage() {
           ]}
         />
         <p>
-          The app has no code that sells your data or passes it to anyone other than the services named above, and no
-          analytics or tracking script: its Content Security Policy allows scripts and connections only to the app&apos;s own
-          site. A formal promise that your data will never be sold is the owners&apos; decision and is not made on this draft
+          The app has no code that sells your data or shares it beyond what this page describes, and no analytics or
+          tracking script: its Content Security Policy allows scripts and connections only to the app&apos;s own site. A formal promise that your data will never be sold is the owners&apos; decision and is not made on this draft
           page.
         </p>
       </PolicySection>
