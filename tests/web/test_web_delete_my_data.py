@@ -235,13 +235,15 @@ def test_with_the_hub_down_the_deletion_is_pending_and_scheduled(dataset_client:
     # deleted here (the link no longer works), scheduled for removal on the Hub, saved to survive a restart
     assert all(store.list(OWNER_A, namespace) == [] for namespace in NAMESPACES)
     assert dataset_client.get(f"/api/share/{ids['token']}").status_code == 404
-    prefix = owner_digest(OWNER_A) + "/"
-    assert prefix in store._pending_deletes
-    assert prefix in (store.local.root / PENDING_DELETES_FILE).read_text(encoding="utf-8")
-    assert len(remote_paths_of(hub, OWNER_A)) == 8  # still on the Hub for now
+    owner_files = remote_paths_of(hub, OWNER_A)
+    assert len(owner_files) == 8  # still on the Hub for now
+    # the pending delete names each of the owner's files (not their folder, so a later write is never caught by it)
+    assert store._pending_deletes == set(owner_files)
+    saved = (store.local.root / PENDING_DELETES_FILE).read_text(encoding="utf-8")
+    assert all(path in saved for path in owner_files)
 
     hub.fail_deletes = False
     store.flush()  # the retry
     assert remote_paths_of(hub, OWNER_A) == [] and history_paths_of(hub, OWNER_A) == []
-    assert prefix not in store._pending_deletes
+    assert store._pending_deletes == set()
     assert len(remote_paths_of(hub, OWNER_B)) == 2
