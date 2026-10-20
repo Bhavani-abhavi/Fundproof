@@ -305,8 +305,9 @@ def test_expired_links_are_neither_counted_nor_reported_as_revoked(tmp_path: Pat
     assert len(store.list(owner, SHARES_NAMESPACE)) == MAX_LINKS_PER_PLAN  # ... but the records are kept to day 5
 
     assert links.links_for(store, owner, "SYNTHETIC-plan") == []
-    assert links.revoke(store, owner, "SYNTHETIC-plan") == (0, False)
     links.create(store, owner, "SYNTHETIC-plan", 7, None)  # no 409: none of the old links works
+    assert links.revoke(store, owner, "SYNTHETIC-plan") == (1, False)  # only the new link was still working ...
+    assert store.list(owner, SHARES_NAMESPACE) == []  # ... but the expired records are deleted too
 
 
 def test_deleting_the_plan_kills_its_links(studio: TestClient) -> None:

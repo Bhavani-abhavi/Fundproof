@@ -164,13 +164,20 @@ def test_an_access_log_on_the_container_disk_is_reported_in_a_space(
         "UWC_STORE_DIR": str(tmp_path / "store"),
     }
     warning = "UWC_WEB_AUDIT_LOG is not set"
-    with caplog.at_level(logging.ERROR, logger="uwcopilot.web.settings"):
+    with caplog.at_level(logging.WARNING, logger="uwcopilot.web.settings"):
         load_web_settings(env_file=None, environ={**dataset, "UWC_SESSION_SECRET": SECRET})  # not a Space
         persistent = {**SPACE_ENV, **dataset, "UWC_WEB_AUDIT_LOG": str(tmp_path / "persistent" / "log.jsonl")}
         load_web_settings(env_file=None, environ=persistent)
         assert warning not in caplog.text
-        load_web_settings(env_file=None, environ={**SPACE_ENV, **dataset})
-    assert warning in caplog.text and "does not survive a restart" in caplog.text
+        load_web_settings(env_file=None, environ={**SPACE_ENV, **dataset})  # a store folder the operator chose
+        chosen = [record for record in caplog.records if warning in record.getMessage()]
+        assert [record.levelno for record in chosen] == [logging.WARNING]
+        assert "does not survive a restart" in caplog.text
+        caplog.clear()
+        default_store = {key: value for key, value in dataset.items() if key != "UWC_STORE_DIR"}
+        load_web_settings(env_file=None, environ={**SPACE_ENV, **default_store})  # the default, container disk
+        default = [record for record in caplog.records if warning in record.getMessage()]
+        assert [record.levelno for record in default] == [logging.ERROR]
 
 
 def test_labels_match_the_studio_package() -> None:

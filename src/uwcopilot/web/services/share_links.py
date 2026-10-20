@@ -154,23 +154,27 @@ class ShareLinks:
         except (InvalidToken, ValueError) as error:  # ValueError: not JSON, or not a share payload
             raise ShareLinkInvalid("the token does not decrypt to a share payload") from error
 
-    def links_for(self, store: Store, owner: str, project_id: str) -> list[ShareRecord]:
-        """The plan's WORKING link records.
-
-        The store hides records past their retention, but a record's retention is whole days rounded up, so it can
-        outlive its link by up to a day: a record whose link has expired (expires_at <= now) is skipped too, so it is
-        neither counted against MAX_LINKS_PER_PLAN nor reported as revoked. The store purges it later.
-        """
-        now = self.clock()
+    def stored_records_for(self, store: Store, owner: str, project_id: str) -> list[ShareRecord]:
+        """Every stored link record of the plan, including records whose link has already expired."""
         records = []
         for meta in store.list(owner, SHARES_NAMESPACE):
             try:
                 record = ShareRecord.model_validate(store.get_json(owner, SHARES_NAMESPACE, meta.key))
             except ObjectNotFound:
                 continue  # deleted or expired since the listing
-            if record.project_id == project_id and record.expires_at > now:
+            if record.project_id == project_id:
                 records.append(record)
         return records
+
+    def links_for(self, store: Store, owner: str, project_id: str) -> list[ShareRecord]:
+        """The plan's WORKING link records.
+
+        The store hides records past their retention, but a record's retention is whole days rounded up, so it can
+        outlive its link by up to a day: a record whose link has expired (expires_at <= now) is skipped too, so it is
+        neither counted against MAX_LINKS_PER_PLAN nor reported as revoked. revoke() still deletes it.
+        """
+        now = self.clock()
+        return [record for record in self.stored_records_for(store, owner, project_id) if record.expires_at > now]
 
     def create(
         self,
@@ -233,7 +237,10 @@ class ShareLinks:
         )
 
     def revoke(self, store: Store, owner: str, project_id: str) -> tuple[int, bool]:
-        """Delete every working link record of the plan; returns (how many links stopped working, pending).
+        """Delete every link record of the plan; returns (how many WORKING links stopped working, pending).
+
+        Records of links that have already expired are deleted too (so a plan deletion leaves none behind), but they
+        are not counted.
 
         pending is True when the dataset store could not delete the backup copy of a record yet (DeletionPending).
         The link still stops working at once: the record is gone from the working copy that resolve() reads, and the
@@ -242,12 +249,14 @@ class ShareLinks:
         and the link works again until it expires. So the caller must tell the owner, who should revoke again after a
         restart.
         """
+        now = self.clock()
         revoked = 0
         pending = False
-        for record in self.links_for(store, owner, project_id):
+        for record in self.stored_records_for(store, owner, project_id):
             try:
                 store.delete(owner, SHARES_NAMESPACE, record.link_id)
             except DeletionPending:
                 pending = True
-            revoked += 1
+            if record.expires_at > now:
+                revoked += 1
         return revoked, pending

@@ -296,16 +296,19 @@ def default_audit_log(store_dir: Path) -> Path:
 def read_web_audit_log(read: SettingReader, store_dir: Path, is_space: bool, backend: StoreBackend) -> Path:
     """UWC_WEB_AUDIT_LOG, or its default next to the store folder.
 
-    In a Space with the dataset store, an unset UWC_WEB_AUDIT_LOG is logged as an error at startup: the default
-    path is on the container disk unless the store folder is on persistent storage, and the container disk does not
-    survive a restart. The plans then come back from the dataset while the access log starts again empty.
+    In a Space with the dataset store, an unset UWC_WEB_AUDIT_LOG is logged at startup: the default path is on the
+    container disk unless the store folder is on persistent storage, and the container disk does not survive a
+    restart. The plans then come back from the dataset while the access log starts again empty. With the default
+    store folder (DEFAULT_STORE_DIR, on the container disk) that is certain, so it is an error; with a store folder
+    the operator chose (for example /data/store on persistent storage) it may be fine, so it is a warning.
     """
     raw = read("UWC_WEB_AUDIT_LOG")
     if raw:
         return Path(raw)
     path = default_audit_log(store_dir)
     if is_space and backend == "hf_dataset":
-        logger.error(
+        log = logger.error if store_dir == DEFAULT_STORE_DIR else logger.warning
+        log(
             "UWC_WEB_AUDIT_LOG is not set, so the plan access log is %s. A Space's container disk does not survive a "
             "restart: unless that path is on persistent storage, the access log and its head anchor start again "
             "empty after every restart, while the plans come back from the dataset. Set UWC_WEB_AUDIT_LOG to a file "
