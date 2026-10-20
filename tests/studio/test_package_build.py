@@ -7,6 +7,7 @@ import pytest
 from package_helpers import package, project
 
 from uwcopilot.evidence.ledger_models import Ledger
+from uwcopilot.studio.data.fabric import get_fabric
 from uwcopilot.studio.narrative import ids
 from uwcopilot.studio.package import PACKAGE_SCHEMA_VERSION, FounderProject, Package, build_package, package_text
 from uwcopilot.studio.package.audit import audit_package, untraced_numbers
@@ -15,6 +16,7 @@ from uwcopilot.studio.package.project import PackageOwner
 from uwcopilot.studio.package.sba import SECTION_SPECS, sba_record, uncovered_sba_sections, unknown_sba_names
 
 METRO, TYPE = "synthetic_metro", "car_wash"
+SYNTHETIC_OTHER_SEED = 7
 CELL_REFERENCE_KINDS = ("claim", "status", "range", "source", "ref")
 
 
@@ -28,6 +30,18 @@ def test_the_package_is_versioned_json_that_round_trips() -> None:
 
 def test_the_same_project_gives_the_same_package() -> None:
     assert build_package(project(METRO, TYPE)) == package(METRO, TYPE)
+
+
+def test_the_package_id_changes_when_the_metro_data_changes() -> None:
+    other_city = get_fabric(METRO, seed=SYNTHETIC_OTHER_SEED)
+    rebuilt = build_package(project(METRO, TYPE), fabric=other_city)
+    assert rebuilt.ledger != package(METRO, TYPE).ledger
+    assert rebuilt.package_id != package(METRO, TYPE).package_id
+
+
+def test_synthetic_city_sources_carry_no_clock_date() -> None:
+    text = package_text(package(METRO, TYPE))
+    assert "generated from its seed on every run (no retrieval date)" in text
 
 
 def test_sections_follow_the_sba_record_and_show_what_they_do_not_cover() -> None:

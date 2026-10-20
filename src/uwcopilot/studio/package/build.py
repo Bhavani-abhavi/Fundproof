@@ -57,10 +57,16 @@ MONTHLY_MONTHS = 12
 ClientFactory = Callable[[str, str | None], LLMClient]
 
 
-def project_sha256(project: FounderProject) -> str:
-    """SHA-256 of the project's canonical JSON plus the package versions (the package's inputs hash)."""
+def inputs_sha256(project: FounderProject, ledger: Ledger, narrative: NarrativeResult) -> str:
+    """SHA-256 of everything the package prints from (the package's inputs hash, and so its id).
+
+    The project alone is not enough: the ledger also holds the metro data the package was built with, and the
+    narrative draft depends on who wrote it. Two packages share an id only when they print the same thing.
+    """
     payload = {
         "project": project.model_dump(mode="json"),
+        "ledger": ledger.model_dump(mode="json"),
+        "narrative_draft": narrative.draft,
         "schema_version": PACKAGE_SCHEMA_VERSION,
         "builder_version": PACKAGE_BUILDER_VERSION,
     }
@@ -178,7 +184,7 @@ def build_package(
         business_noun=business_noun(project.case.profile_id),
         calendar_months=[band.calendar_month for band in project.feasibility.monthly[:MONTHLY_MONTHS]],
     )
-    inputs_sha = project_sha256(project)
+    inputs_sha = inputs_sha256(project, ledger, narrative)
     package_id = PACKAGE_ID_PREFIX + inputs_sha[:PACKAGE_ID_CHARS]
     map_layer = build_map_layer(project.site_score, data)
     runs = model_runs(ledger)

@@ -27,11 +27,18 @@ NO_SCORE_REASON = "no factor of this site has data here (limited mode), so SiteI
 
 
 def locator(record: SourceRecord) -> str:
-    """'publisher, dataset (vintage); url; retrieved YYYY-MM-DD; response sha256 abc123def456' for a source record."""
+    """'publisher, dataset (vintage); url; retrieved YYYY-MM-DD; response sha256 abc123def456' for a source record.
+
+    A SYNTHETIC record was generated, not retrieved, so it says so instead of printing a retrieval date.
+    """
     vintage = f" ({record.vintage})" if record.vintage else ""
-    prefix = "SYNTHETIC city data: " if record.data_label == "SYNTHETIC" else ""
+    if record.data_label == "SYNTHETIC":
+        return (
+            f"SYNTHETIC city data: {record.publisher}, {record.dataset}{vintage}; {record.url}; generated from its "
+            f"seed on every run (no retrieval date); data sha256 {record.sha256[:12]}"
+        )
     return (
-        f"{prefix}{record.publisher}, {record.dataset}{vintage}; {record.url}; retrieved "
+        f"{record.publisher}, {record.dataset}{vintage}; {record.url}; retrieved "
         f"{record.retrieved_at.date().isoformat()}; response sha256 {record.sha256[:12]}"
     )
 

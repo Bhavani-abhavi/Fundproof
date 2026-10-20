@@ -254,6 +254,12 @@ def synthetic_record(metro: MetroConfig, city: SyntheticCity) -> SourceRecord:
     )
 
 
+# A fixed stamp, not a clock reading. The city is a pure function of its seed and is regenerated identically on
+# every run, so it has no retrieval time; a fixed stamp keeps a package built from it byte-for-byte reproducible.
+# site_claims.locator prints it as "generated from its seed", never as a retrieval date.
+SYNTHETIC_GENERATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
+
+
 def generated_at() -> datetime:
-    """The time the city was generated (it is regenerated from the seed on every run)."""
-    return datetime.now(UTC).replace(microsecond=0)
+    """The fixed stamp of every SYNTHETIC city record (SYNTHETIC_GENERATED_AT)."""
+    return SYNTHETIC_GENERATED_AT
