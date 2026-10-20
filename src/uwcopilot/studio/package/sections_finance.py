@@ -230,9 +230,9 @@ def yearly_tables(ctx: BuildContext) -> list[Table]:
 def break_even_table() -> Table:
     """Break-even month percentiles and the share of paths that never break even."""
     rows = [
-        [text("Break-even month, low case P10"), claim(ids.SIM_BREAK_EVEN_P10)],
+        [text("Break-even month, early case P10"), claim(ids.SIM_BREAK_EVEN_P10)],
         [text("Break-even month, median P50"), claim(ids.SIM_BREAK_EVEN_P50)],
-        [text("Break-even month, high case P90"), claim(ids.SIM_BREAK_EVEN_P90)],
+        [text("Break-even month, late case P90"), claim(ids.SIM_BREAK_EVEN_P90)],
         [text("Share of paths that never break even in the horizon"), claim(ids.SIM_NOT_BREAK_EVEN)],
         [text("Simulation horizon"), claim("PKG.sim.horizon_months")],
     ]
@@ -242,7 +242,10 @@ def break_even_table() -> Table:
         rows=rows,
         widths=[5.4, 2.6],
         align=["left", "right"],
-        note=f"Month 1 is the opening month. Simulated (MODEL_ESTIMATE), {SIMULATION_LABEL}.",
+        note=(
+            "Month 1 is the opening month. For a month, a lower percentile is the better case: P10 is the early "
+            f"case and P90 the late case. Simulated (MODEL_ESTIMATE), {SIMULATION_LABEL}."
+        ),
     )
 
 

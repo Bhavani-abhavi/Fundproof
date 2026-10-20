@@ -139,9 +139,9 @@ class SimulationClaims:
         result = self.result.break_even
         claims: list[Claim] = []
         for claim_id, label, month, percentile in (
-            (ids.SIM_BREAK_EVEN_P10, "Break-even month, low case (P10)", result.p10_month, "p10"),
+            (ids.SIM_BREAK_EVEN_P10, "Break-even month, early case (P10)", result.p10_month, "p10"),
             (ids.SIM_BREAK_EVEN_P50, "Break-even month, median (P50)", result.p50_month, "p50"),
-            (ids.SIM_BREAK_EVEN_P90, "Break-even month, high case (P90)", result.p90_month, "p90"),
+            (ids.SIM_BREAK_EVEN_P90, "Break-even month, late case (P90)", result.p90_month, "p90"),
         ):
             output = f"break_even.{percentile}_month"
             if month is None:
