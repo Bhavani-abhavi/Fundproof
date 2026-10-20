@@ -31,6 +31,7 @@ from uwcopilot.web.auth import HfOAuthClient, rate_limit_user_key, session_seria
 from uwcopilot.web.cookies import CookiePolicy
 from uwcopilot.web.crypto import encryptor_for_settings
 from uwcopilot.web.hf_store import HFDatasetStore, HubApi
+from uwcopilot.web.routers import account as account_router
 from uwcopilot.web.routers import auth as auth_router
 from uwcopilot.web.routers import lender as lender_router
 from uwcopilot.web.routers import share as share_router
@@ -225,6 +226,7 @@ def create_app(
 
     app.include_router(system_router.router)
     app.include_router(auth_router.router)
+    app.include_router(account_router.router)
     app.include_router(studio_router.router)
     app.include_router(lender_router.router)
     app.include_router(share_router.router)

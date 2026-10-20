@@ -62,7 +62,13 @@ class DeletionPending(RuntimeError):
     """The local copy is deleted, but the remote copy (Hugging Face dataset) could not be deleted yet.
 
     The deletion is recorded and retried; the caller must not tell the user that the data is gone.
+    deleted_objects: how many objects were deleted locally (delete_owner sets it; 0 when not counted).
     """
+
+    def __init__(self, message: str, deleted_objects: int = 0) -> None:
+        """message says what is pending; deleted_objects counts what is already gone locally."""
+        super().__init__(message)
+        self.deleted_objects = deleted_objects
 
 
 def utc_now() -> datetime:

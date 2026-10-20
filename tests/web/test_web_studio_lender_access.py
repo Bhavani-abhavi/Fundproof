@@ -1,5 +1,5 @@
-"""Sign-in and CSRF rules of EVERY Founder Studio and Lender Desk route: one table, checked against the routes the
-app really serves.
+"""Sign-in and CSRF rules of EVERY Founder Studio and Lender Desk route (and of "delete all my data"): one table,
+checked against the routes the app really serves.
 
 The rules (docstrings of src/uwcopilot/web/routers/studio.py and lender.py, src/uwcopilot/web/security.py):
 1. Signed out -> 401 "sign in required". The two public Studio routes (the options and the tract map layer) hold
@@ -9,10 +9,11 @@ The rules (docstrings of src/uwcopilot/web/routers/studio.py and lender.py, src/
 3. The control: a signed-in user who sends the token reaches the route itself (200, 201 or 404, never 401 or 403).
    GET routes need no token.
 
-ROUTES must list exactly the routes the app serves under /api/studio and /api/lender, and OTHER_API_ROUTES every
-other /api route (sign-in and system routes, whose own rules are tested in the files it names). A route the app
-serves under ANY /api prefix that is in neither table (for example from a new router) fails
-test_every_api_route_is_classified; every ROUTES row is then checked by the tests below.
+ROUTES must list exactly the routes the app serves under /api/studio and /api/lender plus DELETE /api/me/data (it
+follows the same rules), and OTHER_API_ROUTES every other /api route (sign-in, system and share-link view routes,
+whose own rules are tested in the files it names). A route the app serves under ANY /api prefix that is in neither
+table (for example from a new router) fails test_every_api_route_is_classified; every ROUTES row is then checked by
+the tests below.
 
 Every plan is SYNTHETIC test input on the SYNTHETIC metro; the lender files are the repo's SYNTHETIC demo
 applications and the decision record is a SYNTHETIC placeholder written straight into the store. Where a route
@@ -137,6 +138,8 @@ ROUTES: tuple[RouteCase, ...] = (
     RouteCase("POST", "/api/lender/files/{file_id}/decision", body=DECISION_BODY),
     RouteCase("GET", "/api/lender/files/{file_id}/record"),
     RouteCase("DELETE", "/api/lender/files/{file_id}/record"),
+    # Your data (the control signs in a user who stored nothing, so nothing of the fixture's user is deleted)
+    RouteCase("DELETE", "/api/me/data", allowed_status=200),
 )
 STATE_CHANGING = tuple(case for case in ROUTES if case.changes_state)
 

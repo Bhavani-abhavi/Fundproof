@@ -371,7 +371,8 @@ class HFDatasetStore:
                 self._dirty = {path for path in self._dirty if not path.startswith(prefix)}
                 remote = any(path.startswith(prefix) for path in self._remote_paths)
             if remote and not self._delete_remote([prefix]):
-                raise DeletionPending("the owner's data is deleted here; the dataset copy is deleted at a retry")
+                message = "the owner's data is deleted here; the dataset copy is deleted at a retry"
+                raise DeletionPending(message, deleted_objects=count)
             return count
 
     def purge_expired(self) -> list[ObjectMeta]:
