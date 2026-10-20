@@ -29,12 +29,15 @@ read further and gets exactly one code.
    MAX_TEXT_CHARS characters (1,000,000, a design choice), whether given by the route or decoded from a CSV or
    plain-text file, is refused as too_large too. Every character is read (the normalization in security.normalize
    goes character by character in Python), so the text is capped to keep one screen short; screening only part of a
-   longer text would let the rest through unchecked. The cap keeps a screen short only because every check takes
-   time in proportion to the length of the text: the patterns are written so that the regex engine never retries a
-   run of whitespace in more than one way (possessive "\\s*+", see UPLOAD_LABELED_ACCOUNT), and the agency line of
-   rule 8 is matched to form numbers in one pass. A test feeds long adversarial texts (a label followed by a long run
-   of spaces, many agency lines and form numbers) at two sizes and checks that eight times the text takes far less
-   than 64 times as long.
+   longer text would let the rest through unchecked. The cap keeps a screen short only if every check takes time in
+   proportion to the length of the text. The upload patterns are written for that: none has two unbounded runs that
+   can share the same characters (two "\\s*" next to each other make the regex engine try every way to split a long
+   run of spaces between them, which takes time that grows with the square of the run); where the typed-text
+   patterns have that shape, the upload patterns use possessive "\\s*+" (see UPLOAD_LABELED_ACCOUNT). The agency line
+   of rule 8 is matched to form numbers in one pass. A test screens long adversarial texts (a label followed by a long
+   run of spaces, many agency lines far from many form numbers) at two sizes and checks that eight times the text
+   takes less than 24 times as long (time in proportion to the length gives about 8, time that grows with the square
+   about 64).
 2. empty: zero bytes.
 3. file_type: the file is not one of ALLOWED_KINDS, or its name, its declared type and its content disagree. A kind
    is accepted only when all three agree:
@@ -59,9 +62,13 @@ read further and gets exactly one code.
 Then the content: the file name and the file's text. Each is read as written and after a light normalization
 (invisible characters removed, NFKC, lookalike letters and typographic dashes folded; uwcopilot.security.normalize),
 so an SSN written in fullwidth digits, with en dashes or with a zero-width space inside is still found. Runs of
-whitespace are NOT collapsed (security.normalize.normalize_text would collapse them), so numbers in separate columns
-of a table ("120    45    2026") are not joined into an SSN shape. The file name is also read with its separators
-turned into spaces (agent.injection.code_as_words: "Form_1040_2025.pdf" is read as "Form 1040 2025 pdf").
+whitespace are NOT collapsed (security.normalize.normalize_text would collapse them), so table columns set several
+spaces apart ("120    45    2026") are not joined into an SSN shape. That helps only text that keeps those runs (a
+plain-text or fixed-width file). Text extracted from a PDF has one space between the cells of a table row
+(docintel/layout.py joins the words of a line with single spaces), and a budget row such as "Insurance 350 12 4200"
+(a monthly cost, 12 months, the year's total) then has the SSN shape 123 45 6789 and is refused: a known limit
+below. The file name is also read with its separators turned into spaces (agent.injection.code_as_words:
+"Form_1040_2025.pdf" is read as "Form 1040 2025 pdf").
 
 5. ssn: an SSN-shaped number. First the shapes typed text refuses (web/services/text_checks.py): 123-45-6789
    (observability.redaction.SSN) and 123 45 6789 or mixed separators (text_checks.SPACED_SSN). Uploads also refuse
@@ -109,12 +116,16 @@ turned into spaces (agent.injection.code_as_words: "Form_1040_2025.pdf" is read 
    A text that only mentions a form ("we can send our Form 1040 later") is refused too: the screen cannot tell a
    mention from the form itself.
 
-Not refused (each has a test): phone numbers ((312) 555-0147, 312-555-0147, 3125550147), ZIP+4 codes (60601-1234,
-606011234), 11-digit census tract ids, dollar amounts ($1,250,000.00, $250000), dates (2026-10-20, 10/20/2026,
-20261020), an EIN (12-3456789, a business id that typed text allows too). Typed text also refuses every run of 8 to 17
-digits (redaction.LONG_DIGITS); uploads do not, because CSV and PDF tables are full of such runs (tract ids, FIPS
-codes, dates and phone numbers written without separators, invoice numbers). The price is the first known limit
-below.
+Not refused (each has a test): phone numbers ((312) 555-0147, 312-555-0147, 3125550147), ZIP+4 codes written with
+the dash (60601-1234), 11-digit census tract ids, dollar amounts ($1,250,000.00, $250000), dates (2026-10-20,
+10/20/2026, 20261020), an EIN (12-3456789, a business id that typed text allows too). A ZIP+4 written without the
+dash is a plain nine-digit number to rule 7: it is not refused when its first two digits are outside
+ROUTING_PREFIXES (606011234, Chicago), but when they are inside (a ZIP code that starts with 01-12, 21-32, 61-72 or
+80, such as 02138 in Cambridge, MA or 10001 in New York, NY) it passes the check digit for exactly 1 of every 10
+four-digit extensions and is refused as a bank routing number (a known limit below). Typed text also refuses every
+run of 8 to 17 digits (redaction.LONG_DIGITS); uploads do not, because CSV and PDF tables are full of such runs (tract
+ids, FIPS codes, dates and phone numbers written without separators, invoice numbers). The price is the first known
+limit below.
 
 Injection is a FLAG, never a refusal: uploaded text is data, never instructions. The text and the file name are read
 by the agent's tripwire (uwcopilot.agent.injection.detect_untrusted: as written and after
@@ -133,6 +144,13 @@ Known limits (a future route must not rely on this screen for more):
   without a label ("1 2 3 4 5 6 7 8 9"), because a row of numbered table columns looks the same;
 - an account number written with dots (0001.2345.6789) is not found: allowing dots in the number would also refuse an
   amount such as "account 1250.00";
+- false refusals the shape rules accept. A PDF budget row with one space between its cells ("Insurance 350 12 4200")
+  is refused as an SSN: without a label the screen cannot tell it from an SSN written 123 45 6789, which typed text
+  refuses too. A ZIP+4 written without its dash in a ZIP area that starts with 01-12, 21-32, 61-72 or 80 is refused
+  as a routing number 1 time in 10, so an address table with such nine-digit ZIP codes is likely to be refused
+  (write ZIP+4 codes with the dash). No exception was added for nine digits after a two-letter state code ("ID" is
+  Idaho's code and also the usual label of an id, so "Bank ID 123456780" would pass), and an exception for a "ZIP"
+  label would not help an address table, whose ZIP column has its label only in the header row;
 - the magic-byte check proves only the first bytes; it is not a parser, so a malformed or polyglot file can pass.
   Open uploads only with a maintained parser, never execute them, and serve them back only as downloads;
 - the screen is only as good as the text it is given: an OCR error ("Form 1O40" with a letter O) defeats it;

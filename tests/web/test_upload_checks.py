@@ -13,6 +13,7 @@ from collections.abc import Callable
 import pytest
 from pydantic import ValidationError
 
+from uwcopilot.docintel.layout import Word, make_line
 from uwcopilot.observability.redaction import LABELED_ACCOUNT
 from uwcopilot.web.services.text_checks import forbidden_identifiers
 from uwcopilot.web.services.upload_checks import (
@@ -534,7 +535,7 @@ def test_screening_time_grows_in_proportion_to_the_text_on_adversarial_input(nam
         "Call 312.555.0147",
         "Call 3125550147",
         "ZIP 60601-1234",
-        "ZIP 606011234",
+        "ZIP 606011234",  # without the dash: 60 is not a routing prefix (see the ZIP+4 test below)
         "Census tract 17031010400",
         "Census tract 8391.02",
         "Build-out $1,250,000.00",
@@ -545,7 +546,7 @@ def test_screening_time_grows_in_proportion_to_the_text_on_adversarial_input(nam
         "Opening 2026-10-20, 10/20/2026, 20261020, October 20, 2026",
         "EIN 12-3456789",
         "Ledger account 4000 rent",
-        "Seats  120    45    2026",  # numbers in separate table columns
+        "Seats  120    45    2026",  # table columns several spaces apart (plain text keeps the spaces)
         "Café seats  120    45    2026",  # the same with a non-ASCII letter: whitespace is not collapsed
     ],
 )
@@ -562,6 +563,29 @@ def test_a_synthetic_csv_full_of_near_misses_is_allowed() -> None:
     )
     verdict = screen_upload("sites.csv", "text/csv", csv.encode(), None)
     assert verdict.allowed and verdict.file_kind == "csv"
+
+
+def test_a_pdf_budget_row_with_single_spaces_is_refused_as_an_ssn_a_documented_limit() -> None:
+    # UP-3: docintel joins the words of a PDF line with single spaces however far apart the table cells are, so a
+    # SYNTHETIC monthly x 12 budget row has the SSN shape 123 45 6789. The module docstring lists the false refusal.
+    words = []
+    for column, cell in enumerate(["Insurance", "350", "12", "4200"]):  # cells 100 points apart
+        words.append(Word(text=cell, x0=100.0 * column, top=10.0, x1=100.0 * column + 40.0, bottom=20.0))
+    row = make_line(1, words).text
+    assert row == "Insurance 350 12 4200"
+    assert pdf_with_text(f"{row} (SYNTHETIC budget)").refusal_codes == ("ssn",)
+
+
+def test_a_zip_plus_4_without_its_dash_is_refused_1_time_in_10_where_zip_codes_start_like_routing_numbers() -> None:
+    # UP-6 / S8-CL-5: what the module docstring's "Not refused" list and known limits state. SYNTHETIC addresses.
+    assert 2 in ROUTING_PREFIXES and 10 in ROUTING_PREFIXES and 60 not in ROUTING_PREFIXES
+    for zip_code in ["02138", "10001"]:  # Cambridge, MA and New York, NY
+        passing = [extension for extension in range(10_000) if is_routing_number(f"{zip_code}{extension:04d}")]
+        assert len(passing) == 1_000, zip_code
+    assert not any(is_routing_number(f"60601{extension:04d}") for extension in range(10_000))  # Chicago, IL
+    assert text_file("Ship to Cambridge MA 021380000 (SYNTHETIC address)").refusal_codes == ("routing_number",)
+    assert text_file("New York NY 100010000 (SYNTHETIC address)").refusal_codes == ("routing_number",)
+    assert text_file("Ship to Cambridge MA 02138-0000 (SYNTHETIC address, with the dash)").allowed
 
 
 # --- injection: a flag, never a refusal ---
