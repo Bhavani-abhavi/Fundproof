@@ -56,6 +56,40 @@ def test_scan_secrets_also_scans_merge_commit_diffs() -> None:
     assert re.search(r'gitleaks" detect .*--log-opts="\$\(GITLEAKS_LOG_OPTS\)"', recipe)
 
 
+def locked_requirements(text: str) -> dict[str, list[str]]:
+    """Map each `name==version` in a `uv pip compile --generate-hashes` file to its hashes."""
+    hashes: dict[str, list[str]] = {}
+    current = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip().removesuffix("\\").strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("--hash="):
+            hashes[current].append(line.removeprefix("--hash="))
+        else:
+            current = line.split(";")[0].strip()  # drop an environment marker such as `; python_full_version < '3.13'`
+            hashes[current] = []
+    return hashes
+
+
+def test_audit_deps_installs_pip_audit_only_from_the_hashed_lock() -> None:
+    """pip-audit's own dependencies are pinned and hashed, not resolved afresh from PyPI on every run."""
+    lock_path = REPO_ROOT / makefile_variable("PIP_AUDIT_LOCK")
+    recipe = makefile_recipe("audit-deps")
+    assert "uv pip install" in recipe and "--require-hashes --requirement $(PIP_AUDIT_LOCK)" in recipe
+    assert "uvx" not in recipe  # uvx would resolve pip-audit's dependencies to their newest releases
+
+    lock_text = lock_path.read_text(encoding="utf-8")
+    assert "--generate-hashes" in lock_text and "--exclude-newer" in lock_text  # in the command at its top
+    requirements = locked_requirements(lock_text)
+    lock_input = (lock_path.parent / "requirements.in").read_text(encoding="utf-8").splitlines()
+    wanted = [line for line in lock_input if line and not line.startswith("#")]
+    assert len(wanted) == 1 and wanted[0].startswith("pip-audit==") and wanted[0] in requirements
+    for requirement, hashes in requirements.items():
+        assert re.fullmatch(r"[a-z0-9][a-z0-9._-]*==[0-9][0-9A-Za-z.+!-]*", requirement), requirement
+        assert hashes and all(re.fullmatch(r"sha256:[0-9a-f]{64}", value) for value in hashes), requirement
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # .gitleaks.toml allow-lists
 # ---------------------------------------------------------------------------------------------------------------

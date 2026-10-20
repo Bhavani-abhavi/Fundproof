@@ -1,0 +1,3 @@
+# The pip-audit version that `make audit-deps` runs (Studio S8). requirements.txt next to this file is the lock made
+# from it, with every dependency pinned and hashed; the command that made it is written at its top.
+pip-audit==2.10.1

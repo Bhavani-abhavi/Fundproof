@@ -41,7 +41,8 @@ jobs:
         run: uv run pytest
 
   # Studio S8: known vulnerabilities in the locked Python dependencies. Fails on any finding (accepted ones are listed,
-  # with a reason, in PIP_AUDIT_IGNORE in the Makefile). Needs only uv, not the project's environment.
+  # with a reason, in PIP_AUDIT_IGNORE in the Makefile). Needs only uv, not the project's environment: pip-audit and
+  # its dependencies come from tools/pip-audit/requirements.txt, each pinned with SHA-256 hashes.
   audit-deps:
     runs-on: ubuntu-latest
     timeout-minutes: 15

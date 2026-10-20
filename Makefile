@@ -526,6 +526,11 @@ verify-audit:  ## Check the audit log chain + head anchor (UWC_AUDIT_LOG; no key
 # audit-deps: pip-audit asks the PyPI vulnerability service about every package uv.lock installs on Linux (all groups;
 #   the project itself, a local package, is left out). Any known vulnerability fails the target. To accept one for a
 #   while, add `--ignore-vuln <ID>` to PIP_AUDIT_IGNORE with a comment giving the package, the reason and a review date.
+#   pip-audit itself, and every package it needs, is installed into a throwaway virtualenv from PIP_AUDIT_LOCK, where
+#   each package is pinned to one version with the SHA-256 hashes of its files (--require-hashes refuses any other
+#   file, and any package without a hash). To update the tool, change the version in tools/pip-audit/requirements.in
+#   and re-run the `uv pip compile` command written at the top of PIP_AUDIT_LOCK, with an --exclude-newer date at
+#   least two weeks in the past.
 # scan-secrets: a pinned gitleaks release (Linux x64), checked against its SHA-256, scans every commit with the
 #   default rules and the narrow allow-lists in .gitleaks.toml. `detect` is the older name of `gitleaks git`; it
 #   scans the git history the same way. --redact keeps any flagged value out of the output. GITLEAKS_LOG_OPTS adds
@@ -535,7 +540,8 @@ verify-audit:  ## Check the audit log chain + head anchor (UWC_AUDIT_LOG; no key
 
 .PHONY: audit-deps scan-secrets
 
-PIP_AUDIT_VERSION := 2.10.1
+# pip-audit 2.10.1 and its dependencies, each pinned with SHA-256 hashes (written by uv pip compile; see above).
+PIP_AUDIT_LOCK := tools/pip-audit/requirements.txt
 # Accepted vulnerabilities (see above). Empty: none is accepted.
 PIP_AUDIT_IGNORE :=
 GITLEAKS_VERSION := 8.30.1
@@ -546,9 +552,11 @@ GITLEAKS_TARBALL := gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
 # git log options for the history scan: every ref, the full history, and merge commits diffed against each parent.
 GITLEAKS_LOG_OPTS := --all --full-history -m
 
-audit-deps:  ## Check the locked Python packages for known vulnerabilities (pip-audit; network)
+audit-deps:  ## Check the locked Python packages for known vulnerabilities (pip-audit from a hashed lock; network)
 	tmp=$$(mktemp -d) && uv export --locked --format requirements-txt --no-emit-project > "$$tmp/requirements.txt" && \
-	uvx --python 3.11 pip-audit==$(PIP_AUDIT_VERSION) --requirement "$$tmp/requirements.txt" --disable-pip --strict \
+	uv venv --quiet --python 3.11 "$$tmp/pip-audit" && \
+	uv pip install --quiet --python "$$tmp/pip-audit/bin/python" --require-hashes --requirement $(PIP_AUDIT_LOCK) && \
+	"$$tmp/pip-audit/bin/pip-audit" --requirement "$$tmp/requirements.txt" --disable-pip --strict \
 		--progress-spinner off $(PIP_AUDIT_IGNORE); \
 	status=$$?; rm -rf "$$tmp"; exit $$status
 
