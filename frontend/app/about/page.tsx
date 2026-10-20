@@ -1,8 +1,10 @@
 import { ExternalLink } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { SystemStatus } from "@/components/about/system-status";
 import { PageIntro } from "@/components/layout/page-intro";
+import { DeleteMyData } from "@/components/session/delete-my-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DISCLAIMER, OWNERS, PRODUCT_NAME, REPO_URL } from "@/lib/config";
 
@@ -16,7 +18,9 @@ export const metadata: Metadata = {
  * together. Founder Studio sources are split by what the web app really uses: the Census Geocoder for every
  * real-city address, and the data-snapshot sources only where a city's snapshot is on the server (the container
  * image has none, so real cities run in limited mode there). Details: docs/studio/data_sources.md.
- * "Your information" is the short privacy notice (docs/studio/privacy.md); error messages point here.
+ * "Your information" is the short privacy notice (docs/studio/privacy.md), with links to the full privacy policy
+ * (/privacy/) and the Terms of Use (/terms/), and the "Delete all my data" control (#delete-data); error messages
+ * point here.
  */
 interface DataSource {
   name: string;
@@ -192,6 +196,17 @@ export default function AboutPage() {
         <h2 id="privacy-title" className="font-serif text-2xl font-semibold text-foreground">
           Your information
         </h2>
+        <p className="text-base leading-relaxed text-muted-foreground">
+          The short version. The full{" "}
+          <Link href="/privacy/" className="font-medium text-accent underline underline-offset-4">
+            privacy policy
+          </Link>{" "}
+          and the{" "}
+          <Link href="/terms/" className="font-medium text-accent underline underline-offset-4">
+            Terms of Use
+          </Link>{" "}
+          are drafts, pending the owners&apos; approval.
+        </p>
         <ul className="flex flex-col gap-2 text-base leading-relaxed text-muted-foreground">
           <li>
             Sign-in uses your Hugging Face account; only your account id, username and display name are kept, in a signed
@@ -199,11 +214,16 @@ export default function AboutPage() {
           </li>
           <li>
             Your plans and demo decisions are stored encrypted, under your account only, and deleted automatically after
-            the server&apos;s retention period (each plan&apos;s page shows its date), or sooner when you delete them.
+            the server&apos;s retention period (each plan&apos;s page shows its date), or sooner when you delete them: one plan
+            on its page, or everything with &ldquo;Delete all my data&rdquo; below.
           </li>
           <li>
             When you type a street address for a real city, the server sends that address to the US Census Bureau
             Geocoder to find it. Nothing else you type leaves the server, and no language model reads it.
+          </li>
+          <li>
+            A plan is shown to someone else only through a share link you create on its page: anyone with the link sees
+            the plan&apos;s figures and site names, not your idea text or addresses, until the link expires or you revoke it.
           </li>
           <li>
             Social Security numbers, account numbers and long digit runs are refused, never stored. There are no uploads,
@@ -211,6 +231,7 @@ export default function AboutPage() {
           </li>
           <li>Logs hold the request path with personal patterns masked, never what you typed.</li>
         </ul>
+        <DeleteMyData />
       </section>
 
       <section aria-labelledby="team-title" className="flex flex-col gap-3">

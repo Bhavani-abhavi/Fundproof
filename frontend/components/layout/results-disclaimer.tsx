@@ -7,10 +7,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * The disclaimer at the top of every results page (Studio addendum rule C), in addition to the footer that shows it
- * on every page. The server's wording (GET /api/config) wins over the built-in copy.
+ * on every page. The server's wording (GET /api/config) wins over the built-in copy; `text` wins over both (a shared
+ * plan shows the disclaimer that came with it).
  */
-export function ResultsDisclaimer({ className }: { className?: string }) {
-  const { disclaimer } = useSession();
+export function ResultsDisclaimer({ className, text }: { className?: string; text?: string }) {
+  const session = useSession();
+  const disclaimer = text || session.disclaimer;
   return (
     <p
       role="note"

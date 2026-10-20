@@ -63,6 +63,20 @@ export interface CsrfResponse {
   token: string;
 }
 
+/**
+ * DELETE /api/me/data ("Delete all my data"): every object stored under the signed-in account is deleted (plans,
+ * DEMO decision records, share-link records) and the session cookie is cleared.
+ * - `pending`: the copy in the Hugging Face dataset could not be deleted yet, so the data is not fully gone.
+ * - `deleted_objects` is null and `message` holds the server's words when it answered 202 {"detail": "..."} instead
+ *   (the generic "deletion pending" answer, which does not count the objects).
+ */
+export interface DeleteMyDataResult {
+  deleted_objects: number | null;
+  pending: boolean;
+  signed_out: boolean;
+  message: string | null;
+}
+
 /** The session shape used whenever nobody is signed in (or the API is unreachable). */
 export const SIGNED_OUT: MeResponse = {
   signed_in: false,
@@ -263,6 +277,25 @@ export async function request<T>(path: string, options: RequestOptions = {}, isR
   return payload as T;
 }
 
+/**
+ * The answer of DELETE /api/me/data as a DeleteMyDataResult. The contract's answer is 200 {deleted_objects, pending,
+ * signed_out}. Anything else that still counts as success (a 202 {"detail": "..."} when the dataset copy could not be
+ * deleted) is reported as pending, so the page never says the data is gone when the server did not confirm it.
+ */
+function deleteMyDataResult(payload: unknown): DeleteMyDataResult {
+  if (typeof payload === "object" && payload !== null && "deleted_objects" in payload) {
+    const body = payload as { deleted_objects: unknown; pending?: unknown; signed_out?: unknown };
+    return {
+      deleted_objects: typeof body.deleted_objects === "number" ? body.deleted_objects : null,
+      pending: body.pending === true,
+      signed_out: body.signed_out === true,
+      message: null,
+    };
+  }
+  const messages = errorMessages(payload);
+  return { deleted_objects: null, pending: true, signed_out: false, message: messages[0] ?? null };
+}
+
 /** The endpoints the app shell uses. Feature endpoints (studio, lender) are added here as they are built. */
 export const api = {
   health: (signal?: AbortSignal) => request<HealthResponse>("/api/health", { signal }),
@@ -272,4 +305,6 @@ export const api = {
   devLogin: (username: string, role: Role) =>
     request<unknown>("/api/auth/dev-login", { method: "POST", json: { username, role }, expect: "any" }),
   logout: () => request<unknown>("/api/auth/logout", { method: "POST", expect: "any" }),
+  /** "Delete all my data" (signed in, CSRF header like every DELETE). Use `useSession().deleteMyData`, which also signs out. */
+  deleteMyData: async () => deleteMyDataResult(await request<unknown>("/api/me/data", { method: "DELETE", expect: "any" })),
 };
