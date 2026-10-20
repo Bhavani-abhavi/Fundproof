@@ -1,105 +1,206 @@
-# Underwriting Copilot: evidence-driven underwriting intelligence
+# Fundproof: a two-sided lending copilot
 
-An AI underwriting platform for **small-business loans** and **commercial insurance submissions**.
+Fundproof is a two-sided lending copilot for small-business loans. The **Lender Desk** (the **Underwriting
+Copilot**) turns a document packet into a cited, stress-tested recommendation that a person decides on, and
+**Founder Studio** gives the borrower the same lens: site scoring, a Monte Carlo feasibility check under the lender's
+stress test, a path-to-approval search and (in progress) a lender-ready package.
 
-A packet of documents goes in. Out come:
+**How it was built:** Rahul Vajja and Bhavani Adula wrote the specs, build prompts and evaluation protocol and
+review the work; Claude Code is the implementer. Each built phase has a walkthrough so both owners can explain it
+(the SIG section planned in [docs/innovations.md](docs/innovations.md) is not written yet).
 
-- extracted fields, each with a page citation
-- cross-document contradictions (for example, stated revenue vs bank deposits), separated into benign and unsupported
-- a sanctions / KYC screening result
-- a calibrated risk score with plain-language reason codes
-- stress tests: how the risk and the recommendation change if revenue drops, rates rise, or claims increase
-- the next piece of evidence worth requesting, ranked by whether it could change the decision
-- a recommendation memo and an auditable decision record that **a human must approve**
+> **Synthetic data notice.** A portfolio project, not a product. It uses only public datasets and **SYNTHETIC**
+> (computer-generated) documents, applications, customers, founder plans and cities, each labeled as synthetic. No
+> real personal data, no production users, not deployed. Fundproof is a working name. Founder Studio is an
+> educational planning tool: not financial, legal or lending advice; lenders make their own decisions.
 
-The copilot never auto-declines. Every decline, sanctions hit, and reconciliation failure goes to a human reviewer.
+## What each side does
 
-> **Synthetic data notice.** This is a portfolio project. It uses only public datasets and **synthetic**
-> (computer-generated) documents, customers, and news snippets. It contains no real personal data and has no
-> production users. Every synthetic artifact is labeled as synthetic.
+**Lender Desk: the Underwriting Copilot** (small-business loans and commercial insurance submissions)
 
-## Problem
+- reads a packet: extracted fields with page citations, cross-document contradictions, embedded-instruction checks
+- screens names against sanctions lists (OFAC SDN, OpenSanctions)
+- runs the reference policy's calculations and stress tests (revenue drops, rate rises, claim increases)
+- ranks the next piece of evidence worth requesting with a rules-based, scenario-based value-of-information score
+  (could the answer change the recommendation?)
+- drafts a cited memo (today a deterministic template; no language model has written one yet) and stops at a
+  **human checkpoint**: it never approves or declines on its own, and every decision is a hash-chained record made
+  by a person
 
-Underwriters spend much of their time reading packets (applications, bank statements, financials, loss runs),
-re-keying numbers, checking that the numbers agree, screening names against sanctions lists, and writing up a
-recommendation. This project automates the reading and checking, and leaves the decision to a person.
+**Founder Studio: the borrower side**
 
-The central question: how can a lender or insurer decide faster while showing that every important conclusion
-is supported by evidence, financially justified, consistent with policy, and safe to act on?
+- **SiteIQ** scores 1-3 candidate sites from public data and shows its data coverage; missing factors stay UNKNOWN
+- **Feasibility**: a Monte Carlo simulation of monthly cash and DSCR, including the lender's revenue stress
+- **Path to approval**: the smallest one- or two-lever plan changes that reach the simulated loan targets (it never
+  promises approval)
+- **Narrative**: the plan summary can only place `{{claim:...}}` slots; code fills every number from the ledger
 
-The signature component is the **Evidence-to-Action Engine** (Phase 4, built on SYNTHETIC packets). For one case
-it builds an evidence ledger that tags every value the recommendation rests on as verified (with its document, page
-and line), conflicting, unknown, or a model estimate; runs stress scenarios and counterfactuals through the
-deterministic reference policy (the Phase 1 risk models do not apply to these commercial packets, so model PD and
-expected loss stay unknown); checks whether resolving each open question would change the recommendation; and
-ranks the evidence requests by a rules-based, scenario-based value-of-information score. It prepares and
-explains; a person decides. See [docs/walkthrough_phase4.md](docs/walkthrough_phase4.md).
+## Status
+
+Each row links the results file a script wrote and the walkthrough that explains the work. Numbers in these status
+tables are copied from, or counted directly in, the results file in the same row (for example 627 = 179 + 184 + 89 +
+175). Unlike the generated tables under [Results](#results), they are not checked by a unit test.
+
+**Status key.** **Built + measured**: code, offline tests in CI, and a metric written to `results/*.json` by a script.
+**Built, tests only**: code and offline tests, no metric file. **Smoke only**: ran end to end on a tiny sample; quote
+no rate from it. **In progress**: code is partial, unreviewed or not yet run. **Not started** / **Not deployed**.
+
+### Lender Desk (Underwriting Copilot)
+
+| Component | Status | What the results file says | Results | Docs |
+|---|---|---|---|---|
+| Risk models: credit PD (Lending Club), insurance claim frequency and severity (freMTPL2), `/score` API | Built + measured | Credit test AUC 0.7151 [0.7123, 0.7177], out-of-time 2017-2018; insurance rows under Results; not applied to the SYNTHETIC commercial files ([domain gap](docs/risk_service.md#the-domain-gap-why-the-agent-still-records-no-model-score)) | [risk_metrics.json](results/risk_metrics.json) | [Phase 1](docs/walkthrough_phase1.md), [model cards](docs/model_cards/) |
+| Document intelligence (Phase 2): text layer + Tesseract OCR, cited field extraction, contradiction checks | Built + measured (rules extractor) | Field F1 0.9936 on 60 SYNTHETIC test packets; the LLM extractor is tested with a fake LLM only | [docintel_metrics.json](results/docintel_metrics.json) | [Phase 2](docs/walkthrough_phase2.md) |
+| KYC / sanctions screening (OFAC SDN + OpenSanctions) | Built + measured | Recall 0.6889 of true matches at 103.8 alerts per 1,000 (rules only); adverse-media memo not measured | [kyc_metrics.json](results/kyc_metrics.json) | [Phase 3](docs/walkthrough_phase3.md) |
+| Evidence-to-Action Engine (Phase 4): evidence ledger, stress tests, value-of-information evidence requests, decision record | Built + measured | Calculations agree 590/590 with oracle extraction and 488/590 end to end from the PDFs (60 SYNTHETIC packets); no LLM | [evidence_metrics.json](results/evidence_metrics.json) | [Phase 4](docs/walkthrough_phase4.md) |
+| Agent + human checkpoint (Phase 5): LangGraph, allow-listed tools, guideline authority limits | Built + measured (no LLM) | 60/60 required escalations reached the right human queue; routing agreement 0.7538 (n=65); 0 decisions without a human; memo = deterministic template | [agent_metrics.json](results/agent_metrics.json) | [Phase 5](docs/walkthrough_phase5.md), [design](docs/agent_design.md) |
+| MCP server (the same tool allow-list) | Built + measured (smoke test) | 17/17 checks over stdio and 17/17 over streamable HTTP | [stdio](results/mcp_smoke_stdio.json), [HTTP](results/mcp_smoke_streamable_http.json) | [mcp.md](docs/mcp.md) |
+| RAG over SYNTHETIC guidelines + public regulations (Qdrant: dense, BM25, hybrid, rerank) | Retrieval built + measured; answers smoke only | Hybrid + rerank Recall@5 0.9078, MRR@10 0.8285 (103 questions); its recall gain over dense is not significant (the interval includes 0) | [rag_metrics.json](results/rag_metrics.json) | [RAG design](docs/rag_design.md), [GenAI](docs/walkthrough_genai.md) |
+| Numeric provenance checker + slot grammar (SIG) | Built + measured (mutation test) | Caught every value (179/179), x10 (184/184), unit (89/89) and cross-section (175/175) mutation (627 in all) with 0/290 false flags (0/203 unmutated, 0/87 rewrites); comparator flips 88/108; wrong row 6/55 (known blind spot). Tested on guideline sentences, not memos | [provenance_metrics.json](results/provenance_metrics.json) | [plan](docs/innovations.md), [fixes](docs/walkthrough_innovations_s1.md) |
+| LLM provider layer: Anthropic, OpenAI, Ollama, Hugging Face Inference (off by default), fake; cost cap, cache | Built; live calls smoke only | Anthropic and OpenAI never called (no key). Ollama runs: see [Language models](#language-models-what-has-actually-run) | [generation smoke](results/generation/smoke/generation_metrics_smoke.json) | [GenAI](docs/walkthrough_genai.md) |
+| Prompt-injection containment (innovation S2) | Smoke only | Decision containment enforced by tests; tripwire flags 12/60 frozen payloads (no model); attack-success run: 3 of 240 planned calls | [detector](results/injection/injection_metrics_detector_only.json), [smoke](results/injection/smoke/injection_metrics_smoke.json) | [S2](docs/walkthrough_innovations_s2.md) |
+| Security (Phase 5 B): roles, packet permissions, encryption at rest, hash-chained audit events | Built, tests only | Several controls are written and tested but not yet called by an entry point a user runs | none | [security.md](docs/security.md) |
+| Observability: OpenTelemetry / OpenInference spans with PII redaction | Built, tests only | none | none | [Phase 5](docs/walkthrough_phase5.md) |
+| Governance: results provenance blocks; LLM migration gate (frozen retrieval, pre-registered non-inferiority rule) and freeze proofs | Provenance built; gate in progress | The gate's code and tests exist; the full champion and challenger runs have not run, so no gate decision exists | none yet | [S1b](docs/walkthrough_innovations_s1.md) |
+| Governance (Phase 6): monitoring, reviewer feedback, champion/challenger in use | Not started | none | none | [build plan](docs/build_prompts.md) |
+
+Not wired yet: the web Lender Desk runs the Phase 5 agent on SYNTHETIC **structured** applications. The packet path
+(document intelligence, then the Evidence-to-Action Engine) runs from the command line (`make run-evidence`).
+
+### Founder Studio (borrower side)
+
+| Component | Status | What the results file says | Results | Docs |
+|---|---|---|---|---|
+| S1 data fabric: the 5 largest US metros + a SYNTHETIC metro (Census ACS and CBP, LEHD LODES, Overture places, FHWA HPMS roads, BLS, FRED, HUD) | Built + measured (coverage) | All 5 real metros are in limited mode because their lowest business type, short-term rental, has data coverage 0.6779 to 0.6826 (motel 0.745 to 0.7722), below the 0.80 threshold; car wash, laundromat, restaurant/cafe and retail storefront meet it (0.8675 to 0.9415) | [studio_metro_coverage.json](results/studio_metro_coverage.json) | [S1](docs/studio/walkthrough_s1.md) |
+| S2 SiteIQ: site scoring and "suggest a better area" | Built + measured (10 SYNTHETIC cities) | On Spearman rank correlation with the hidden true demand: beats the single-factor baseline for 1 of 6 business types (short-term rental, +0.0853 [0.0542, 0.1153]), is worse for retail storefront (-0.1945 [-0.2362, -0.1494]), and the interval includes 0 for the other 4 | [studio_siteiq_metrics.json](results/studio_siteiq_metrics.json) | [S2](docs/studio/walkthrough_s2.md) |
+| S3 Monte Carlo feasibility: 1,000 paths over 36 months, with the lender's stress test | Built + measured (2,400 SYNTHETIC worlds per condition) | Well-specified worlds: Brier for P(year-2 DSCR >= 1.25) 0.1405 [0.1321, 0.1493] vs 0.4796 [0.4596, 0.4992] for a single-point forecast (in-sample base rate 0.1567 [0.1473, 0.1664]); misspecified worlds 0.1433 [0.1351, 0.1523] vs 0.4938 [0.4729, 0.5154] (base rate 0.1557). Simulated, based on stated assumptions | [studio_feasibility_metrics.json](results/studio_feasibility_metrics.json) | [S3](docs/studio/walkthrough_s3.md) |
+| S4 founder ledger + provenance-locked narrative | Built + measured (template); LLM smoke only | Template: 1,673/1,673 narrative numbers traced to the ledger on 36 scenarios (by construction; measured before the S4 review fixes; after them the 6 SYNTHETIC-city scenarios gave 285/285 and the 30 real-city ones were not re-run). Wrong-slot blind spot: the three checks together flag 5/60 (Wilson 95% [0.0361, 0.1807]). `qwen2.5-1.5b-instruct-f16`: none of 12 drafts (6 first tries, 6 retries) passed the grammar, so all 6 fell back to the template (pre-review, approximate run; see S4 walkthrough, section 6.2) | [template](results/studio_evidence_metrics.json), [after review](results/studio_evidence_metrics_synthetic.json), [Ollama](results/studio_evidence_metrics_ollama.json) | [S4](docs/studio/walkthrough_s4.md) |
+| S5 path to approval: the smallest 1-2 plan changes that reach the simulated loan targets | Built + measured | Found a path for 0.1026 [0.0784, 0.1306] of the 536 SYNTHETIC plans that needed a change; a path that also meets the SYNTHETIC startup program's equity and loan rules (NSP-3.1, NSP-8.1) for 0.0392 [0.0243, 0.0578] | [studio_path_metrics.json](results/studio_path_metrics.json) | [S5](docs/studio/walkthrough_s5.md) |
+| S6 lender-ready package (PDF + JSON) and handoff to the Lender Desk | In progress | Code and offline tests are committed as unreviewed work in progress, including the founder-to-lender handoff (`studio/package/handoff.py`, which stops at the agent's human checkpoint). `scripts/eval_studio_handoff.py` has not been run, so there is no results file. No walkthrough. The web app does not call the handoff | none | [plan](docs/studio/founder_studio_build_prompts.md), [open questions](docs/studio/open_questions.md) |
+
+### Web app and deployment
+
+| Component | Status | What the results file says | Results | Docs |
+|---|---|---|---|---|
+| Web app v0.1 (FastAPI + Next.js): Founder Studio portal + Lender Desk DEMO | Built + measured (local container) | 5/5 Playwright flows (19/19 steps); 0 serious or critical axe issues in 32 scans. Signed in with the local dev login; Hugging Face OAuth is not exercised end to end | [web_metrics.json](results/web_metrics.json), [deployment_metrics.json](results/deployment_metrics.json) | [S7](docs/studio/walkthrough_s7.md), [frontend](docs/web/frontend.md), [auth](docs/web/auth.md) |
+| Deployment (Hugging Face Docker Space) | Not deployed | The Space and the deploy workflow exist; no deploy has run, so there is no public URL | none | [deployment.md](docs/deployment.md) |
+
+## Screenshots
+
+<table>
+  <tr>
+    <th width="60%">Lender Desk DEMO: findings with guideline citations, calculations, sanctions screening, a template
+    memo and a DEMO decision entered at the human checkpoint (by the metrics script)</th>
+    <th width="40%">Founder Studio results: site comparison, simulated feasibility and the path-to-approval search</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="docs/web/screenshots/e2e/lender-decision-1280-light.png"><img
+    src="docs/web/screenshots/e2e/lender-decision-1280-light.png" width="460"
+    alt="Lender Desk DEMO on a SYNTHETIC business-credit file, after the metrics script recorded a DEMO decision at the human checkpoint"></a></td>
+    <td valign="top"><a href="docs/web/screenshots/e2e/studio-results-1280-light.png"><img
+    src="docs/web/screenshots/e2e/studio-results-1280-light.png" width="290"
+    alt="Founder Studio results page for a SYNTHETIC laundromat plan in the SYNTHETIC metro"></a></td>
+  </tr>
+</table>
+
+Captured by `scripts/web_metrics.py` on 2026-10-14 from a LOCAL container (commit `271ca4d`) signed in with the dev
+login, not the Space. The script typed the plan and the decision. Everything shown is SYNTHETIC. Click an image for
+full size.
+
+## Run the demo
+
+Needs Python 3.11 with [uv](https://docs.astral.sh/uv/), and Node 22 with npm.
+
+```bash
+cp .env.example .env     # every setting is documented there; the demo needs no API key
+make setup               # Python environment from uv.lock
+make web-install         # frontend dependencies (npm ci)
+make web-dev             # http://localhost:3000, local DEV LOGIN (any username, pick a role)
+```
+
+- **Founder Studio**: make a plan in the SYNTHETIC metro (works offline). **Lender Desk**: open a SYNTHETIC file
+  from the demo queue and record a DEMO decision.
+- For guideline citations in the Lender Desk, build the index first: `make data-regulatory index`. Sanctions
+  screening reads the lists that `make data` downloads.
+- No Python? `make web-install web-build web-mock` serves the built pages with answers recorded from the real app
+  (http://127.0.0.1:4174).
+- Command-line demos: `make agent-demo` (needs `make index eval-kyc`) runs the agent to its human checkpoint, then a
+  scripted decision; `make packets run-evidence` runs the Evidence-to-Action Engine on one SYNTHETIC packet.
+
+## Language models: what has actually run
+
+- **Hosted APIs (Anthropic, OpenAI)**: adapters built and tested with fakes, **never called** (no API key was
+  configured). No agent, KYC or evidence metric above used a generative model (the agent's memo is the deterministic
+  template).
+- **Local open-weight models on Ollama, smoke runs only** (quote no rates from them):
+  - RAG answers (innovation S1b): `qwen2.5-3b-instruct-q4km` (champion) and `qwen2.5-1.5b-instruct-f16`
+    (challenger), 3 questions each, status `smoke`:
+    [generation_metrics_smoke.json](results/generation/smoke/generation_metrics_smoke.json).
+  - Prompt-injection evaluation (innovation S2): `qwen2.5-3b-instruct-q4km`, 3 of the 240 planned calls, status
+    `smoke`: [injection_metrics_smoke.json](results/injection/smoke/injection_metrics_smoke.json).
+  - Founder Studio narrative (S4): `qwen2.5-1.5b-instruct-f16` on 6 scenarios; none of its 12 drafts (6 first
+    tries, 6 retries) passed the slot grammar, so all 6 fell back to the template. Measured before the S4 review
+    fixes; the commit its provenance block names is not the code that ran, so the S4 walkthrough (section 6.2) says
+    to treat it as approximate: [studio_evidence_metrics_ollama.json](results/studio_evidence_metrics_ollama.json).
+- **Hugging Face Inference**: off by default, never run.
+- Not measured yet: LLM memo quality, answer faithfulness at full size, LLM cost and LLM latency.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    P[Document packet<br/>PDF, clean or scanned] --> D[docintel<br/>classify pages, OCR,<br/>cited field extraction,<br/>rule checks]
-    D --> K[kyc<br/>sanctions screening<br/>OFAC + OpenSanctions]
-    D --> R[risk<br/>/score API<br/>credit and insurance models]
-    D --> E[evidence<br/>evidence ledger, contradiction graph,<br/>stress tests, next-best-evidence]
-    K --> E
-    R --> E
-    E --> A[agent<br/>LangGraph workflow,<br/>allow-listed tools]
-    A --> M[Recommendation memo<br/>with citations]
-    M --> H{Human approval<br/>checkpoint}
-    H -->|approve / refer / request info / decline| O[Decision record<br/>made by a person]
-    O --> G[governance<br/>monitoring, feedback,<br/>release gate]
-    G -.-> R
+    subgraph Studio["Founder Studio (borrower side)"]
+        F["Founder plan<br/>metro, business type, money, 1-3 sites"] --> S2["S2 SiteIQ<br/>site scoring"]
+        S2 --> S3["S3 Monte Carlo feasibility<br/>with the lender's stress test"]
+        S3 --> S5["S5 path to approval<br/>smallest plan changes"]
+        S3 --> S4["S4 founder ledger<br/>slot-locked narrative"]
+        S5 --> S4
+        S4 --> S6["S6 lender-ready package<br/>IN PROGRESS"]
+    end
+    subgraph Desk["Lender Desk (Underwriting Copilot)"]
+        P["Document packet, PDF"] --> D["docintel<br/>OCR, cited fields, contradictions"]
+        D --> E["Evidence-to-Action Engine<br/>ledger, stress tests, next-best evidence"]
+        E --> R1["Report + decision record<br/>for a person"]
+        APP["Structured application"] --> A["LangGraph agent<br/>allow-listed tools: guideline RAG,<br/>sanctions screening, risk score<br/>(no score for these files: domain gap)"]
+        A --> H{"Human checkpoint"}
+        H --> R2["Decision record<br/>made by a person"]
+    end
+    S6 -.->|"handoff: unreviewed code, not run"| A
+    D -.->|"not wired yet"| A
 ```
 
-| Package | Phase | Purpose | Status |
-|---|---|---|---|
-| `src/uwcopilot/risk` | 1 | Credit-default (Lending Club) and claim frequency/severity (freMTPL2) models, scenario interface, model cards, `/score` API | Built ([walkthrough](docs/walkthrough_phase1.md), [model cards](docs/model_cards/)); `client.py` is the HTTP client of the `/score` service, shared by the agent and the MCP server |
-| `src/uwcopilot/docintel` | 2 | Synthetic packet generator, text layer + Tesseract OCR, rules field extraction with citations (an LLM extractor exists, tested with a fake LLM only), deterministic checks, contradiction graph, prompt-injection detection | Built ([walkthrough](docs/walkthrough_phase2.md)); measured with the rules extractor only |
-| `src/uwcopilot/kyc` | 3 | Watchlist loading, name matching, embedding reranker, adverse-media memo stub | Built ([walkthrough](docs/walkthrough_phase3.md)) |
-| `src/uwcopilot/evidence` | 4 | Evidence ledger, financial calculations, stress tests, next-best-evidence ranking, decision records, evidence-request simulator (innovation S5) | Built ([walkthrough](docs/walkthrough_phase4.md)) |
-| `src/uwcopilot/agent` | 5 | LangGraph agent with a human-approval checkpoint, role-based access, tracing, adversarial evaluation | Built ([design](docs/agent_design.md), [walkthrough](docs/walkthrough_phase5.md)) |
-| `src/uwcopilot/governance` | 6 | Versioning, monitoring, reviewer feedback, champion/challenger, CI release gate | Not built |
-| `src/uwcopilot/llm` | GenAI | Provider adapter (Anthropic, OpenAI, fake) with explicit settings, cost cap, response cache | Built ([walkthrough](docs/walkthrough_genai.md)) |
-| `src/uwcopilot/rag` | GenAI | Retrieval over SYNTHETIC guidelines + public regulatory documents in Qdrant: dense, BM25, hybrid, reranked | Built ([design](docs/rag_design.md)) |
-| `src/uwcopilot/tools`, `src/uwcopilot/mcp_server` | GenAI | The tool allow-list with strict schemas, exposed to any MCP client | Built ([design](docs/mcp.md)) |
-| `src/uwcopilot/observability` | GenAI | OpenTelemetry / OpenInference spans with PII redaction | Built |
-| `src/uwcopilot/common` | 0 | Shared helpers (paths, checksums, settings reader) | Built |
+| Package | Purpose |
+|---|---|
+| `src/uwcopilot/risk` | Phase 1 credit and insurance models, scenario interface, `/score` API and its client |
+| `src/uwcopilot/docintel` | Phase 2 SYNTHETIC packet generator, OCR, cited extraction, checks, contradiction graph, injection scan |
+| `src/uwcopilot/kyc` | Phase 3 watchlist loading, name matching, reranker, adverse-media memo stub |
+| `src/uwcopilot/evidence` | Phase 4 evidence ledger, calculations, stress tests, evidence requests, decision records, simulator |
+| `src/uwcopilot/agent` | Phase 5 LangGraph agent, human checkpoint, reference policies, template memo, claim checker |
+| `src/uwcopilot/security` | Phase 5 B roles, packet permissions, encryption at rest, audit chain, injection containment |
+| `src/uwcopilot/provenance` | SIG numbers, numeric checker, slot grammar and renderer |
+| `src/uwcopilot/llm`, `rag`, `tools`, `mcp_server`, `observability` | GenAI layer: providers, Qdrant retrieval, tool allow-list, MCP server, tracing |
+| `src/uwcopilot/governance` | Results provenance, freeze proofs, LLM migration gate |
+| `src/uwcopilot/studio` | Founder Studio: data fabric, SiteIQ, feasibility, path to approval, narrative, package (in progress) |
+| `src/uwcopilot/web`, `frontend/` | Web app v0.1: FastAPI backend and Next.js static export |
 
-The diagram shows the planned design. Each component is built in the phase listed above; see
-[docs/build_prompts.md](docs/build_prompts.md) for the full plan. The last column says what exists;
-a component marked "not built" does not exist yet.
+The full plans are [docs/build_prompts.md](docs/build_prompts.md) (lender side) and
+[docs/studio/founder_studio_build_prompts.md](docs/studio/founder_studio_build_prompts.md) (Founder Studio).
 
-## Datasets and licenses
+## Reproduce the results
 
-Raw data is **never committed**. `make data` downloads everything into `data/raw/` and logs a SHA-256 checksum
-for each file in `data/raw/checksums.jsonl`.
-
-| Dataset | Used for | Source | License / terms |
-|---|---|---|---|
-| Lending Club accepted loans 2007-2018 | Credit-default model | Kaggle `wordsforthewise/lending-club` | See the Kaggle dataset page. Needs a Kaggle API key. |
-| freMTPL2freq / freMTPL2sev | Insurance claim-frequency model | OpenML [41214](https://www.openml.org/d/41214) / [41215](https://www.openml.org/d/41215) (originally from the CASdatasets R package) | OpenML lists CC0 |
-| UCI Statlog German Credit | Fairness demonstration | [UCI ML Repository](https://archive.ics.uci.edu/dataset/144/statlog+german+credit+data) | CC BY 4.0 |
-| OFAC SDN list (+ aliases) | Sanctions screening | [US Treasury OFAC](https://www.treasury.gov/ofac/downloads/sdn.csv) | US government public data |
-| OpenSanctions "default" (simplified CSV) | Sanctions screening | [OpenSanctions](https://www.opensanctions.org/datasets/default/) | CC BY-NC 4.0. Data from OpenSanctions.org, used non-commercially with attribution. |
-| deepset/prompt-injections, revision `4f61ecb038e9c3fb77e21034b22511b523772cdd` | Prompt-injection evaluation (innovation S2): the 40 public attack payloads | [Hugging Face](https://huggingface.co/datasets/deepset/prompt-injections) (by deepset) | The dataset card's YAML header lists two licenses: `apache-2.0` at the top level and `cc-by-4.0` inside `dataset_info`. Both are recorded in `eval/injection_payloads_manifest.json` and neither is chosen. The one exception to "never committed": 40 train rows are committed in `eval/injection_payloads.jsonl` (the evaluation must be frozen before any model sees it). Each was changed by appending one goal sentence; its original text is kept verbatim in `original_text`. Licenses: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0); attribution, the change made and a copy of the Apache-2.0 text are in `eval/LICENSE-deepset-prompt-injections.txt`. Not yet in the list of public datasets in CLAUDE.md rule 2, and the 40 committed rows are an exception to its "do not commit raw datasets": both need the owners' confirmation (the plan in docs/innovations.md, S2, proposes the dataset; it does not change CLAUDE.md). |
-| Synthetic packets, customers, news snippets | Document intelligence, KYC, agent evaluation | Generated by scripts in this repo | Synthetic, generated here |
-
-## How to run
-
-Requires Python 3.11 and [uv](https://docs.astral.sh/uv/).
+`make help` lists every target. `make ci` is what CI runs: ruff lint and format check, then the offline tests.
 
 ```bash
-cp .env.example .env      # add your Kaggle key (and an LLM key from Phase 2 on); every setting is documented there
+cp .env.example .env      # add your Kaggle key for Lending Club; every setting is documented there
 make setup                # install exact versions from uv.lock
-make ci                   # what CI runs: ruff lint + format check, offline tests
+make ci                   # ruff lint + format check, offline tests
 make data                 # download the public datasets
 make phase1               # Phase 1: insurance and fairness models, credit (needs the Kaggle data), reports
 make serve                # scoring API on http://127.0.0.1:8000 (interactive docs at /docs)
 ```
 
-The GenAI-track steps, in order (`make all` runs everything):
+The GenAI-track steps, in order (`make all` runs these after Phase 1, except the `make mcp` server; the document,
+evidence, provenance, Studio and web steps below are separate targets):
 
 ```bash
 make index                # Qdrant index of the guidelines + regulatory documents (fastembed models, no torch)
@@ -108,8 +209,7 @@ make kyc-data eval-kyc    # SYNTHETIC KYC customers, sanctions screening evaluat
 make eval-agent           # LangGraph agent on 65 SYNTHETIC applications -> results/agent_metrics.json
 make eval-agent-homonyms  # sensitivity run without the namesake redraw -> results/agent_metrics_homonyms_kept.json
 make mcp-smoke            # MCP server smoke test over stdio and streamable HTTP -> results/mcp_smoke_*.json
-make readme-results       # rewrite the results table below from results/*.json
-make agent-demo           # one fake-LLM run to the human checkpoint, then a scripted demo decision
+make readme-results       # rewrite the GenAI results table below from results/*.json
 make mcp                  # serve the tools to an MCP client over stdio
 ```
 
@@ -117,18 +217,35 @@ The document and evidence steps (Phases 2 and 4; no LLM call):
 
 ```bash
 make packets              # SYNTHETIC document packets (PDF + ground truth) -> data/processed/packets/
-make run-evidence         # the Evidence-to-Action Engine on one packet (PACKET=PKT-C-024): report + decision record
+make eval-docintel        # the document pipeline on the 60 test packets -> results/docintel_metrics.json
 make simulate-requests    # innovation S5 evidence-request simulator -> results/evidence_metrics.json ("simulator")
 make eval-evidence        # the engine on the 60 SYNTHETIC test packets -> results/evidence_metrics.json ("packets")
 make reports              # rewrite the model cards and the first results table below
 ```
 
-There is no LLM API key in this environment, so no LLM call has been made; every metric that needs a model says
-"not measured". Run `make help` to see every target.
+Numeric provenance, Founder Studio and the web app:
+
+```bash
+make eval-provenance            # SIG checker mutation test -> results/provenance_metrics.json
+make injection-detector         # S2 tripwire only, no model -> results/injection/injection_metrics_detector_only.json
+make eval-injection-smoke       # S2 3-call smoke on Ollama -> results/injection/smoke/
+make studio-data studio-coverage  # real-metro snapshots (needs the Census key) -> results/studio_metro_coverage.json
+make studio-siteiq              # SiteIQ on 10 SYNTHETIC cities -> results/studio_siteiq_metrics.json
+make studio-feasibility         # feasibility simulator on SYNTHETIC worlds -> results/studio_feasibility_metrics.json
+make studio-evidence            # founder ledger + template narrative, 36 golden scenarios (needs the snapshots)
+                                #   -> results/studio_evidence_metrics.json
+make studio-evidence-synthetic  # the same on the 6 SYNTHETIC-city scenarios -> results/studio_evidence_metrics_synthetic.json
+make studio-evidence-ollama     # local 1.5B model, 6 scenarios -> results/studio_evidence_metrics_ollama.json
+make studio-paths               # path-to-approval search -> results/studio_path_metrics.json
+make docker-build-archive docker-smoke  # labelled image of HEAD, container smoke test -> results/deployment_metrics.json
+make web-metrics-tools docker-build-archive  # pinned Lighthouse + axe, and the labelled image web-metrics requires
+make web-metrics                # Playwright, axe, Lighthouse on a local container (Docker) -> results/web_metrics.json
+```
 
 ## Results
 
-No number in these tables is typed by hand. Rows that have not been run say "not measured", with the reason.
+No number in these tables is typed by hand. Two scripts write them from `results/*.json`, and unit tests fail if the
+README and the results files disagree. Rows that have not been run say "not measured", with the reason.
 
 Phase 1 risk models, the document pipeline (Phase 2), the Evidence-to-Action Engine (Phase 4) and the evidence-request simulator (innovation S5), written by `make reports` from `results/risk_metrics.json`, `results/docintel_metrics.json` and `results/evidence_metrics.json`:
 
@@ -198,20 +315,52 @@ disagree.
 | MCP server smoke test (stdio) | Checks passed | 17 / 17 |
 | MCP server smoke test (streamable_http) | Checks passed | 17 / 17 |
 
-Written by `scripts/update_readme_results.py` from `results/rag_metrics.json`, `results/kyc_metrics.json`, `results/agent_metrics*.json` and `results/mcp_smoke_*.json`. Intervals: percentile bootstrap, 1,000 resamples, seed 42. All data is SYNTHETIC or public; no LLM call was made, so LLM-dependent metrics are not measured.
+Written by `scripts/update_readme_results.py` from `results/rag_metrics.json`, `results/kyc_metrics.json`, `results/agent_metrics*.json` and `results/mcp_smoke_*.json`. Intervals: percentile bootstrap, 1,000 resamples, seed 42. All data is SYNTHETIC or public. None of these runs called a generative LLM (retrieval used the fastembed embedding and reranker models; the agent used the deterministic template memo), so the LLM-dependent rows are not measured.
 <!-- GENAI-RESULTS:END -->
+
+## Datasets and licenses
+
+Raw datasets are **never committed**. `make data` downloads everything into `data/raw/` and logs a SHA-256 checksum
+for each file in `data/raw/checksums.jsonl`. Small offline test fixtures are committed in `tests/studio/fixtures`:
+short excerpts recorded from the public APIs, hand-written SYNTHETIC stand-ins where a host could not be recorded,
+and a 60-row Overture places sample (see [docs/studio/data_sources.md](docs/studio/data_sources.md)).
+
+| Dataset | Used for | Source | License / terms |
+|---|---|---|---|
+| Lending Club accepted loans 2007-2018 | Credit-default model | Kaggle `wordsforthewise/lending-club` | See the Kaggle dataset page. Needs a Kaggle API key. |
+| freMTPL2freq / freMTPL2sev | Insurance claim-frequency model | OpenML [41214](https://www.openml.org/d/41214) / [41215](https://www.openml.org/d/41215) (originally from the CASdatasets R package) | OpenML lists CC0 |
+| UCI Statlog German Credit | Fairness demonstration | [UCI ML Repository](https://archive.ics.uci.edu/dataset/144/statlog+german+credit+data) | CC BY 4.0 |
+| OFAC SDN list (+ aliases) | Sanctions screening | [US Treasury OFAC](https://www.treasury.gov/ofac/downloads/sdn.csv) | US government public data |
+| OpenSanctions "default" (simplified CSV) | Sanctions screening | [OpenSanctions](https://www.opensanctions.org/datasets/default/) | CC BY-NC 4.0. Data from OpenSanctions.org, used non-commercially with attribution. |
+| deepset/prompt-injections, revision `4f61ecb038e9c3fb77e21034b22511b523772cdd` | Prompt-injection evaluation (innovation S2): the 40 public attack payloads | [Hugging Face](https://huggingface.co/datasets/deepset/prompt-injections) (by deepset) | The dataset card's YAML header lists two licenses: `apache-2.0` at the top level and `cc-by-4.0` inside `dataset_info`. Both are recorded in `eval/injection_payloads_manifest.json` and neither is chosen. The one exception among the datasets above: 40 train rows are committed in `eval/injection_payloads.jsonl` (the evaluation must be frozen before any model sees it). Each was changed by appending one goal sentence; its original text is kept verbatim in `original_text`. Licenses: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0); attribution, the change made and a copy of the Apache-2.0 text are in `eval/LICENSE-deepset-prompt-injections.txt`. Not yet in the list of public datasets in CLAUDE.md rule 2, and the 40 committed rows are an exception to its "do not commit raw datasets": both need the owners' confirmation (the plan in docs/innovations.md, S2, proposes the dataset; it does not change CLAUDE.md). |
+| Founder Studio public data: Census (ACS, Business Patterns, Geocoder), LEHD LODES, Overture Maps places, FHWA HPMS, BLS, FRED, HUD | Site scoring and metro inputs for the 5 real metros | Each source, its connector and its fallback: [docs/studio/data_sources.md](docs/studio/data_sources.md) | Per source in that file; several terms are still marked "to verify" there |
+| Synthetic packets, applications, customers, news snippets, founder plans and cities | Every evaluation above | Generated by scripts in this repo | Synthetic, generated here |
 
 ## Limitations
 
-- Documents, customers, applications and news snippets are synthetic. Real packets are messier.
-- No LLM call has been made (no API key here): memo quality, answer faithfulness, LLM cost and LLM latency are
-  not measured.
+- Documents, applications, customers, news snippets, founder plans and the SYNTHETIC metro are synthetic. Real
+  packets and real cities are messier.
+- No hosted LLM (Anthropic, OpenAI) has been called, and the local Qwen runs are smoke tests. Memo quality, answer
+  faithfulness, LLM cost and LLM latency are not measured.
+- The web Lender Desk runs the agent on structured SYNTHETIC applications; the packet path (document intelligence
+  and the Evidence-to-Action Engine) runs from the command line only. The founder-to-lender handoff exists only as
+  unreviewed code: not run, not measured, and not used by the web app.
+- Founder Studio probabilities are simulation estimates ("simulated, based on stated assumptions"), validated only
+  on SYNTHETIC worlds and cities written by the same author. There is no real-world accuracy claim, and the five
+  real metros run in limited mode.
 - Sanctions screening is name-only. Its clean false-positive rate is measured on a population without exact-name
   namesakes, so it is a lower bound; namesakes are reported as a separate stratum.
-- Models are trained on public datasets that may not represent any particular lender's or insurer's portfolio.
+- Models are trained on public datasets that may not represent any particular lender's or insurer's portfolio. The
+  Phase 1 models do not apply to the SYNTHETIC commercial packets and applications, so the evidence engine and the
+  agent leave model PD unknown ([domain gap](docs/risk_service.md#the-domain-gap-why-the-agent-still-records-no-model-score)).
 - Lending Club has no protected attributes, so the fairness analysis is a demonstration on a different dataset
   (UCI German Credit).
-- No production users. Nothing here has been validated for real lending or insurance decisions.
+- Most results files that carry a `git_dirty` flag (18 of 21) record `git_dirty: true` (written from an uncommitted
+  tree). The three clean ones are the SIG file, the post-review Studio S4 SYNTHETIC-city run and the Studio S4 Ollama
+  run, whose provenance the S4 walkthrough says to treat as approximate. The older agent, KYC, RAG, risk and MCP files
+  have no dirty flag. The Phase 2 and Phase 4 walkthroughs list their clean-tree re-runs as still pending.
+- Not deployed and no production users. The web app was measured only on a local container. Nothing here has been
+  validated for real lending or insurance decisions.
 - Business-value numbers, when added, are measured on the synthetic test set against a defined baseline. They
   do not show real-world savings.
 - The governance documents show how a model-risk program could be structured. They are not a compliance program.

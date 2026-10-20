@@ -211,8 +211,9 @@ def render_block(results_dir: Path = RESULTS_DIR) -> str:
     lines.append(
         "Written by `scripts/update_readme_results.py` from `results/rag_metrics.json`, `results/kyc_metrics.json`, "
         "`results/agent_metrics*.json` and `results/mcp_smoke_*.json`. Intervals: percentile bootstrap, 1,000 "
-        "resamples, seed 42. All data is SYNTHETIC or public; no LLM call was made, so LLM-dependent metrics are "
-        "not measured."
+        "resamples, seed 42. All data is SYNTHETIC or public. None of these runs called a generative LLM (retrieval "
+        "used the fastembed embedding and reranker models; the agent used the deterministic template memo), so the "
+        "LLM-dependent rows are not measured."
     )
     return "\n".join(lines)
 
