@@ -69,7 +69,7 @@ eval-agent-homonyms:  ## Sensitivity run: the application set WITHOUT the exact-
 readme-results:  ## Write the GenAI-track results table in README.md from results/*.json
 	uv run python scripts/update_readme_results.py
 
-ci:  ## What CI runs: lint and the offline test suite
+ci:  ## CI's lint-and-test job: lint and the offline test suite (CI also runs audit-deps and scan-secrets)
 	$(MAKE) lint
 	$(MAKE) test
 
@@ -521,3 +521,35 @@ security-access-test:  ## RBAC matrix, packet ACLs, encryption at rest and audit
 
 verify-audit:  ## Check the audit log chain + head anchor (UWC_AUDIT_LOG; no key). ARGS="--decision-log <file>" adds logs
 	uv run python scripts/verify_audit.py $(ARGS)
+
+# Studio S8: dependency and secret scanning; CI runs both. Both need network.
+# audit-deps: pip-audit asks the PyPI vulnerability service about every package uv.lock installs on Linux (all groups;
+#   the project itself, a local package, is left out). Any known vulnerability fails the target. To accept one for a
+#   while, add `--ignore-vuln <ID>` to PIP_AUDIT_IGNORE with a comment giving the package, the reason and a review date.
+# scan-secrets: a pinned gitleaks release (Linux x64), checked against its SHA-256, scans every commit with the
+#   default rules and the narrow allow-lists in .gitleaks.toml. `detect` is the older name of `gitleaks git`; it
+#   scans the git history the same way. --redact keeps any flagged value out of the output.
+
+.PHONY: audit-deps scan-secrets
+
+PIP_AUDIT_VERSION := 2.10.1
+# Accepted vulnerabilities (see above). Empty: none is accepted.
+PIP_AUDIT_IGNORE :=
+GITLEAKS_VERSION := 8.30.1
+# SHA-256 of GITLEAKS_TARBALL, from gitleaks_8.30.1_checksums.txt in the same GitHub release.
+GITLEAKS_SHA256 := 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+GITLEAKS_RELEASE := https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)
+GITLEAKS_TARBALL := gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
+
+audit-deps:  ## Check the locked Python packages for known vulnerabilities (pip-audit; network)
+	tmp=$$(mktemp -d) && uv export --locked --format requirements-txt --no-emit-project > "$$tmp/requirements.txt" && \
+	uvx --python 3.11 pip-audit==$(PIP_AUDIT_VERSION) --requirement "$$tmp/requirements.txt" --disable-pip --strict \
+		--progress-spinner off $(PIP_AUDIT_IGNORE); \
+	status=$$?; rm -rf "$$tmp"; exit $$status
+
+scan-secrets:  ## Scan every commit for secrets (pinned gitleaks, SHA-256 checked; Linux x64; network)
+	tmp=$$(mktemp -d) && curl -sSfL -o "$$tmp/gitleaks.tar.gz" $(GITLEAKS_RELEASE)/$(GITLEAKS_TARBALL) && \
+	echo "$(GITLEAKS_SHA256)  $$tmp/gitleaks.tar.gz" | sha256sum --check --strict && \
+	tar -xzf "$$tmp/gitleaks.tar.gz" -C "$$tmp" gitleaks && \
+	"$$tmp/gitleaks" detect --source . --config .gitleaks.toml --redact --verbose --no-banner; \
+	status=$$?; rm -rf "$$tmp"; exit $$status
