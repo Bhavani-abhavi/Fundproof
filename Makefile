@@ -480,6 +480,31 @@ studio-evidence-ollama:  ## The same with the local 1.5B model on 6 scenarios ->
 studio-narrative-test:  ## Founder ledger and narrative tests only (offline)
 	uv run pytest -q tests/studio/test_narrative_*.py tests/llm/test_hf_inference_client.py
 
+# Founder Studio S6: the lender-ready founder package (PDF + JSON + startup application) and the handoff to the
+# lender copilot, stopped at the human checkpoint. Everything is SYNTHETIC; the memo writer is the deterministic
+# template (FAKE LLM - test mode), so no model is called. See docs/studio/walkthrough_s6.md.
+.PHONY: studio-package studio-package-test studio-package-golden studio-handoff studio-handoff-ground-truth
+
+PACKAGE_METRO ?= synthetic_metro
+PACKAGE_TYPE ?= car_wash
+
+studio-package:  ## Build, audit and print one founder package (PACKAGE_METRO=, PACKAGE_TYPE=) -> data/studio_packages/ (gitignored)
+	uv run python scripts/render_studio_package.py --metro $(PACKAGE_METRO) --type $(PACKAGE_TYPE) \
+		--output data/studio_packages/$(PACKAGE_METRO)_$(PACKAGE_TYPE).pdf \
+		--json data/studio_packages/$(PACKAGE_METRO)_$(PACKAGE_TYPE).json
+
+studio-package-test:  ## Package, PDF, audit, application and handoff tests only (offline; slow golden run skipped)
+	uv run pytest -q tests/studio/test_package_*.py
+
+studio-package-golden:  ## The same plus the full 36-scenario golden package run (slow)
+	UWC_RUN_SLOW_TESTS=1 uv run pytest -q tests/studio/test_package_golden.py
+
+studio-handoff:  ## Startup line end to end (35 applications + 36 golden packages; full lists, make data first) -> results/studio_handoff_metrics.json
+	uv run python scripts/eval_studio_handoff.py
+
+studio-handoff-ground-truth:  ## The same with designed screening (no sanctions lists needed)
+	uv run python scripts/eval_studio_handoff.py --screening ground_truth
+
 # Phase 5 part C: the shared risk client against the real scoring app, with tiny SYNTHETIC models, an in-process
 # transport (no network) and the agent's planned requests (the domain gap). See docs/risk_service.md.
 .PHONY: risk-contract-test

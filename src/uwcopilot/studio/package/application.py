@@ -16,8 +16,12 @@ Every field comes from the package's ledger or its applicant facts; nothing is t
 - code fields (business type, industry, metro, state, purpose, debt kind, document codes, assumption names and
   units) are codes; the founder's free text (business and owner names) goes only into name fields, and the notes and
   site description stay empty;
+- a CONFLICTING owner equity (a document contradicts the founder's figure) goes in at the lowest of the founder
+  figure and the document figures, until a person resolves the conflict (conservative_equity);
 - a field the program needs but the package does not have (experience months, a note rate, a non-negative cash
-  reserve, three simulated years) stops the conversion with ApplicationNotReady and the list of what is missing.
+  reserve, three simulated years) stops the conversion with ApplicationNotReady and the list of what is missing;
+- so does a number in the package text that traces to no claim: the audit is re-run here, never read from the
+  package's stored audit.
 """
 
 from datetime import date
