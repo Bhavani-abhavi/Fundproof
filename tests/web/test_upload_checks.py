@@ -7,21 +7,27 @@ person's data. No network.
 """
 
 import re
+import time
+from collections.abc import Callable
 
 import pytest
 from pydantic import ValidationError
 
+from uwcopilot.observability.redaction import LABELED_ACCOUNT
 from uwcopilot.web.services.text_checks import forbidden_identifiers
 from uwcopilot.web.services.upload_checks import (
     ABA_WEIGHTS,
+    MAX_FILENAME_CHARS,
     MAX_TEXT_CHARS,
     MAX_UPLOAD_BYTES,
     NEAR_CHARS,
     ROUTING_PREFIXES,
+    UPLOAD_LABELED_ACCOUNT,
     UploadVerdict,
     aba_checksum_ok,
     is_routing_number,
     screen_upload,
+    treasury_line_near_form_number,
 )
 
 PDF = b"%PDF-1.7\n%SYNTHETIC test file, not a real PDF body\n"
@@ -121,6 +127,14 @@ def test_text_over_the_character_cap_is_too_large_whether_given_or_decoded() -> 
     assert text_file("a" * MAX_TEXT_CHARS).allowed
 
 
+def test_a_file_name_longer_than_the_cap_is_too_large() -> None:
+    at_cap = "n" * (MAX_FILENAME_CHARS - len(".txt")) + ".txt"
+    assert text_file("SYNTHETIC notes", name=at_cap).allowed
+    over = text_file("SYNTHETIC notes", name="n" + at_cap)
+    assert over.refusal_codes == ("too_large",) and over.file_kind is None
+    assert f"name is longer than {MAX_FILENAME_CHARS} characters" in over.message
+
+
 def test_an_empty_file_is_refused() -> None:
     verdict = screen_upload("notes.txt", "text/plain", b"", None)
     assert verdict.refusal_codes == ("empty",) and not verdict.allowed
@@ -197,6 +211,33 @@ def test_labeled_account_numbers_are_refused(body: str) -> None:
 
 def test_a_masked_account_number_is_allowed() -> None:
     assert text_file("Checking account ending in 1234; Account ****5678 (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [
+        "Account Number: 000123456789",
+        "acct 1234-5678",
+        "A/C No. 98765432",
+        "account #: 12345678",
+        "account ## 12345678",
+        "Account No.12345678",
+        "account no 1234 5678",
+        "ACCOUNT\n\n# 12345678",
+        "account:12345",
+        "account number   :   12345678",
+    ],
+)
+def test_the_linear_time_account_pattern_finds_what_the_typed_text_pattern_finds(sample: str) -> None:
+    # SYNTHETIC samples. The upload pattern is the typed-text pattern with possessive whitespace (UP-1).
+    assert LABELED_ACCOUNT.search(sample) is not None
+    assert UPLOAD_LABELED_ACCOUNT.search(sample) is not None
+    assert not text_file(f"{sample} (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize("sample", ["acct 1234", "accounting 12345678", "Account ****5678"])
+def test_neither_account_pattern_finds_a_short_masked_or_unlabeled_number(sample: str) -> None:
+    assert LABELED_ACCOUNT.search(sample) is None and UPLOAD_LABELED_ACCOUNT.search(sample) is None
 
 
 def test_the_aba_checksum_and_the_synthetic_routing_number() -> None:
@@ -299,6 +340,80 @@ def test_a_tax_form_named_in_the_file_name_is_refused() -> None:
 )
 def test_text_near_a_tax_marker_but_not_one_is_allowed(body: str) -> None:
     assert pdf_with_text(body).allowed, body
+
+
+AGENCY_LINE = "Department of the Treasury Internal Revenue Service"
+
+
+def near_by_comparing_every_pair(text: str) -> bool:
+    """The rule-8 proximity test written the slow, obvious way: every agency line against every form number."""
+    agencies = list(re.finditer(AGENCY_LINE, text))
+    forms = list(re.finditer(r"\bForm \d{3,4}(?!\d)", text))
+    for agency in agencies:
+        for form in forms:
+            if max(form.start() - agency.end(), agency.start() - form.end(), 0) <= NEAR_CHARS:
+                return True
+    return False
+
+
+@pytest.mark.parametrize("gap", [1, 2, NEAR_CHARS - 1, NEAR_CHARS, NEAR_CHARS + 1, 2 * NEAR_CHARS])
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "{form}{gap}{agency}",
+        "{agency}{gap}{form}",
+        "{form}{far}{form}{gap}{agency}",
+        "{agency}{far}{agency}{gap}{form}",
+        "{form}{far}{agency}{gap}{form}",
+        "{form}{far}{agency}{far}{agency}{gap}{form}{far}{form}",
+    ],
+)
+def test_the_one_pass_proximity_check_agrees_with_comparing_every_pair(layout: str, gap: int) -> None:
+    # SYNTHETIC layouts of agency lines and form numbers at distances around NEAR_CHARS.
+    text = layout.format(form="Form 941", agency=AGENCY_LINE, gap=" " * gap, far=" " * (3 * NEAR_CHARS))
+    assert treasury_line_near_form_number(text) == near_by_comparing_every_pair(text)
+    assert treasury_line_near_form_number(text) == (gap <= NEAR_CHARS)
+
+
+# --- running time on adversarial text (UP-1) ---
+
+SMALL_SIZE = 4_000  # characters of adversarial text in the small run
+SIZE_MULTIPLE = 8  # the large run is this many times longer
+# Linear time makes the large run about SIZE_MULTIPLE (8) times slower; quadratic time about 64 times. The limit sits
+# far from both, so a busy test machine does not make the test flaky; each timing is the shortest of five runs.
+MAX_SLOWDOWN = 24
+
+
+def adversarial_bodies() -> dict[str, Callable[[int], str]]:
+    """SYNTHETIC texts that made the screen slow down with the square of their length, by name."""
+    return {
+        "account label then spaces": lambda size: "account" + " " * size + "x",
+        "account label then line breaks": lambda size: "Account No." + "\n" * size + "x",
+        "account label then spaces, non-ASCII text": lambda size: "café account" + " " * size + "x",
+        "schedule k then spaces": lambda size: "Schedule K" + " " * size + "x",
+        "agency lines far from many form numbers": lambda size: (
+            "Form 941 " * (size // 9) + " " * (NEAR_CHARS + 1) + f"{AGENCY_LINE} " * (size // len(AGENCY_LINE))
+        ),
+    }
+
+
+def shortest_screen_seconds(body: str) -> float:
+    """The shortest of five timings of screening body as a plain-text upload."""
+    timings = []
+    for _ in range(5):
+        start = time.perf_counter()
+        verdict = text_file(body)
+        timings.append(time.perf_counter() - start)
+    assert verdict.allowed  # none of these bodies holds anything the screen refuses
+    return min(timings)
+
+
+@pytest.mark.parametrize("name", list(adversarial_bodies()))
+def test_screening_time_grows_in_proportion_to_the_text_on_adversarial_input(name: str) -> None:
+    build = adversarial_bodies()[name]
+    small = shortest_screen_seconds(build(SMALL_SIZE))
+    large = shortest_screen_seconds(build(SMALL_SIZE * SIZE_MULTIPLE))
+    assert large < MAX_SLOWDOWN * small, f"{name}: {small:.4f} s -> {large:.4f} s"
 
 
 # --- near misses that must pass ---

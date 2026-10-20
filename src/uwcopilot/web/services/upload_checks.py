@@ -15,13 +15,19 @@ free of SSNs, tax returns and account numbers. An image that holds no text is pa
 What is refused (refusal_codes, always in this order). The first four are gates: a file stopped at a gate is not
 read further and gets exactly one code.
 
-1. too_large: more than MAX_UPLOAD_BYTES bytes (10 MiB, a design choice). The route should also stop reading the
-   request body at that cap (web/security.py limits request bodies per path prefix); this check is the second line.
-   Checked again once the text is known (after gate 4): a text longer than MAX_TEXT_CHARS characters (1,000,000, a
-   design choice), whether given by the route or decoded from a CSV or plain-text file, is refused as too_large too.
-   Every character is read (the normalization in security.normalize goes character by character in Python), so the
-   text is capped to keep one screen short; screening only part of a longer text would let the rest through
-   unchecked.
+1. too_large: more than MAX_UPLOAD_BYTES bytes (10 MiB, a design choice), or a file name longer than
+   MAX_FILENAME_CHARS characters (255, the longest name common file systems allow; a design choice). The route
+   should also stop reading the request body at that cap (web/security.py limits request bodies per path prefix);
+   this check is the second line. Checked again once the text is known (after gate 4): a text longer than
+   MAX_TEXT_CHARS characters (1,000,000, a design choice), whether given by the route or decoded from a CSV or
+   plain-text file, is refused as too_large too. Every character is read (the normalization in security.normalize
+   goes character by character in Python), so the text is capped to keep one screen short; screening only part of a
+   longer text would let the rest through unchecked. The cap keeps a screen short only because every check takes
+   time in proportion to the length of the text: the patterns are written so that the regex engine never retries a
+   run of whitespace in more than one way (possessive "\\s*+", see UPLOAD_LABELED_ACCOUNT), and the agency line of
+   rule 8 is matched to form numbers in one pass. A test feeds long adversarial texts (a label followed by a long run
+   of spaces, many agency lines and form numbers) at two sizes and checks that eight times the text takes far less
+   than 64 times as long.
 2. empty: zero bytes.
 3. file_type: the file is not one of ALLOWED_KINDS, or its name, its declared type and its content disagree. A kind
    is accepted only when all three agree:
@@ -51,10 +57,11 @@ turned into spaces (agent.injection.code_as_words: "Form_1040_2025.pdf" is read 
    right after an SSN label: "SSN", "SS#", "Social Security", "Social Security Number" or "Social Security No.",
    then optional spaces, ":" or "#" (LABELED_SSN). Only the shape is checked, not whether the Social Security
    Administration could issue the number, so a part number written 123-45-6789 is refused too.
-6. bank_account: a labeled account number, the typed-text rule (observability.redaction.LABELED_ACCOUNT): the word
-   "account", "acct" or "a/c", optionally "no.", "number" or "#", then a number of at least five digits, spaces or
-   dashes that starts and ends with a digit ("Account Number: 000123456789", "acct 1234-5678"). A masked number
-   ("Account ending in 1234", "Account ****5678") is not refused.
+6. bank_account: a labeled account number, the typed-text rule (observability.redaction.LABELED_ACCOUNT, rewritten
+   here as UPLOAD_LABELED_ACCOUNT so that it runs in linear time): the word "account", "acct" or "a/c", optionally
+   "no.", "number" or "#", then a number of at least five digits, spaces or dashes that starts and ends with a digit
+   ("Account Number: 000123456789", "acct 1234-5678"). A masked number ("Account ending in 1234",
+   "Account ****5678") is not refused.
 7. routing_number: a nine-digit number that has the form of an ABA routing transit number: its first two digits are
    in ROUTING_PREFIXES (01-12, 21-32, 61-72 or 80) AND it passes the ABA check digit,
    3 x (d1 + d4 + d7) + 7 x (d2 + d5 + d8) + (d3 + d6 + d9) is divisible by 10. The two tests cut false positives:
@@ -117,12 +124,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from uwcopilot.agent.injection import ALL_PATTERNS, code_as_words, detect_untrusted
-from uwcopilot.observability.redaction import LABELED_ACCOUNT, SSN
+from uwcopilot.observability.redaction import SSN
 from uwcopilot.security.normalize import fold_lookalikes, strip_invisible
 from uwcopilot.web.services.text_checks import PRIVACY_NOTICE, SPACED_SSN
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB, a design choice
 MAX_TEXT_CHARS = 1_000_000  # characters of text screened per file, a design choice (module docstring, rule 1)
+MAX_FILENAME_CHARS = 255  # the longest file name common file systems allow (ext4, NTFS), a design choice
 NEAR_CHARS = 300  # how close "Department of the Treasury - Internal Revenue Service" must be to a form number
 
 RefusalCode = Literal[
@@ -159,19 +167,29 @@ LABELED_SSN = re.compile(
     r"\b(?:ssn|ss\s*#|social\s+security(?:\s+(?:number|no\.?))?)[\s:#]*\d{9}(?!\d)",
     re.IGNORECASE,
 )
+# Rule 6: the typed-text rule (observability.redaction.LABELED_ACCOUNT) with the same matches, written so that it runs
+# in linear time. In "\s*+" the "+" makes the run of whitespace possessive: once read it is never given back. The
+# typed-text pattern has two plain "\s*" next to each other (around an optional ":" or "#"), and on "account" followed
+# by a long run of spaces the regex engine tries every way to split that run between them, which takes time that
+# grows with the square of the run (UP-1). Nothing after a whitespace run can be whitespace, so giving it back never
+# finds a match that keeping it misses.
+UPLOAD_LABELED_ACCOUNT = re.compile(
+    r"\b(?:acct|account|a/c)(?:\s*+(?:no\.?|number|#))?\s*+(?:[:#]\s*+)?\d[\d -]{3,}\d", re.IGNORECASE
+)
 # Exactly nine digits, not inside a longer or dashed number, a decimal or grouped number, or an amount (rule 7).
 NINE_DIGITS = re.compile(r"(?<![\d$-])(?<!\d[.,])\d{9}(?![\d-]|[.,]\d)")
 ROUTING_PREFIXES: frozenset[int] = frozenset([*range(1, 13), *range(21, 33), *range(61, 73), 80])
 ABA_WEIGHTS: tuple[int, ...] = (3, 7, 1, 3, 7, 1, 3, 7, 1)
 
-# Rule 8: markers that are enough on their own.
+# Rule 8: markers that are enough on their own. The K-1 marker uses possessive "\s*+" for the reason given at
+# UPLOAD_LABELED_ACCOUNT ("schedule\s*k\s*-?\s*1" had two "\s*" next to each other when the dash is missing).
 TAX_RETURN_MARKERS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bform\s*1040(?!\d)", re.IGNORECASE),
     re.compile(r"\bform\s*1120(?!\d)", re.IGNORECASE),
     re.compile(r"\bform\s*1065(?!\d)", re.IGNORECASE),
     re.compile(r"(?<![\w-])1120\s*-\s*s\b", re.IGNORECASE),
     re.compile(r"\bu\.?\s*s\.?\s*individual\s+income\s+tax\s+return\b", re.IGNORECASE),
-    re.compile(r"\bschedule\s*k\s*-?\s*1(?!\d)", re.IGNORECASE),
+    re.compile(r"\bschedule\s*+k\s*+(?:-\s*+)?1(?!\d)", re.IGNORECASE),
     re.compile(r"\bschedule\s*c\b[\s(]*(?:form\s*1040|profit\s+or\s+loss\s+from\s+business)", re.IGNORECASE),
 )
 # Rule 8: the agency line counts only near a form number.
@@ -181,7 +199,7 @@ FORM_NUMBER = re.compile(r"\bform\s*\d{3,4}(?!\d)", re.IGNORECASE)
 GATE_MESSAGES: dict[RefusalCode, str] = {
     "too_large": (
         f"The file is larger than the upload limit ({MAX_UPLOAD_BYTES // (1024 * 1024)} MB, or {MAX_TEXT_CHARS:,} "
-        "characters of text)."
+        f"characters of text), or its name is longer than {MAX_FILENAME_CHARS} characters."
     ),
     "empty": "The file is empty.",
     "file_type": (
@@ -295,8 +313,8 @@ def has_ssn(text: str) -> bool:
 
 
 def has_bank_account(text: str) -> bool:
-    """Rule 6: a labeled account number (the same pattern the typed-text check and the trace redactor use)."""
-    return LABELED_ACCOUNT.search(text) is not None
+    """Rule 6: a labeled account number (UPLOAD_LABELED_ACCOUNT, the typed-text rule in linear time)."""
+    return UPLOAD_LABELED_ACCOUNT.search(text) is not None
 
 
 def aba_checksum_ok(digits: str) -> bool:
@@ -325,13 +343,24 @@ def has_routing_number(text: str) -> bool:
 
 
 def treasury_line_near_form_number(text: str) -> bool:
-    """Rule 8: "Department of the Treasury - Internal Revenue Service" within NEAR_CHARS characters of a form number."""
+    """Rule 8: "Department of the Treasury - Internal Revenue Service" within NEAR_CHARS characters of a form number.
+
+    finditer returns matches left to right and they do not overlap, so both lists are sorted by start and by end.
+    One pass walks them together: a form number that ends more than NEAR_CHARS before an agency line starts is too
+    far left for that line and for every later one, so it is skipped for good. The first form number left is the
+    leftmost one that does not end too early, so the line has a form number near it exactly when that one starts
+    no more than NEAR_CHARS after the line ends. Each form number is passed over at most once, so the time grows
+    with the number of matches, not with their product (comparing every line with every form number did, UP-1).
+    """
     form_numbers = list(FORM_NUMBER.finditer(text))
+    next_form = 0
     for agency in TREASURY_IRS.finditer(text):
-        for form in form_numbers:
-            gap = max(form.start() - agency.end(), agency.start() - form.end(), 0)
-            if gap <= NEAR_CHARS:
-                return True
+        while next_form < len(form_numbers) and form_numbers[next_form].end() < agency.start() - NEAR_CHARS:
+            next_form += 1
+        if next_form == len(form_numbers):
+            return False
+        if form_numbers[next_form].start() <= agency.end() + NEAR_CHARS:
+            return True
     return False
 
 
@@ -422,7 +451,7 @@ def screen_upload(filename: str, content_type: str, data: bytes, text: str | Non
     filename and content_type are what the client declared; data is the file's bytes; text is the text the route
     extracted from a PDF or an image (None when it did not read it). See the module docstring for every rule.
     """
-    if len(data) > MAX_UPLOAD_BYTES:
+    if len(data) > MAX_UPLOAD_BYTES or len(filename) > MAX_FILENAME_CHARS:
         return gate_verdict("too_large")
     if not data:
         return gate_verdict("empty")
