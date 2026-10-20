@@ -47,6 +47,16 @@ outcome is "allowed": the access was authorized (the plan exists and is the call
 then attempted. A request that fails after its event (for example a 422 for an unusable value in an update) changed
 nothing, although its event exists. A request refused BEFORE the event (401, 403, 404 for an unknown or another
 user's plan id, an invalid share link) did not reach any plan and writes no event.
+
+Recovery. A failed write leaves no half-written line: AuditLog cuts the file back to its size before the append, so
+once the cause is gone (for example the disk has room again) the next request works. A torn last line left by a
+crash is cut off by the next append when the head anchor shows it was an append that never completed (a warning is
+logged). Any other damage keeps every plan route at 503 until an operator runs scripts/verify_audit.py --log
+<this file> and decides what to do; nothing repairs it automatically.
+
+Cost and size. An append reads only the end of the file (security/audit.py, "Appending"), so a long log does not slow
+requests down. The file is never rotated and nothing deletes old events yet; it grows by one event (a few hundred
+bytes) per plan access, bounded only by the rate limits.
 """
 
 import logging
