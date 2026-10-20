@@ -109,7 +109,8 @@ export function DeleteMyData() {
     body = <DeletionResult result={result} signedIn={me.signed_in} />;
   } else if (status === "loading") {
     body = <Skeleton className="h-10 w-48" aria-label="Checking sign-in" />;
-  } else if (!me.signed_in) {
+  } else if (!me.signed_in && !deleting) {
+    // While deleting, the session refresh signs the user out before the result arrives: keep the dialog until then.
     body =
       status === "ready" ? (
         <div className="flex flex-col items-start gap-2">
