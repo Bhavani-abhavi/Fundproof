@@ -119,6 +119,24 @@ def owners(package: Package, reader: LedgerReader) -> list[dict[str, Any]]:
     return rows
 
 
+def conservative_equity(reader: LedgerReader, stated: float) -> float:
+    """The owner cash equity the program may count: the founder's figure, or the lowest figure when it is CONFLICTING.
+
+    A CONFLICTING equity claim is a founder figure that a document contradicts. Until a person resolves it, the
+    application carries the lowest of the founder figure and every contradicting document figure, so the program's
+    equity check never passes on a number a document disputes (and equity_verified_by_statements stays False).
+    """
+    item = reader.claim(ids.FOUNDER_EQUITY)
+    if item is None or item.status != "CONFLICTING":
+        return stated
+    figures = [stated]
+    for conflict_id in item.conflict_ids:
+        other = reader.claim(conflict_id)
+        if other is not None and isinstance(other.value, int | float) and not isinstance(other.value, bool):
+            figures.append(float(other.value))
+    return min(figures)
+
+
 def sources_and_uses(package: Package, reader: LedgerReader, loan_amount: float) -> dict[str, Any]:
     """Uses (build-out and equipment, working-capital reserve) and sources (loan, equity, other debt)."""
     capex_id = ids.FOUNDER_CAPEX if reader.claim(ids.FOUNDER_CAPEX) is not None else ids.ASSUME_CAPEX
@@ -127,7 +145,7 @@ def sources_and_uses(package: Package, reader: LedgerReader, loan_amount: float)
     if reserve < 0:
         reader.missing.append("a non-negative cash reserve at opening (the uses exceed the sources)")
     equity_claim = reader.claim(ids.FOUNDER_EQUITY)
-    equity = reader.number(ids.FOUNDER_EQUITY, "owner cash equity")
+    equity = conservative_equity(reader, reader.number(ids.FOUNDER_EQUITY, "owner cash equity"))
     other_debt = []
     for index, kind in enumerate(package.applicant.other_debt_kinds, start=1):
         other_debt.append(

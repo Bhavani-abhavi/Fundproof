@@ -149,3 +149,13 @@ def test_the_application_reruns_the_audit_instead_of_trusting_the_stored_one() -
     broken = built.model_copy(update={"sections": [edited, *built.sections[1:]]})
     with pytest.raises(ApplicationNotReady, match="41%"):
         to_application(broken)
+
+
+def test_conflicting_equity_enters_the_application_at_its_lowest_figure() -> None:
+    built = package(*CONFLICTING_STATEMENTS)
+    founder = built.ledger.claim(ids.FOUNDER_EQUITY)
+    assert founder is not None and founder.status == "CONFLICTING"
+    figures = [founder.value] + [built.ledger.claim(other).value for other in founder.conflict_ids]
+    application = to_application(built)
+    assert application.sources_and_uses.sources.owner_cash_equity == min(figures)
+    assert application.sources_and_uses.equity_verified_by_statements is False
