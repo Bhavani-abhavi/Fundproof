@@ -1,11 +1,14 @@
 """The access log of founders' plans (src/uwcopilot/web/audit_log.py): one event for every access, written before it,
-holding ids only, and a refused request (503) when the event cannot be written.
+holding ids only, and a refused request (503) when the event cannot be written. A failed write leaves no half line
+behind, so access works again once the cause is gone.
 
 Every plan is SYNTHETIC test input on the SYNTHETIC metro; the compute routes run the real (fast) engines on it.
 Nothing touches the network.
 """
 
+import errno
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -17,7 +20,13 @@ from web_helpers import csrf_headers, dev_login
 from uwcopilot.security.audit import verify_audit_file
 from uwcopilot.studio.siteiq.context import metro_context
 from uwcopilot.web.app import create_app
-from uwcopilot.web.audit_log import ACTION_EVENT_TYPES, AUDIT_UNAVAILABLE_MESSAGE, PlanAccessLog, owner_actor
+from uwcopilot.web.audit_log import (
+    ACTION_EVENT_TYPES,
+    AUDIT_UNAVAILABLE_MESSAGE,
+    AuditLogNotWritable,
+    PlanAccessLog,
+    owner_actor,
+)
 from uwcopilot.web.auth import Principal
 from uwcopilot.web.services.projects import PROJECTS_NAMESPACE
 from uwcopilot.web.store import owner_digest
@@ -82,6 +91,20 @@ def test_the_log_sits_next_to_the_store_and_is_a_setting(make_settings, tmp_path
     assert make_settings().web_audit_log == tmp_path / "audit" / "plan_access_events.jsonl"
     custom = tmp_path / "elsewhere" / "access.jsonl"
     assert make_settings(UWC_WEB_AUDIT_LOG=str(custom)).web_audit_log == custom
+
+
+def test_the_app_does_not_start_when_the_log_cannot_be_written(make_settings, tmp_path: Path) -> None:
+    """S8-AUD-4: such a log used to be found only at the first plan access: every plan route answered 503 while
+    /api/health said healthy. The startup now checks it and stops with a message naming the setting."""
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("SYNTHETIC: a file where the log's folder should be", encoding="utf-8")
+    settings = make_settings(UWC_WEB_AUDIT_LOG=str(blocker / "plan_access_events.jsonl"))
+    with pytest.raises(AuditLogNotWritable, match="UWC_WEB_AUDIT_LOG"), TestClient(create_app(settings)):
+        pass
+    writable = make_settings(UWC_WEB_AUDIT_LOG=str(tmp_path / "new-folder" / "plan_access_events.jsonl"))
+    with TestClient(create_app(writable)) as client:
+        assert client.get("/api/health").status_code == 200
+    assert (tmp_path / "new-folder" / "plan_access_events.jsonl").is_file()  # created empty by the check
 
 
 def test_every_plan_route_writes_one_event(studio: TestClient) -> None:
@@ -203,6 +226,7 @@ def test_no_calculation_starts_when_its_event_cannot_be_written(
 def test_a_damaged_log_refuses_access_and_the_damage_is_reported(studio: TestClient) -> None:
     plan = create(studio)
     path = access_log(studio).path
+    access_log(studio).audit.head_path.unlink()  # without its head, a torn line cannot be shown to be harmless
     with path.open("ab") as handle:
         handle.write(b'{"cut off')  # a last line without its end: AuditLog refuses to append after it
     response = studio.get(f"/api/studio/projects/{plan['id']}")
@@ -210,3 +234,40 @@ def test_a_damaged_log_refuses_access_and_the_damage_is_reported(studio: TestCli
     problems = verify_audit_file(path, access_log(studio).audit.head())
     assert any("cut off" in problem for problem in problems)
     assert json.loads(path.read_text(encoding="utf-8").splitlines()[0])["action"] == "create_plan"
+
+
+def test_a_torn_line_left_by_a_crash_does_not_block_later_requests(studio: TestClient) -> None:
+    """A crash in the middle of an append: the head still names the last complete event, so the torn bytes are cut."""
+    plan = create(studio)
+    path = access_log(studio).path
+    with path.open("ab") as handle:
+        handle.write(b'{"actor":{"principal_id":"')
+    assert studio.get(f"/api/studio/projects/{plan['id']}").status_code == 200
+    assert actions(studio) == ["create_plan", "read_plan"]
+    assert access_log(studio).audit.verify() == []
+
+
+def test_a_full_disk_refuses_one_request_and_then_access_works_again(
+    studio: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S8-AUD-1: a write cut short by a full disk used to leave half a line, and then every plan route answered 503
+    (deletion included) until someone repaired the file by hand."""
+    plan = create(studio)
+    log_file = access_log(studio).path.stat()
+    real_write = os.write
+
+    def half_a_line_then_full_disk(descriptor: int, data: bytes) -> int:
+        if not os.path.samestat(os.fstat(descriptor), log_file):
+            return real_write(descriptor, data)  # only the access log's disk is full
+        real_write(descriptor, bytes(data[: len(data) // 2]))
+        raise OSError(errno.ENOSPC, "No space left on device (test)")
+
+    monkeypatch.setattr(os, "write", half_a_line_then_full_disk)
+    response = studio.get(f"/api/studio/projects/{plan['id']}")
+    monkeypatch.undo()  # the disk has room again
+    assert response.status_code == 503 and response.json() == {"detail": AUDIT_UNAVAILABLE_MESSAGE}
+    assert access_log(studio).audit.verify() == []  # no half line was left behind
+    assert studio.get(f"/api/studio/projects/{plan['id']}").status_code == 200
+    assert studio.delete("/api/me/data", headers=csrf_headers(studio)).status_code == 200
+    assert actions(studio) == ["create_plan", "read_plan", "delete_all_data"]
+    assert access_log(studio).audit.verify() == []

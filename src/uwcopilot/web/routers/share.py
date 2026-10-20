@@ -5,15 +5,23 @@ POST /api/studio/projects/{project_id}/share  (owner only; X-CSRF-Token)  body {
     The link expires after expires_in_days, or when the plan's retention ends if that is sooner (expires_at says
     which). 404 for an unknown plan id and for another user's plan (as every Studio route); 409 when the plan
     already has 10 working links; 422 for a number of days outside 1..30.
-DELETE /api/studio/projects/{project_id}/share  (owner only; X-CSRF-Token) -> 200 {"revoked": 2}
-    Every link of the plan stops working at once. Deleting the plan, or all your data, revokes its links too.
+DELETE /api/studio/projects/{project_id}/share  (owner only; X-CSRF-Token) -> 200 {"revoked": 2, "pending": false}
+    Every link of the plan stops working at once. "revoked" counts the links that were still working (expired links
+    are not counted). "pending": true means the backup dataset copy of a share record (UWC_STORE=hf_dataset) could
+    not be deleted yet: the link stops working here at once and the deletion is retried, but if the app restarts
+    before the backup deletion goes through, the record comes back from the dataset, so the page must say so and ask
+    the owner to revoke again after a restart. Deleting the plan, or all your data, revokes its links too.
 GET /api/share/{token}  (NO sign-in; rate limited like every /api route) -> 200 SharedPlanOut
     {"plan_name", "business_type" (display name), "metro_id", "metro_name", "money": {MoneyOut, as in a Project},
      "opening_date", "sites": [{"name", "lat", "lon"}], "expires_at", "disclaimer", "notice"}
-    Read-only and minimal: no idea text, no street addresses, nothing about the owner's account.
+    Read-only and minimal: no idea text, no street addresses, nothing about the owner's account. Every site's lat and
+    lon are rounded to 2 decimal places (about 1 km), so a link never gives the exact point of a typed street address;
+    the notice says "approximate location (rounded to about 1 km)".
     A malformed, tampered, expired or revoked token, or one for a deleted plan -> 404 with ONE body for every case:
     {"detail": "This share link is not valid. It may have expired or been revoked."}
-    Headers on every answer: Cache-Control: no-store and Referrer-Policy: no-referrer.
+    Headers on every answer of this route (200, 404, 503): Cache-Control: no-store and Referrer-Policy: no-referrer.
+    Answers made before the route runs (a 429 from the rate limiter) or by the app's error handling (an unexpected
+    500) do not carry them; none of those holds plan data or the token.
 
 The page for a link is /share?t=<token>: a query parameter, because the Next.js app is a static export and cannot
 pre-render a dynamic path segment. The token is a credential: the access log writes /api/share/* instead of the
@@ -81,10 +89,11 @@ def create_share_link(
 def revoke_share_links(
     project_id: ProjectId, principal: SignedIn, store: StoreDep, links: ShareLinksDep, access_log: AccessLog
 ) -> SharesRevoked:
-    """Stop every link to one of your plans."""
+    """Stop every link to one of your plans (pending: the backup copy of a record is not deleted yet)."""
     projects.load(store, principal.owner_id, project_id)
     access_log.record_owner_access(principal, "revoke_share_links", project_id)
-    return SharesRevoked(revoked=links.revoke(store, principal.owner_id, project_id))
+    revoked, pending = links.revoke(store, principal.owner_id, project_id)
+    return SharesRevoked(revoked=revoked, pending=pending)
 
 
 @router.get(

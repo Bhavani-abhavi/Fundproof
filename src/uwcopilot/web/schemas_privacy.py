@@ -4,7 +4,8 @@
 SharedPlanOut is the whole of what a share link shows. It is built field by field from the stored plan
 (services/projects.shared_plan_out), so a new field of the plan is never shared by accident. Left out on purpose
 (data minimization): the founder's idea text, street addresses and the geocoder's matched address and source, the
-plan's id, version and seed, and everything about the owner's account.
+plan's id, version and seed, and everything about the owner's account. Site positions are rounded to 2 decimal
+places (about 1 km), so the exact geocoded point of a street address is not shared either.
 """
 
 from datetime import date, datetime
@@ -33,11 +34,18 @@ class ShareCreated(BaseModel):
 class SharesRevoked(BaseModel):
     """DELETE /api/studio/projects/{id}/share."""
 
-    revoked: int = Field(description="How many working links of the plan stopped working")
+    revoked: int = Field(description="How many working links of the plan stopped working (expired links not counted)")
+    pending: bool = Field(
+        description=(
+            "True: the backup dataset copy of a share record could not be deleted yet. The link stops working here at "
+            "once; if the app restarts before the backup deletion goes through, revoke again"
+        )
+    )
 
 
 class SharedSite(BaseModel):
-    """A candidate site as a share link shows it: its name and map position, never a street address."""
+    """A candidate site as a share link shows it: its name and an approximate map position (lat and lon rounded to 2
+    decimal places, about 1 km), never a street address or the exact point geocoded from it."""
 
     name: str
     lat: float

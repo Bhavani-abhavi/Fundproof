@@ -29,6 +29,16 @@ the copy regularly). A signed or write-once anchor (Cloud KMS, object lock) is P
 Lines. Each event is written as ASCII-only JSON (non-ASCII characters escaped) and the file is split on "\n" only
 (security.fileio.jsonl_lines), so a reviewer-typed U+2028 or U+0085 can never split one event into two lines.
 
+Appending. append() reads only the END of the log (read_tail: backwards in TAIL_CHUNK_BYTES steps until it holds the
+whole last line), so its cost does not grow with the log; it used to read the whole file under the lock on every
+call. An append is all or nothing: if writing the line, syncing it or rewriting the head fails part way (a full
+disk), the log is cut back to its size before the append, so no half-written line is left behind. A crash in the
+middle of a write can still leave a torn last line (no final newline). The next append then checks the head anchor:
+the head is rewritten only AFTER a line is complete, so if it still names the last complete event, the torn bytes
+were never a recorded event; they are cut off and a warning is logged. Any other damage (the head names another
+event, the head is missing or unreadable while complete events exist, the last complete line is not an event) is
+refused with AuditLogError, as before, until a person runs scripts/verify_audit.py.
+
 Privacy. Every reason and every details value goes through observability.redaction (a PiiRedactor: names you give
 it, FEINs, SSNs, e-mails, phones, account numbers, and whole values under keys such as rationale, notes, excerpt).
 Build the AuditLog (or pass a redactor per call) with redactor_for_application(...) to mask the applicant's names.
@@ -43,6 +53,7 @@ Roles are CLAIMED in this demo: actor.role_source says so on every event ("claim
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import re
 from collections.abc import Callable, Mapping
@@ -60,9 +71,14 @@ from uwcopilot.security.config import PRINCIPAL_ID_PATTERN
 from uwcopilot.security.fileio import jsonl_lines, write_private_file
 from uwcopilot.security.rbac import AGENT_PRINCIPAL, UNKNOWN_ROLE, Decision, Principal, Resource
 
+logger = logging.getLogger(__name__)
+
 GENESIS_HASH = "0" * 64
 AUDIT_SCHEMA_VERSION = 1
 MAX_SHORT_TEXT = 200
+# How many bytes append() reads per step from the end of the log (a design choice: several events of a few hundred
+# bytes each, so one read is usually enough).
+TAIL_CHUNK_BYTES = 4096
 
 EVENT_TYPES: tuple[str, ...] = (
     "view",  # a file, a packet's documents or the audit log was shown
@@ -232,7 +248,8 @@ class AuditLog:
     ) -> dict[str, Any]:
         """Chain and append one event (reason and details are PII-redacted first); return the stored event.
 
-        redactor overrides the log's redactor for this event only.
+        redactor overrides the log's redactor for this event only. Reads only the end of the log, and leaves the log
+        as it was when it raises (see "Appending" in the module docstring).
         """
         if event_type not in EVENT_TYPES:
             raise ValueError(f"unknown event type {event_type!r}; known types are {list(EVENT_TYPES)}")
@@ -241,12 +258,17 @@ class AuditLog:
         scrub = redactor if redactor is not None else self._redactor
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # One writer at a time (POSIX file lock): read the tail, chain, append, update the head, then unlock.
-        with self.path.open("a+b") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        # Unbuffered: every byte goes through os.write, so a failed write leaves nothing in a Python buffer.
+        with self.path.open("a+b", buffering=0) as handle:
+            descriptor = handle.fileno()
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
             try:
-                handle.seek(0)
-                existing = handle.read()
-                seq, previous = next_position(existing)
+                size = os.fstat(descriptor).st_size
+                tail = read_tail(descriptor, size)
+                if is_torn(tail):
+                    size = self._cut_torn_tail(descriptor, size, tail)
+                    tail = read_tail(descriptor, size)
+                seq, previous = next_position(tail)
                 event: dict[str, Any] = {
                     "schema_version": AUDIT_SCHEMA_VERSION,
                     "seq": seq,
@@ -263,14 +285,64 @@ class AuditLog:
                     "prev_hash": previous,
                 }
                 event["record_hash"] = event_hash(event)
-                handle.write((event_line(event) + "\n").encode("ascii"))
-                handle.flush()
-                os.fsync(handle.fileno())
                 head = AuditHead(count=seq + 1, head_hash=event["record_hash"], updated_at=event["occurred_at"])
-                write_private_file(self.head_path, head.model_dump_json(indent=2).encode("utf-8"))
+                self._write_event(descriptor, size, (event_line(event) + "\n").encode("ascii"), head)
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
         return event
+
+    def _write_event(self, descriptor: int, size: int, line: bytes, head: AuditHead) -> None:
+        """Append the line, sync it, then rewrite the head; on ANY error cut the log back to `size` and re-raise.
+
+        The bytes past `size` are this writer's own (it holds the lock), so cutting them hides nothing. If the head
+        could not be rewritten, the old head is still in place (write_private_file renames a complete file), so the
+        log and its head stay consistent.
+        """
+        try:
+            write_all(descriptor, line)
+            os.fsync(descriptor)
+            write_private_file(self.head_path, head.model_dump_json(indent=2).encode("utf-8"))
+        except BaseException:
+            undo_append(descriptor, size)
+            raise
+
+    def _cut_torn_tail(self, descriptor: int, size: int, tail: bytes) -> int:
+        """Cut off a torn last line when the head anchor shows it is an unfinished append; return the new size.
+
+        tail is read_tail(descriptor, size) and ends without a newline. The head is rewritten only after a complete
+        line, so a head that names the last COMPLETE event proves the torn bytes were never a recorded event. Any
+        other case is refused with AuditLogError (a person runs scripts/verify_audit.py), so a truncation or an edit
+        is never "repaired" away.
+        """
+        complete_size = size - len(tail) + tail.rfind(b"\n") + 1  # rfind is -1 when the file has no complete line
+        seq, previous = next_position(read_tail(descriptor, complete_size))  # AuditLogError if that line is damaged
+        if not self._head_names(seq, previous):
+            raise AuditLogError(
+                "the audit log's last line is cut off and the head anchor does not show it is an unfinished append; "
+                "run scripts/verify_audit.py before writing"
+            )
+        os.ftruncate(descriptor, complete_size)
+        os.fsync(descriptor)
+        logger.warning(
+            "audit log %s: cut off %d byte(s) of a torn last line (an append that never completed; the head anchor "
+            "names the event before it)",
+            self.path,
+            size - complete_size,
+        )
+        return complete_size
+
+    def _head_names(self, seq: int, previous: str) -> bool:
+        """True when the stored head says the log holds `seq` events ending with record_hash `previous`.
+
+        No head at all matches only an empty log (seq 0): the head is written with the first event.
+        """
+        try:
+            head = self.head()
+        except (OSError, ValueError):  # an unreadable head file (pydantic's ValidationError is a ValueError)
+            return False
+        if head is None:
+            return seq == 0
+        return head.count == seq and head.head_hash == previous
 
     def verify(self, expected_head: AuditHead | None = None) -> list[str]:
         """Problems found in the chain, against the stored head and against an anchor kept elsewhere ([] = intact).
@@ -283,7 +355,7 @@ class AuditLog:
 
 
 def next_position(existing: bytes) -> tuple[int, str]:
-    """(seq, prev_hash) for the next event, from the current file bytes; AuditLogError if the tail is damaged."""
+    """(seq, prev_hash) for the next event, from the file's bytes or its end (read_tail); AuditLogError if damaged."""
     if not existing.strip():
         return 0, GENESIS_HASH
     if not existing.endswith(b"\n"):
@@ -294,6 +366,63 @@ def next_position(existing: bytes) -> tuple[int, str]:
         return int(last["seq"]) + 1, str(last["record_hash"])
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise AuditLogError("the audit log's last event is damaged; run scripts/verify_audit.py") from error
+
+
+def read_range(descriptor: int, start: int, end: int) -> bytes:
+    """Bytes start..end of an open file (os.pread may return fewer bytes than asked, so it loops)."""
+    chunks = []
+    while start < end:
+        chunk = os.pread(descriptor, end - start, start)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        start += len(chunk)
+    return b"".join(chunks)
+
+
+def holds_last_line(tail: bytes) -> bool:
+    """True when tail holds a whole last line: some text, and a line end before that last line."""
+    return bool(tail.strip()) and b"\n" in tail.rstrip(b"\n")
+
+
+def read_tail(descriptor: int, size: int) -> bytes:
+    """The end of the first `size` bytes of the file, just long enough to hold its whole last line.
+
+    Reads backwards in TAIL_CHUNK_BYTES steps, so the cost depends on the length of the last line, not of the log.
+    next_position(read_tail(...)) gives the same answer as next_position() of the whole file: a file that is only
+    whitespace is read to its start, and so is a file with a single line.
+    """
+    tail = b""
+    start = size
+    while start > 0 and not holds_last_line(tail):
+        chunk_start = max(0, start - TAIL_CHUNK_BYTES)
+        tail = read_range(descriptor, chunk_start, start) + tail
+        start = chunk_start
+    return tail
+
+
+def is_torn(tail: bytes) -> bool:
+    """True when the log ends in a torn line: some text after the last newline."""
+    return bool(tail.strip()) and not tail.endswith(b"\n")
+
+
+def write_all(descriptor: int, data: bytes) -> None:
+    """Write every byte of data (os.write may write fewer bytes than asked, for example when the disk fills up)."""
+    view = memoryview(data)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise OSError("the audit log accepted no bytes")
+        view = view[written:]
+
+
+def undo_append(descriptor: int, size: int) -> None:
+    """Cut the log back to `size` after a failed append. A failure here is logged; the next append checks the tail."""
+    try:
+        os.ftruncate(descriptor, size)
+        os.fsync(descriptor)
+    except OSError:
+        logger.exception("could not cut the audit log back after a failed append; the next append checks its tail")
 
 
 def verify_lines(lines: list[str]) -> list[str]:

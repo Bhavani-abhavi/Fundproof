@@ -30,6 +30,9 @@ SPACE_HOST and the OAuth variables a Hugging Face Space injects) are read from t
 | UWC_STATIC_DIR | the Next.js static export folder | frontend/out |
 | UWC_GIT_SHA | commit shown by /api/health (set by the Docker build) | unset |
 
+UWC_WEB_AUDIT_LOG defaults to a folder next to UWC_STORE_DIR (read_web_audit_log). In a Space, point it at persistent
+storage: the container disk does not survive a restart (with the dataset store, leaving it unset logs an error).
+
 Every default above is a design choice for a small prototype, not a measured value. The 8-hour session matches the
 default Hugging Face OAuth token lifetime (480 minutes, huggingface.co/docs/hub/spaces-oauth, read 2026-10-12).
 """
@@ -273,8 +276,43 @@ def read_store(read: SettingReader) -> tuple[StoreBackend, str | None, SecretStr
 
 
 def default_audit_log(store_dir: Path) -> Path:
-    """The plan access log's default place: data/web/store -> data/web/audit/plan_access_events.jsonl."""
+    """The plan access log's default place, next to the store folder: data/web/store -> data/web/audit/....
+
+    Never inside the store folder (the dataset store mirrors that folder). A store folder that sits directly in the
+    filesystem root (UWC_STORE_DIR=/data) is refused here: "next to it" would be /audit, a folder the app's user
+    cannot create, and every plan route would answer 503. Set UWC_WEB_AUDIT_LOG instead, or use a store folder one
+    level down (UWC_STORE_DIR=/data/store puts the log at /data/audit/plan_access_events.jsonl).
+    """
+    parent = Path(os.path.abspath(store_dir)).parent  # absolute, '..' removed, symlinks kept (as the path is used)
+    if parent == Path(parent.anchor):
+        raise WebSettingsError(
+            f"UWC_STORE_DIR={store_dir} sits directly in the filesystem root, so the plan access log cannot go next "
+            f"to it ({parent / AUDIT_LOG_FOLDER}); set UWC_WEB_AUDIT_LOG to a writable file outside the store "
+            "folder, or use a store folder one level down (for example /data/store)."
+        )
     return store_dir.parent / AUDIT_LOG_FOLDER / AUDIT_LOG_FILE_NAME
+
+
+def read_web_audit_log(read: SettingReader, store_dir: Path, is_space: bool, backend: StoreBackend) -> Path:
+    """UWC_WEB_AUDIT_LOG, or its default next to the store folder.
+
+    In a Space with the dataset store, an unset UWC_WEB_AUDIT_LOG is logged as an error at startup: the default
+    path is on the container disk unless the store folder is on persistent storage, and the container disk does not
+    survive a restart. The plans then come back from the dataset while the access log starts again empty.
+    """
+    raw = read("UWC_WEB_AUDIT_LOG")
+    if raw:
+        return Path(raw)
+    path = default_audit_log(store_dir)
+    if is_space and backend == "hf_dataset":
+        logger.error(
+            "UWC_WEB_AUDIT_LOG is not set, so the plan access log is %s. A Space's container disk does not survive a "
+            "restart: unless that path is on persistent storage, the access log and its head anchor start again "
+            "empty after every restart, while the plans come back from the dataset. Set UWC_WEB_AUDIT_LOG to a file "
+            "on persistent storage, outside UWC_STORE_DIR.",
+            path,
+        )
+    return path
 
 
 def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, str] | None = None) -> WebSettings:
@@ -300,7 +338,6 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
     warn_about_unpinned_entries(role_allowlist, is_space)
     static_dir = read("UWC_STATIC_DIR")
     store_dir = Path(read("UWC_STORE_DIR") or DEFAULT_STORE_DIR)
-    audit_log = read("UWC_WEB_AUDIT_LOG")
     values = {
         "app_version": package_version(),
         "git_sha": read("UWC_GIT_SHA"),
@@ -316,7 +353,7 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
         "fernet_keys": fernet_keys,
         "store_backend": backend,
         "store_dir": store_dir,
-        "web_audit_log": Path(audit_log) if audit_log else default_audit_log(store_dir),
+        "web_audit_log": read_web_audit_log(read, store_dir, is_space, backend),
         "hf_dataset_repo": dataset_repo,
         "hf_token": hf_token,
         "hf_flush_every_s": read_int(read, "UWC_HF_FLUSH_EVERY_S", 300),

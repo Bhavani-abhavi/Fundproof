@@ -259,6 +259,89 @@ def test_delete_owner_reports_a_failed_remote_delete(tmp_path: Path, key: bytes)
     assert remote_object_paths(api) == []
 
 
+class LostAnswerHubApi(FakeHubApi):
+    """A Hub that applies a commit but whose answer is lost once (a read timeout): the client sees an error."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lose_next_answer = False
+
+    def create_commit(self, repo_id: str, operations: list[Any], *, commit_message: str, repo_type: str) -> None:
+        super().create_commit(repo_id, operations, commit_message=commit_message, repo_type=repo_type)
+        if self.lose_next_answer:
+            self.lose_next_answer = False
+            raise TimeoutError("the commit landed, but its answer was lost (test)")
+
+
+@pytest.mark.parametrize("deletion", ["delete", "delete_owner", "purge_expired"])
+def test_a_commit_that_landed_but_reported_an_error_is_still_deleted(tmp_path: Path, key: bytes, deletion: str) -> None:
+    """S8-DEL-1: such files were never counted as remote, so a deletion skipped the Hub, reported success, and the
+    data came back at the next restart."""
+    api = LostAnswerHubApi()
+    store = make_store(tmp_path / "work", api, key)
+    store.put_json(OWNER, "projects", "p1", {"note": MARKER}, retention_days=1)
+    api.lose_next_answer = True
+    with pytest.raises(TimeoutError):
+        store.flush()
+    assert len(remote_object_paths(api)) == 2  # the commit landed although the call failed
+
+    if deletion == "delete":
+        assert store.delete(OWNER, "projects", "p1") is True
+    elif deletion == "delete_owner":
+        assert store.delete_owner(OWNER) == 1
+    else:
+        real_clock = store.local.clock
+        store.local.clock = lambda: real_clock() + timedelta(days=2)
+        assert [meta.key for meta in store.purge_expired()] == ["p1"]
+
+    assert remote_object_paths(api) == []  # deleted on the Hub at once, no DeletionPending
+    assert store.flush() == 0  # nothing is uploaded again
+    restarted = make_store(tmp_path / "restarted", api, key)
+    with pytest.raises(ObjectNotFound):
+        restarted.get_json(OWNER, "projects", "p1")
+
+
+def test_a_plan_written_after_a_pending_delete_all_survives_the_retry(tmp_path: Path, key: bytes) -> None:
+    """S8-DEL-2: the pending delete used to name the owner's whole folder, so its retry also deleted a plan the owner
+    created after "Delete all my data" (here: the delete fails, the next commit succeeds)."""
+    api = FakeHubApi()
+    store = make_store(tmp_path / "work", api, key)
+    store.put_json(OWNER, "projects", "old", {"note": "SYNTHETIC plan deleted by delete-all"})
+    store.flush()
+    api.fail_deletes = True
+    with pytest.raises(DeletionPending):
+        store.delete_owner(OWNER)
+    store.put_json(OWNER, "projects", "new", {"note": "SYNTHETIC plan written after delete-all"})
+    store.flush()  # the retried delete fails again, the new plan is uploaded
+    digest = owner_digest(OWNER)
+    assert f"{digest}/projects/new.enc" in api.files
+
+    api.fail_deletes = False
+    store.flush()  # the retry goes through
+
+    assert remote_object_paths(api) == [f"{digest}/projects/new.enc", f"{digest}/projects/new.meta.json"]
+    assert store.get_json(OWNER, "projects", "new") == {"note": "SYNTHETIC plan written after delete-all"}
+    assert not any("/old." in path for revision in api.history for path in revision)  # and erased from history
+
+
+def test_a_restart_before_the_retry_keeps_a_plan_written_after_delete_all(tmp_path: Path, key: bytes) -> None:
+    """S8-DEL-2, restart path: restore() re-applies the pending delete to this disk; it used to wipe the folder."""
+    api = FakeHubApi()
+    first = make_store(tmp_path / "work", api, key)
+    first.put_json(OWNER, "projects", "old", {"note": "SYNTHETIC plan deleted by delete-all"})
+    first.flush()
+    api.fail_deletes = True
+    with pytest.raises(DeletionPending):
+        first.delete_owner(OWNER)
+    first.put_json(OWNER, "projects", "new", {"note": "SYNTHETIC plan written after delete-all"})
+
+    second = make_store(tmp_path / "work", api, key)  # a restart on the same disk, the Hub still refusing deletes
+
+    assert second.get_json(OWNER, "projects", "new") == {"note": "SYNTHETIC plan written after delete-all"}
+    with pytest.raises(ObjectNotFound):
+        second.get_json(OWNER, "projects", "old")  # the snapshot brought it back; the pending delete removed it
+
+
 def test_a_failed_squash_is_retried_at_the_next_flush(tmp_path: Path, key: bytes) -> None:
     api = FakeHubApi()
     store = make_store(tmp_path / "work", api, key)

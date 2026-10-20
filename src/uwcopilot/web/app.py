@@ -6,7 +6,7 @@
 Startup refuses unsafe settings (see settings.py): the dev login inside a Space, a Space without a session
 secret, or the dataset store without an encryption key. The store is opened in the lifespan (startup) and the
 dataset store flushes its last batch at shutdown. Every access to a founder's plan is written to the plan access log
-(audit_log.py, UWC_WEB_AUDIT_LOG) before it happens.
+(audit_log.py, UWC_WEB_AUDIT_LOG) before it happens; the startup stops when that log cannot be written.
 
 Retention: expired objects are deleted once at startup and then every UWC_PURGE_EVERY_S seconds (default one
 hour) by a background task, so data does not outlive UWC_RETENTION_DAYS by more than that interval while the app
@@ -108,7 +108,9 @@ async def purge_periodically(store: Store, every_s: float) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Open the store (unless a test injected one), purge expired data now and periodically, close at shutdown."""
+    """Check the access log can be written, open the store (unless a test injected one), purge expired data now and
+    periodically, close at shutdown. An access log that cannot be written stops the startup (AuditLogNotWritable)."""
+    app.state.access_log.check_writable()
     opened_here = app.state.store is None
     if opened_here:
         app.state.store = open_store(app.state.settings, app.state.hub_api)

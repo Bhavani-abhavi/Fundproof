@@ -24,6 +24,13 @@ delete only adds a commit: every earlier revision would still hold the deleted f
 Steps 2-3 run at most once per flush interval, so a burst of deletions makes one squash. They also run once after
 every startup, so a squash that a restart interrupted still happens.
 
+Which files are deleted on the Hub: every file this process knows is there or may be there ("remote paths"): the
+files listed at startup, the files of every commit that succeeded, and the files of every commit that FAILED, because
+a commit can land on the Hub although the call reports an error (an answer lost to a timeout). Deleting a file that
+turns out not to be there is not an error: HfApi.delete_files deletes only the files that exist, and create_commit
+skips a commit with nothing in it (huggingface_hub 1.33.0). "Delete all my data" names the owner's files one by one
+rather than their folder, so a retry never deletes a file the owner wrote after the deletion.
+
 If step 1 fails (the Hub is unreachable), the paths are kept as "pending deletes": in memory and in a small file
 next to the working copy (.pending_deletes.json, never uploaded). They are retried at every flush, and restore()
 re-applies them after the snapshot download, so an object deleted on this disk does not come back when the
@@ -207,8 +214,13 @@ class HFDatasetStore:
                         repo_type="dataset",
                     )
                 except Exception:
+                    paths = [operation.path_in_repo for operation in operations]
                     with self._lock:
-                        self._dirty.update(operation.path_in_repo for operation in operations)
+                        self._dirty.update(paths)
+                        # The commit may have landed although the call failed (for example its answer was lost to a
+                        # timeout), so these paths count as remote: deleting them before the next flush then
+                        # deletes them on the Hub too (see "Deleting" in the module docstring).
+                        self._remote_paths.update(paths)
                     raise
                 with self._lock:
                     self._remote_paths.update(operation.path_in_repo for operation in operations)
@@ -308,12 +320,17 @@ class HFDatasetStore:
             target.unlink(missing_ok=True)
 
     def _mark_dirty(self, owner: str, namespace: str, key: str) -> None:
-        """Remember an object's files for the next upload (call with the lock held)."""
+        """Remember an object's files for the next upload (call with the lock held).
+
+        A pending delete of the same files is dropped (the new version replaces them on the Hub), and the history is
+        squashed at the next flush, because the old version is still in it.
+        """
         paths = self.local.relative_paths(owner, namespace, key)
         self._dirty.update(paths)
         if self._pending_deletes.intersection(paths):
             self._pending_deletes.difference_update(paths)
             self._write_pending_deletes()
+            self._history_needs_erasing = True
 
     # ---- Store interface ----
 
@@ -363,14 +380,19 @@ class HFDatasetStore:
             return found
 
     def delete_owner(self, owner: str) -> int:
-        """Delete the owner's folder locally and on the Hub right away; DeletionPending as in delete()."""
+        """Delete the owner's folder locally and their files on the Hub right away; DeletionPending as in delete().
+
+        The Hub delete names the owner's remote FILES, not their folder: if it has to wait for a retry, a plan the
+        owner creates in the meantime (a new file in the same folder) is not deleted by that retry, and a restart
+        before the retry does not remove it from this disk either.
+        """
         with self._hub_lock:
             with self._lock:
                 count = self.local.delete_owner(owner)
                 prefix = owner_digest(owner) + "/"
                 self._dirty = {path for path in self._dirty if not path.startswith(prefix)}
-                remote = any(path.startswith(prefix) for path in self._remote_paths)
-            if remote and not self._delete_remote([prefix]):
+                remote = sorted(path for path in self._remote_paths if path.startswith(prefix))
+            if not self._delete_remote(remote):
                 message = "the owner's data is deleted here; the dataset copy is deleted at a retry"
                 raise DeletionPending(message, deleted_objects=count)
             return count

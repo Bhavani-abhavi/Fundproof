@@ -13,6 +13,7 @@ Modules:
 - geocoding.py      the Census Geocoder for real-metro addresses: its own small pool, per-user limits, no cache;
 - studio_options.py metros with their honest mode, business types, levers, defaults (GET /api/studio/options);
 - projects.py       a founder's plans: validation, storage per user (encrypted Store), versions, deletion;
+- deletions.py      when each account last deleted all its data (in memory), so a slow create from before saves nothing;
 - studio_runs.py    SiteIQ, feasibility, path to approval, area suggestions, the tract map layer;
 - lender_demo.py    the Lender Desk demo: the agent to its human checkpoint, DEMO decisions per user.
 
@@ -25,6 +26,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, Request
 
 from uwcopilot.web.services.compute import ComputeRunner
+from uwcopilot.web.services.deletions import DataDeletions
 from uwcopilot.web.services.geocoding import GeocodeService
 from uwcopilot.web.services.http import add_error_handlers
 from uwcopilot.web.services.lender_demo import LenderDemoService
@@ -39,6 +41,7 @@ class WebServices:
     compute: ComputeRunner
     geocoding: GeocodeService
     lender: LenderDemoService
+    deletions: DataDeletions
 
 
 def build_services(settings: ServiceSettings | None = None) -> WebServices:
@@ -49,6 +52,7 @@ def build_services(settings: ServiceSettings | None = None) -> WebServices:
         compute=ComputeRunner(chosen),
         geocoding=GeocodeService(),
         lender=LenderDemoService(chosen.demo_dirs),
+        deletions=DataDeletions(),
     )
 
 

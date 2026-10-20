@@ -10,21 +10,26 @@ import hashlib
 import hmac
 import logging
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi.testclient import TestClient
+from test_web_hf_store import FakeHubApi
 from test_web_studio import FakeGeocoder, first_verified_metro
 from web_helpers import csrf_headers, dev_login
 
+from uwcopilot.studio.data.geocode import GeocodeMatch
 from uwcopilot.studio.metros import load_metro
 from uwcopilot.studio.siteiq.context import metro_context
 from uwcopilot.web.app import create_app
-from uwcopilot.web.crypto import CryptoError
+from uwcopilot.web.crypto import CryptoError, Encryptor, generate_key
 from uwcopilot.web.routers.share import SHARE_LINK_NOT_FOUND
+from uwcopilot.web.services.errors import Conflict
 from uwcopilot.web.services.share_links import (
     MAX_LINKS_PER_PLAN,
     SHARES_NAMESPACE,
@@ -33,7 +38,7 @@ from uwcopilot.web.services.share_links import (
     ShareLinks,
     share_key,
 )
-from uwcopilot.web.store import owner_digest
+from uwcopilot.web.store import LocalFileStore, owner_digest
 
 SYNTHETIC_METRO = "synthetic_metro"
 IDEA_TEXT = "SYNTHETIC idea: a laundromat next to the night market."
@@ -136,8 +141,9 @@ def test_a_valid_link_shows_the_plan_read_only_without_sign_in(studio: TestClien
     assert shared["metro_id"] == SYNTHETIC_METRO and "SYNTHETIC" in shared["metro_name"]
     assert shared["money"] == plan["money"] and shared["opening_date"] == plan["opening_date"]
     assert shared["sites"] == [
-        {"name": site["label"], "lat": site["lat"], "lon": site["lon"]} for site in plan["sites"]
+        {"name": site["label"], "lat": round(site["lat"], 2), "lon": round(site["lon"], 2)} for site in plan["sites"]
     ]
+    assert "approximate location (rounded to about 1 km)" in shared["notice"]
     assert shared["expires_at"] == created["expires_at"]
     assert shared["disclaimer"].startswith("Educational planning tool") and "read-only" in shared["notice"]
     assert IDEA_TEXT not in response.text and plan["id"] not in response.text and "founder_a" not in response.text
@@ -166,17 +172,26 @@ def test_a_link_never_outlives_the_plans_retention(make_settings) -> None:
         assert datetime.fromisoformat(created["expires_at"]) <= datetime.fromisoformat(plan["expires_at"])
 
 
+class PreciseGeocoder(FakeGeocoder):
+    """The fake geocoder, answering with a precise (SYNTHETIC) point, as the Census Geocoder interpolates one."""
+
+    def geocode(self, address: str) -> GeocodeMatch:
+        return replace(super().geocode(address), lat=29.761234, lon=-95.369876)
+
+
 def test_no_street_address_is_shared(studio: TestClient) -> None:
+    """SL-2: the shared position used to be the exact geocoded point of the address; it is now rounded (~1 km)."""
     metro_id = first_verified_metro()
     if metro_id is None:
         pytest.skip("no real metro has a verified county list in this checkout")
-    studio.app.state.services.geocoding.geocoder = FakeGeocoder(load_metro(metro_id).county_geoids()[0])
+    studio.app.state.services.geocoding.geocoder = PreciseGeocoder(load_metro(metro_id).county_geoids()[0])
     plan = create_plan(studio, plan_body(metro_id=metro_id, sites=[{"label": "Main St", "address": ADDRESS}]))
     assert plan["sites"][0]["address"] == ADDRESS
+    assert (plan["sites"][0]["lat"], plan["sites"][0]["lon"]) == (29.761234, -95.369876)  # the owner sees it all
     response = view(studio, share(studio, plan["id"])["token"])
     assert response.status_code == 200
-    assert response.json()["sites"] == [{"name": "Main St", "lat": 29.0, "lon": -95.0}]
-    for hidden in (ADDRESS, "TEST ADDRESS", "census_geocoder", "fake geocoder"):
+    assert response.json()["sites"] == [{"name": "Main St", "lat": 29.76, "lon": -95.37}]
+    for hidden in (ADDRESS, "TEST ADDRESS", "census_geocoder", "fake geocoder", "29.7612", "95.3698"):
         assert hidden not in response.text, hidden
 
 
@@ -233,12 +248,65 @@ def test_a_revoked_link_is_refused(studio: TestClient) -> None:
     other_plan = create_plan(studio)
     kept = share(studio, other_plan["id"])["token"]
     response = studio.delete(f"/api/studio/projects/{plan['id']}/share", headers=csrf_headers(studio))
-    assert response.status_code == 200 and response.json() == {"revoked": 2}
+    assert response.status_code == 200 and response.json() == {"revoked": 2, "pending": False}
     assert_invalid(view(studio, first))
     assert_invalid(view(studio, second))
     assert view(studio, kept).status_code == 200  # another plan's link is untouched
     again = studio.delete(f"/api/studio/projects/{plan['id']}/share", headers=csrf_headers(studio))
-    assert again.json() == {"revoked": 0}
+    assert again.json() == {"revoked": 0, "pending": False}
+
+
+def test_a_revoke_whose_backup_deletion_is_pending_says_so(make_settings) -> None:
+    """SL-1: the dataset store could not delete the record's backup copy yet. The link stops working here at once,
+    but the answer says pending (it used to say nothing), because a restart before the retry would bring it back."""
+    hub = FakeHubApi()
+    settings = make_settings(
+        UWC_DEV_AUTH="1",
+        UWC_STORE="hf_dataset",
+        UWC_HF_DATASET_REPO="astra6/fundproof-data",
+        HF_TOKEN="hf_test_token",
+        UWC_FERNET_KEY=generate_key(),
+    )
+    with TestClient(create_app(settings, hub_api=hub)) as client:
+        dev_login(client, "founder_a", "founder")
+        plan = create_plan(client)
+        token = share(client, plan["id"])["token"]
+        store = client.app.state.store
+        store.flush()
+        record_paths = [path for path in hub.files if f"/{SHARES_NAMESPACE}/" in path]
+        assert len(record_paths) == 2
+        hub.fail_deletes = True
+
+        response = client.delete(f"/api/studio/projects/{plan['id']}/share", headers=csrf_headers(client))
+
+        assert response.status_code == 200 and response.json() == {"revoked": 1, "pending": True}
+        assert_invalid(view(client, token))  # it stops working here at once
+        assert all(path in hub.files for path in record_paths)  # ... while the backup copy still exists
+        hub.fail_deletes = False
+        store.flush()  # the retry
+        assert not any(path in hub.files for path in record_paths)
+
+
+def test_expired_links_are_neither_counted_nor_reported_as_revoked(tmp_path: Path) -> None:
+    """SL-4: a record's retention is whole days rounded up, so it can outlive its link by up to a day. Such links
+    used to count against the cap (409) and in the revoke count."""
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    clock = {"now": now}
+    store = LocalFileStore(tmp_path / "store", Encryptor([generate_key().encode()]), clock=lambda: clock["now"])
+    links = ShareLinks("SYNTHETIC-test-session-secret-0123456789", clock=lambda: clock["now"])
+    owner = "dev:founder_a"
+    plan_expires_at = now + timedelta(days=4, hours=12)  # every 7-day link is cut to the plan's retention end
+    for _ in range(MAX_LINKS_PER_PLAN):
+        links.create(store, owner, "SYNTHETIC-plan", 7, plan_expires_at)
+    with pytest.raises(Conflict):
+        links.create(store, owner, "SYNTHETIC-plan", 7, plan_expires_at)
+
+    clock["now"] = plan_expires_at + timedelta(hours=3)  # every link has expired ...
+    assert len(store.list(owner, SHARES_NAMESPACE)) == MAX_LINKS_PER_PLAN  # ... but the records are kept to day 5
+
+    assert links.links_for(store, owner, "SYNTHETIC-plan") == []
+    assert links.revoke(store, owner, "SYNTHETIC-plan") == (0, False)
+    links.create(store, owner, "SYNTHETIC-plan", 7, None)  # no 409: none of the old links works
 
 
 def test_deleting_the_plan_kills_its_links(studio: TestClient) -> None:
@@ -370,6 +438,7 @@ def test_a_view_is_refused_when_its_event_cannot_be_written(
     response = view(studio, token)
     assert response.status_code == 503 and "SYNTHETIC shared plan" not in response.text
     assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"  # every answer of the route: 200, 404 and 503
 
 
 def test_the_request_log_never_holds_a_token(studio: TestClient, caplog: pytest.LogCaptureFixture) -> None:

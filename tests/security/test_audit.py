@@ -4,9 +4,14 @@ The chain must detect an edited, a deleted, a reordered and a truncated log: one
 (rewriting the log AND its head file is only caught by an anchor kept elsewhere, which is checked as a prefix so the
 log may grow after it was taken). Also: line separators typed by a reviewer (U+2028, U+2029, U+0085) never split an
 event, an interrupted audit_decision_record is completed on replay, and decision record ids survive the redactor.
+Appending reads only the end of the log, a failed append leaves the log as it was, and a torn last line is cut off
+only when the head anchor shows it is an unfinished append.
 """
 
+import errno
 import json
+import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,13 +23,17 @@ from uwcopilot.agent.applications import canonical_json
 from uwcopilot.agent.decision_record import DecisionLog
 from uwcopilot.agent.runner import resume_run, start_run
 from uwcopilot.observability.redaction import PiiRedactor, redactor_for_application
+from uwcopilot.security import audit as audit_module
 from uwcopilot.security.audit import (
     GENESIS_HASH,
+    TAIL_CHUNK_BYTES,
     AuditHead,
     AuditLog,
     AuditLogError,
     audit_decision_record,
     event_hash,
+    next_position,
+    read_tail,
     record_access,
 )
 from uwcopilot.security.crypto import Encryptor, generate_key
@@ -152,6 +161,189 @@ def test_append_refuses_a_log_with_a_cut_off_last_line(tmp_path: Path) -> None:
     log.path.write_text(log.path.read_text(encoding="utf-8")[:-10], encoding="utf-8")
     with pytest.raises(AuditLogError, match="cut off"):
         log.append("view", UNDERWRITER, "view_file", FILE, "allowed")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Appending: cost, failed writes, torn tails
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def large_log(tmp_path: Path, events: int) -> AuditLog:
+    """A log of `events` chained view events and its head, written in one go (appending them one by one is slow)."""
+    log = filled_log(tmp_path, 1)
+    lines = rechain(lines_of(log) * events)
+    write_lines(log, lines)
+    head = AuditHead(count=events, head_hash=json.loads(lines[-1])["record_hash"])
+    log.head_path.write_text(head.model_dump_json(), encoding="utf-8")
+    return log
+
+
+def bytes_read_by_this_thread() -> int | None:
+    """Linux's count of bytes this thread read through read-like system calls, or None where it is not available."""
+    try:
+        text = Path("/proc/thread-self/io").read_text(encoding="ascii")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("rchar:"):
+            return int(line.split()[1])
+    return None
+
+
+def append_one(log: AuditLog) -> dict:
+    """Append one view event."""
+    return log.append("view", UNDERWRITER, "view_file", FILE, "allowed", "shown")
+
+
+def test_append_reads_only_the_end_of_a_large_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SL-3 / S8-AUD-2: an append used to read the whole file under the lock. Counted in bytes, never timed."""
+    log = large_log(tmp_path, 5000)
+    append_one(log)  # warm-up: imports and caches, so the counted append does only its own work
+    size = log.path.stat().st_size
+    assert size > 200 * TAIL_CHUNK_BYTES
+    real_pread = os.pread
+    preads: list[int] = []
+
+    def counting_pread(descriptor: int, count: int, offset: int) -> bytes:
+        data = real_pread(descriptor, count, offset)
+        preads.append(len(data))
+        return data
+
+    monkeypatch.setattr(os, "pread", counting_pread)
+    before = bytes_read_by_this_thread()
+    event = append_one(log)
+    after = bytes_read_by_this_thread()
+    monkeypatch.undo()
+
+    assert 0 < sum(preads) <= TAIL_CHUNK_BYTES  # one step back from the end holds the last event
+    if before is not None and after is not None:  # every read system call of this thread, not only os.pread
+        assert after - before < 16 * TAIL_CHUNK_BYTES < size
+    assert event["seq"] == 5001
+    assert log.verify() == []
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"",
+        b"\n\n",
+        b"  \n",
+        b"\n  \n",
+        b'{"seq": 0, "record_hash": "a"}\n',
+        b'{"seq": 0, "record_hash": "a"}\n{"seq": 1, "record_hash": "b"}\n\n\n',
+        b'{"seq": 0, "record_hash": "a"}\n{"seq": 1, "record_hash": "' + b"c" * 3 * TAIL_CHUNK_BYTES + b'"}\n',
+        b'{"seq": 0, "record_hash": "a"}\n' + b" " * 2 * TAIL_CHUNK_BYTES + b"\n",
+        b'{"seq": 0, "record_hash": "a"}\n{"seq": 1, "rec',
+        b"not json\n",
+    ],
+)
+def test_reading_only_the_end_gives_the_same_position_as_reading_everything(tmp_path: Path, content: bytes) -> None:
+    path = tmp_path / "log.jsonl"
+    path.write_bytes(content)
+    with path.open("rb", buffering=0) as handle:
+        tail = read_tail(handle.fileno(), len(content))
+    assert content.endswith(tail)
+    try:
+        expected: object = next_position(content)
+    except AuditLogError as error:
+        expected = str(error)
+    try:
+        got: object = next_position(tail)
+    except AuditLogError as error:
+        got = str(error)
+    assert got == expected
+
+
+def test_a_write_cut_short_by_a_full_disk_leaves_no_partial_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S8-AUD-1: the log used to end in half a line, and every later append was refused until a person fixed it."""
+    log = filled_log(tmp_path, 2)
+    before, head_before = log.path.read_bytes(), log.head()
+    real_write = os.write
+    calls: list[int] = []
+
+    def short_write_then_full_disk(descriptor: int, data: bytes) -> int:
+        calls.append(len(data))
+        if len(calls) == 1:
+            return real_write(descriptor, bytes(data[: len(data) // 2]))  # half the line reaches the disk
+        raise OSError(errno.ENOSPC, "No space left on device (test)")
+
+    monkeypatch.setattr(os, "write", short_write_then_full_disk)
+    with pytest.raises(OSError, match="No space left"):
+        append_one(log)
+    monkeypatch.undo()
+
+    assert len(calls) == 2  # half the line was written, then the disk was full
+    assert log.path.read_bytes() == before and log.head() == head_before
+    assert log.verify() == []
+    assert append_one(log)["seq"] == 2  # once there is room again, appending works without a repair by hand
+    assert log.verify() == []
+
+
+def test_a_head_that_cannot_be_rewritten_takes_the_new_line_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = filled_log(tmp_path, 2)
+    before, head_before = log.path.read_bytes(), log.head()
+
+    def failing_write_private_file(path: Path, data: bytes) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device (test)")
+
+    monkeypatch.setattr(audit_module, "write_private_file", failing_write_private_file)
+    with pytest.raises(OSError, match="No space left"):
+        append_one(log)
+    monkeypatch.undo()
+    assert log.path.read_bytes() == before and log.head() == head_before
+    assert log.verify() == []  # the log and its head still agree
+
+
+# The first bytes of an event line, as a crash in the middle of a write leaves them (no final newline).
+TORN_LINE = b'{"actor":{"principal_id":"uw.one","role":"underwriter"},"det'
+
+
+def test_a_torn_last_line_from_a_crash_is_cut_off_at_the_next_append(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    log = filled_log(tmp_path, 3)
+    intact = log.path.read_bytes()
+    with log.path.open("ab") as handle:
+        handle.write(TORN_LINE)  # the head still names event 3 of 3: the torn bytes were never an event
+    assert any("cut off" in problem for problem in log.verify())
+
+    with caplog.at_level(logging.WARNING, logger="uwcopilot.security.audit"):
+        event = append_one(log)
+
+    assert event["seq"] == 3
+    assert log.path.read_bytes().startswith(intact) and TORN_LINE not in log.path.read_bytes()
+    assert log.verify() == []
+    assert any("torn last line" in record.getMessage() for record in caplog.records)
+
+
+def test_a_torn_first_line_is_cut_off_when_no_event_was_ever_written(tmp_path: Path) -> None:
+    log = AuditLog(tmp_path / "audit.jsonl", clock=fixed_clock)
+    log.path.write_bytes(TORN_LINE)  # no head: the very first append never completed
+    assert append_one(log)["seq"] == 0
+    assert log.verify() == []
+
+
+@pytest.mark.parametrize("damage", ["head_names_a_later_event", "head_missing", "head_unreadable"])
+def test_a_torn_last_line_is_refused_when_the_head_does_not_vouch_for_it(tmp_path: Path, damage: str) -> None:
+    """A torn line that is not just an unfinished append (a cut-off event, a removed head) is never "repaired"."""
+    log = filled_log(tmp_path, 3)
+    if damage == "head_names_a_later_event":
+        log.path.write_bytes(log.path.read_bytes()[:-30])  # the last event was cut in the middle
+    else:
+        with log.path.open("ab") as handle:
+            handle.write(TORN_LINE)
+        if damage == "head_missing":
+            log.head_path.unlink()
+        else:
+            log.head_path.write_text("{not json", encoding="utf-8")
+    damaged = log.path.read_bytes()
+    with pytest.raises(AuditLogError, match="cut off"):
+        append_one(log)
+    assert log.path.read_bytes() == damaged  # nothing was cut
 
 
 def test_record_access_logs_views_and_denials(tmp_path: Path) -> None:

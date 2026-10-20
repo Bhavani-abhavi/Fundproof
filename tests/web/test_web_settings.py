@@ -1,6 +1,8 @@
-"""Tests for web settings: defaults, the dev-login refusal inside a Space, secrets and the role allowlist."""
+"""Tests for web settings: defaults, the dev-login refusal inside a Space, secrets, the role allowlist and where the
+plan access log goes."""
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -133,6 +135,42 @@ def test_invalid_values_are_refused() -> None:
         load_web_settings(env_file=None, environ={"UWC_RATE_LIMIT_IP_BURST": "0"})
     with pytest.raises(WebSettingsError, match="UWC_STORE"):
         load_web_settings(env_file=None, environ={"UWC_STORE": "s3"})
+
+
+def test_a_store_folder_in_the_filesystem_root_needs_an_explicit_access_log() -> None:
+    """S8-AUD-4: UWC_STORE_DIR=/data used to put the access log at /audit, a folder the app's user cannot create."""
+    root_store = {"UWC_SESSION_SECRET": SECRET, "UWC_STORE_DIR": "/uwc-test-store-SYNTHETIC"}
+    with pytest.raises(WebSettingsError, match="UWC_WEB_AUDIT_LOG"):
+        load_web_settings(env_file=None, environ=root_store)
+    explicit = load_web_settings(
+        env_file=None, environ={**root_store, "UWC_WEB_AUDIT_LOG": "/uwc-test-store-SYNTHETIC/../log.jsonl"}
+    )
+    assert explicit.web_audit_log == Path("/uwc-test-store-SYNTHETIC/../log.jsonl")
+    nested = load_web_settings(
+        env_file=None, environ={**root_store, "UWC_STORE_DIR": "/uwc-test-store-SYNTHETIC/store"}
+    )
+    assert nested.web_audit_log == Path("/uwc-test-store-SYNTHETIC/audit/plan_access_events.jsonl")
+
+
+def test_an_access_log_on_the_container_disk_is_reported_in_a_space(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """S8-AUD-3: with the dataset store the plans survive a restart; an access log on the container disk does not."""
+    dataset = {
+        "UWC_STORE": "hf_dataset",
+        "UWC_HF_DATASET_REPO": "astra6/fundproof-data",
+        "HF_TOKEN": "hf_test",
+        "UWC_FERNET_KEY": generate_key(),
+        "UWC_STORE_DIR": str(tmp_path / "store"),
+    }
+    warning = "UWC_WEB_AUDIT_LOG is not set"
+    with caplog.at_level(logging.ERROR, logger="uwcopilot.web.settings"):
+        load_web_settings(env_file=None, environ={**dataset, "UWC_SESSION_SECRET": SECRET})  # not a Space
+        persistent = {**SPACE_ENV, **dataset, "UWC_WEB_AUDIT_LOG": str(tmp_path / "persistent" / "log.jsonl")}
+        load_web_settings(env_file=None, environ=persistent)
+        assert warning not in caplog.text
+        load_web_settings(env_file=None, environ={**SPACE_ENV, **dataset})
+    assert warning in caplog.text and "does not survive a restart" in caplog.text
 
 
 def test_labels_match_the_studio_package() -> None:
