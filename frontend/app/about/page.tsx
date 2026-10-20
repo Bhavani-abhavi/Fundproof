@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { SystemStatus } from "@/components/about/system-status";
 import { PageIntro } from "@/components/layout/page-intro";
+import { DeleteMyData } from "@/components/session/delete-my-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DISCLAIMER, OWNERS, PRODUCT_NAME, REPO_URL } from "@/lib/config";
 
@@ -18,7 +19,8 @@ export const metadata: Metadata = {
  * real-city address, and the data-snapshot sources only where a city's snapshot is on the server (the container
  * image has none, so real cities run in limited mode there). Details: docs/studio/data_sources.md.
  * "Your information" is the short privacy notice (docs/studio/privacy.md), with links to the full privacy policy
- * (/privacy/) and the Terms of Use (/terms/); error messages point here.
+ * (/privacy/) and the Terms of Use (/terms/), and the "Delete all my data" control (#delete-data); error messages
+ * point here.
  */
 interface DataSource {
   name: string;
@@ -212,7 +214,8 @@ export default function AboutPage() {
           </li>
           <li>
             Your plans and demo decisions are stored encrypted, under your account only, and deleted automatically after
-            the server&apos;s retention period (each plan&apos;s page shows its date), or sooner when you delete them.
+            the server&apos;s retention period (each plan&apos;s page shows its date), or sooner when you delete them: one plan
+            on its page, or everything with &ldquo;Delete all my data&rdquo; below.
           </li>
           <li>
             When you type a street address for a real city, the server sends that address to the US Census Bureau
@@ -224,6 +227,7 @@ export default function AboutPage() {
           </li>
           <li>Logs hold the request path with personal patterns masked, never what you typed.</li>
         </ul>
+        <DeleteMyData />
       </section>
 
       <section aria-labelledby="team-title" className="flex flex-col gap-3">

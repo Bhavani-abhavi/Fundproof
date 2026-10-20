@@ -10,6 +10,7 @@ import {
   isOfflineError,
   SIGNED_OUT,
   type ConfigResponse,
+  type DeleteMyDataResult,
   type MeResponse,
   type Role,
 } from "@/lib/api";
@@ -42,6 +43,8 @@ export interface SessionValue {
   error: ApiError | null;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** "Delete all my data": DELETE /api/me/data, then the session is read again (the user is signed out). */
+  deleteMyData: () => Promise<DeleteMyDataResult>;
   devLogin: (username: string, role: Role) => Promise<void>;
 }
 
@@ -132,6 +135,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await refresh();
   }, [refresh]);
 
+  const deleteMyData = useCallback(async () => {
+    const result = await api.deleteMyData();
+    if (!result.signed_out) {
+      // The contract's answer always clears the session cookie. A 202 "pending" answer may not have, so sign out here
+      // too: after deleting everything the user must not stay signed in.
+      try {
+        await api.logout();
+      } catch {
+        // The refresh below shows who the server still sees as signed in.
+      }
+    }
+    clearCsrfToken();
+    await refresh();
+    return result;
+  }, [refresh]);
+
   const devLogin = useCallback(
     async (username: string, role: Role) => {
       await api.devLogin(username, role);
@@ -148,9 +167,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       disclaimer: state.config?.disclaimer || DISCLAIMER,
       refresh,
       signOut,
+      deleteMyData,
       devLogin,
     }),
-    [state, refresh, signOut, devLogin],
+    [state, refresh, signOut, deleteMyData, devLogin],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
