@@ -3,7 +3,7 @@
 Fundproof is a two-sided lending copilot for small-business loans. The **Lender Desk** (the **Underwriting
 Copilot**) turns a document packet into a cited, stress-tested recommendation that a person decides on, and
 **Founder Studio** gives the borrower the same lens: site scoring, a Monte Carlo feasibility check under the lender's
-stress test, a path-to-approval search and (in progress) a lender-ready package.
+stress test, a path-to-approval search and a lender-ready package that hands off to the Lender Desk.
 
 **How it was built:** Rahul Vajja and Bhavani Adula wrote the specs, build prompts and evaluation protocol and
 review the work; Claude Code is the implementer. Each built phase has a walkthrough so both owners can explain it
@@ -76,7 +76,7 @@ Not wired yet: the web Lender Desk runs the Phase 5 agent on SYNTHETIC **structu
 | S3 Monte Carlo feasibility: 1,000 paths over 36 months, with the lender's stress test | Built + measured (2,400 SYNTHETIC worlds per condition) | Well-specified worlds: Brier for P(year-2 DSCR >= 1.25) 0.1405 [0.1321, 0.1493] vs 0.4796 [0.4596, 0.4992] for a single-point forecast (in-sample base rate 0.1567 [0.1473, 0.1664]); misspecified worlds 0.1433 [0.1351, 0.1523] vs 0.4938 [0.4729, 0.5154] (base rate 0.1557). Simulated, based on stated assumptions | [studio_feasibility_metrics.json](results/studio_feasibility_metrics.json) | [S3](docs/studio/walkthrough_s3.md) |
 | S4 founder ledger + provenance-locked narrative | Built + measured (template); LLM smoke only | Template: 1,673/1,673 narrative numbers traced to the ledger on 36 scenarios (by construction; measured before the S4 review fixes; after them the 6 SYNTHETIC-city scenarios gave 285/285 and the 30 real-city ones were not re-run). Wrong-slot blind spot: the three checks together flag 5/60 (Wilson 95% [0.0361, 0.1807]). `qwen2.5-1.5b-instruct-f16`: none of 12 drafts (6 first tries, 6 retries) passed the grammar, so all 6 fell back to the template (pre-review, approximate run; see S4 walkthrough, section 6.2) | [template](results/studio_evidence_metrics.json), [after review](results/studio_evidence_metrics_synthetic.json), [Ollama](results/studio_evidence_metrics_ollama.json) | [S4](docs/studio/walkthrough_s4.md) |
 | S5 path to approval: the smallest 1-2 plan changes that reach the simulated loan targets | Built + measured | Found a path for 0.1026 [0.0784, 0.1306] of the 536 SYNTHETIC plans that needed a change; a path that also meets the SYNTHETIC startup program's equity and loan rules (NSP-3.1, NSP-8.1) for 0.0392 [0.0243, 0.0578] | [studio_path_metrics.json](results/studio_path_metrics.json) | [S5](docs/studio/walkthrough_s5.md) |
-| S6 lender-ready package (PDF + JSON) and handoff to the Lender Desk | In progress | Code and offline tests are committed as unreviewed work in progress, including the founder-to-lender handoff (`studio/package/handoff.py`, which stops at the agent's human checkpoint). `scripts/eval_studio_handoff.py` has not been run, so there is no results file. No walkthrough. The web app does not call the handoff | none | [plan](docs/studio/founder_studio_build_prompts.md), [open questions](docs/studio/open_questions.md) |
+| S6 lender-ready package (PDF + JSON) and handoff to the Lender Desk | Built + measured (template memo); review fixes applied | 36 golden SYNTHETIC packages: 30,681 printed numbers read back, 0 untraced in the package text and 0 in the PDF text; 36/36 reached the agent's human checkpoint and 0 decisions were recorded without a human (Wilson 95% [0.0, 0.0964]). 35 SYNTHETIC startup applications: 35/35 agree with their hand-written labels (Wilson 95% [0.9011, 1.0]; labels written against the same SYNTHETIC program). The 30 real-metro packages ran in limited mode (no data snapshot). The web app does not call the handoff | [studio_handoff_metrics.json](results/studio_handoff_metrics.json) | [S6](docs/studio/walkthrough_s6.md), [sources](docs/studio/sources.md) |
 
 ### Web app and deployment
 
@@ -155,7 +155,7 @@ flowchart LR
         S3 --> S5["S5 path to approval<br/>smallest plan changes"]
         S3 --> S4["S4 founder ledger<br/>slot-locked narrative"]
         S5 --> S4
-        S4 --> S6["S6 lender-ready package<br/>IN PROGRESS"]
+        S4 --> S6["S6 lender-ready package<br/>PDF + JSON + application"]
     end
     subgraph Desk["Lender Desk (Underwriting Copilot)"]
         P["Document packet, PDF"] --> D["docintel<br/>OCR, cited fields, contradictions"]
@@ -165,7 +165,7 @@ flowchart LR
         A --> H{"Human checkpoint"}
         H --> R2["Decision record<br/>made by a person"]
     end
-    S6 -.->|"handoff: unreviewed code, not run"| A
+    S6 -->|"handoff: stops at the human checkpoint"| A
     D -.->|"not wired yet"| A
 ```
 
@@ -180,7 +180,7 @@ flowchart LR
 | `src/uwcopilot/provenance` | SIG numbers, numeric checker, slot grammar and renderer |
 | `src/uwcopilot/llm`, `rag`, `tools`, `mcp_server`, `observability` | GenAI layer: providers, Qdrant retrieval, tool allow-list, MCP server, tracing |
 | `src/uwcopilot/governance` | Results provenance, freeze proofs, LLM migration gate |
-| `src/uwcopilot/studio` | Founder Studio: data fabric, SiteIQ, feasibility, path to approval, narrative, package (in progress) |
+| `src/uwcopilot/studio` | Founder Studio: data fabric, SiteIQ, feasibility, path to approval, narrative, package and handoff |
 | `src/uwcopilot/web`, `frontend/` | Web app v0.1: FastAPI backend and Next.js static export |
 
 The full plans are [docs/build_prompts.md](docs/build_prompts.md) (lender side) and
@@ -343,8 +343,8 @@ and a 60-row Overture places sample (see [docs/studio/data_sources.md](docs/stud
 - No hosted LLM (Anthropic, OpenAI) has been called, and the local Qwen runs are smoke tests. Memo quality, answer
   faithfulness, LLM cost and LLM latency are not measured.
 - The web Lender Desk runs the agent on structured SYNTHETIC applications; the packet path (document intelligence
-  and the Evidence-to-Action Engine) runs from the command line only. The founder-to-lender handoff exists only as
-  unreviewed code: not run, not measured, and not used by the web app.
+  and the Evidence-to-Action Engine) runs from the command line only. The founder-to-lender handoff runs from the
+  command line (`make studio-handoff`) on SYNTHETIC packages only; the web app does not use it.
 - Founder Studio probabilities are simulation estimates ("simulated, based on stated assumptions"), validated only
   on SYNTHETIC worlds and cities written by the same author. There is no real-world accuracy claim, and the five
   real metros run in limited mode.
@@ -355,10 +355,11 @@ and a 60-row Overture places sample (see [docs/studio/data_sources.md](docs/stud
   agent leave model PD unknown ([domain gap](docs/risk_service.md#the-domain-gap-why-the-agent-still-records-no-model-score)).
 - Lending Club has no protected attributes, so the fairness analysis is a demonstration on a different dataset
   (UCI German Credit).
-- Most results files that carry a `git_dirty` flag (18 of 21) record `git_dirty: true` (written from an uncommitted
-  tree). The three clean ones are the SIG file, the post-review Studio S4 SYNTHETIC-city run and the Studio S4 Ollama
-  run, whose provenance the S4 walkthrough says to treat as approximate. The older agent, KYC, RAG, risk and MCP files
-  have no dirty flag. The Phase 2 and Phase 4 walkthroughs list their clean-tree re-runs as still pending.
+- Most results files that carry a `git_dirty` flag (18 of 22) record `git_dirty: true` (written from an uncommitted
+  tree). The four clean ones are the SIG file, the post-review Studio S4 SYNTHETIC-city run, the Studio S4 Ollama
+  run (whose provenance the S4 walkthrough says to treat as approximate) and the Studio S6 handoff run. The older
+  agent, KYC, RAG, risk and MCP files have no dirty flag. The Phase 2 and Phase 4 walkthroughs list their clean-tree
+  re-runs as still pending.
 - Not deployed and no production users. The web app was measured only on a local container. Nothing here has been
   validated for real lending or insurance decisions.
 - Business-value numbers, when added, are measured on the synthetic test set against a defined baseline. They
