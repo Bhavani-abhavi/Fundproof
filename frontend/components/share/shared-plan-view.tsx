@@ -25,8 +25,10 @@ import { useApiResource } from "@/lib/use-api";
  * plan) with the same 404, so the page shows one message for all of them, and the same message when the address has
  * no token at all. Other failures (server not reachable, too many requests) use the usual ProblemNotice.
  *
- * The page shows only what the answer holds: the plan's figures with who wrote each one, the city and business type,
- * the opening date, the sites' names and map positions, when the link stops working, the disclaimer and the notice.
+ * The page shows only what the answer holds: the plan's name if it has one (else "<business type> in <city>"), the
+ * city and business type, the plan's figures with who wrote each one, the opening date, the sites' names and
+ * approximate locations (the server rounds latitude and longitude to 2 decimal places, about 1 km, so they are shown
+ * with 2 decimals), when the link stops working, the disclaimer and the notice.
  */
 
 /** The plan's money as tiles, each with its status chip. Labels speak of "the owner": the reader did not write them. */
@@ -115,7 +117,9 @@ function SharedPlanBody({ plan }: { plan: SharedPlan }) {
         <h2 id="shared-sites-title" className="font-serif text-2xl font-semibold">
           Candidate sites
         </h2>
-        <p className="text-sm text-muted-foreground">Names and map positions only; street addresses are never shared.</p>
+        <p className="text-sm text-muted-foreground">
+          Names and approximate locations (rounded to about 1 km) only; street addresses and exact points are never shared.
+        </p>
         <ol className="grid gap-2 text-sm sm:grid-cols-3">
           {plan.sites.map((site, index) => (
             <li key={`${index}-${site.name}`} className="flex items-start gap-2">
@@ -125,7 +129,7 @@ function SharedPlanBody({ plan }: { plan: SharedPlan }) {
               <span className="flex min-w-0 flex-col">
                 <span className="break-words font-medium">{site.name}</span>
                 <span className="figure-nums text-xs text-muted-foreground">
-                  Map position {formatNumber(site.lat, 4)}, {formatNumber(site.lon, 4)}
+                  Approximate location {formatNumber(site.lat, 2)}, {formatNumber(site.lon, 2)}
                 </span>
               </span>
             </li>

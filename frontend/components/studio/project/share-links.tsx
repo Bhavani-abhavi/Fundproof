@@ -16,14 +16,25 @@ import { absoluteShareUrl, SHARE_DAY_CHOICES, SHARE_DAYS_DEFAULT, shareApi, type
  *
  * - "Create share link" POSTs {expires_in_days} and shows the full link, when it stops working, and a Copy button.
  *   There is no list of earlier links (the API has none), so a link is shown only right after it is created.
- * - "Revoke all share links" DELETEs every link of this plan at once and says how many the server revoked.
+ * - "Revoke all share links" DELETEs every link of this plan at once and says how many the server revoked. When the
+ *   server answers `pending` (the backup dataset copy of a link's record could not be deleted yet), the text says the
+ *   app's server stops accepting the links at once, but that a restart before the backup deletion goes through could
+ *   bring them back, so revoke again then; it never says that a link no longer works.
  * What a link shows is decided by the server (lib/share-api.ts); the text here says it in plain words.
  */
 
-/** What the status line says after "Revoke all share links". */
-function revokedText(count: number): string {
+/** The status line after "Revoke all share links" (count: the working links revoked; expired ones are not counted). */
+function revokedText(count: number, pending: boolean): string {
   if (count === 0) {
-    return "There was no share link to revoke.";
+    return "There was no working share link to revoke.";
+  }
+  if (pending) {
+    const links = count === 1 ? "1 share link" : `${count} share links`;
+    return (
+      `Revoked ${links}. The app's server stops accepting revoked links at once, but the backup copy of their records ` +
+      "could not be deleted yet: if the app restarts before that deletion goes through, a revoked link could work " +
+      "again. Revoke again then."
+    );
   }
   if (count === 1) {
     return "Revoked 1 share link. It no longer works.";
@@ -65,7 +76,7 @@ export function ShareLinks({ projectId }: { projectId: string }) {
     try {
       const answer = await shareApi.revokeAll(projectId);
       setLink(null);
-      setMessage(revokedText(answer.revoked));
+      setMessage(revokedText(answer.revoked, answer.pending));
     } catch (error) {
       setProblem(describeProblem(error, "Revoking the share links"));
     } finally {
@@ -95,8 +106,9 @@ export function ShareLinks({ projectId }: { projectId: string }) {
           Share this plan
         </h3>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Anyone with the link can see this plan&apos;s figures, its city and business type, and its site names and map
-          positions, without signing in, until the link expires. Not your idea text, your street addresses or anything
+          Anyone with the link can see, without signing in and until the link expires, this plan&apos;s name if you gave it
+          one (the text you typed), its business type and city, its money figures, its opening date, and its site names
+          and approximate site locations (rounded to about 1 km). Not your idea text, your street addresses or anything
           about your account. A new link does not stop earlier ones; &ldquo;Revoke all share links&rdquo; stops them all, and
           so does deleting the plan.
         </p>
