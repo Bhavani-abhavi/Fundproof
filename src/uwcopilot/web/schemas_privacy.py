@@ -33,7 +33,13 @@ class ShareCreated(BaseModel):
 class SharesRevoked(BaseModel):
     """DELETE /api/studio/projects/{id}/share."""
 
-    revoked: int = Field(description="How many working links of the plan stopped working")
+    revoked: int = Field(description="How many working links of the plan stopped working (expired links not counted)")
+    pending: bool = Field(
+        description=(
+            "True: the backup dataset copy of a share record could not be deleted yet. The link stops working here at "
+            "once; if the app restarts before the backup deletion goes through, revoke again"
+        )
+    )
 
 
 class SharedSite(BaseModel):

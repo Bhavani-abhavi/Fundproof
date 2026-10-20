@@ -3,7 +3,7 @@
     links = ShareLinks(session_secret)            # create_app() keeps one on app.state.share_links
     link = links.create(store, owner, project_id, expires_in_days=7, plan_expires_at=meta.expires_at)
     link = links.resolve(store, token)            # ShareLinkInvalid for every kind of bad link
-    links.revoke(store, owner, project_id)        # how many links of the plan stopped working
+    revoked, pending = links.revoke(store, owner, project_id)   # links that stopped working; backup still pending?
 
 The token. A Fernet token (AES-128-CBC + HMAC-SHA256 from `cryptography`, as web/crypto.py uses for data at rest)
 of the JSON {"v": 1, "owner": owner id, "project_id", "link_id", "expires_at": Unix seconds}. Its key is DERIVED
@@ -23,7 +23,9 @@ from the session secret: HMAC-SHA256(key = UWC_SESSION_SECRET, message = "fundpr
 The record. Making a link also stores {link_id, project_id, created_at, expires_at} in the OWNER's own store
 namespace "shares" (key = the link id; encrypted like every object; retention = until the link expires). A token
 works only while its record exists, so:
-- revoking deletes the plan's records (the tokens still decrypt, but no longer work);
+- revoking deletes the plan's records (the tokens still decrypt, but no longer work). With the dataset store the
+  backup copy of a record may not be deletable yet (DeletionPending); revoke() then says "pending" so the owner is
+  told (see revoke());
 - deleting the plan revokes its links first, and "delete all my data" deletes this namespace with the rest;
 - links are known only inside their owner's store folder; nothing lists the links of all users.
 Expiry is checked twice, from the token and from the record, and the plan must still exist (an expired or deleted
@@ -153,14 +155,20 @@ class ShareLinks:
             raise ShareLinkInvalid("the token does not decrypt to a share payload") from error
 
     def links_for(self, store: Store, owner: str, project_id: str) -> list[ShareRecord]:
-        """The plan's unexpired link records (the store hides expired ones)."""
+        """The plan's WORKING link records.
+
+        The store hides records past their retention, but a record's retention is whole days rounded up, so it can
+        outlive its link by up to a day: a record whose link has expired (expires_at <= now) is skipped too, so it is
+        neither counted against MAX_LINKS_PER_PLAN nor reported as revoked. The store purges it later.
+        """
+        now = self.clock()
         records = []
         for meta in store.list(owner, SHARES_NAMESPACE):
             try:
                 record = ShareRecord.model_validate(store.get_json(owner, SHARES_NAMESPACE, meta.key))
             except ObjectNotFound:
                 continue  # deleted or expired since the listing
-            if record.project_id == project_id:
+            if record.project_id == project_id and record.expires_at > now:
                 records.append(record)
         return records
 
@@ -224,17 +232,22 @@ class ShareLinks:
             expires_at=min(token_expires_at, record.expires_at),
         )
 
-    def revoke(self, store: Store, owner: str, project_id: str) -> int:
-        """Delete every link record of the plan; returns how many links stopped working.
+    def revoke(self, store: Store, owner: str, project_id: str) -> tuple[int, bool]:
+        """Delete every working link record of the plan; returns (how many links stopped working, pending).
 
-        With the dataset store a DeletionPending still counts: the record is gone from the working copy that resolve()
-        reads, so the link no longer works; the dataset copy (ids and dates only) is deleted at a retry.
+        pending is True when the dataset store could not delete the backup copy of a record yet (DeletionPending).
+        The link still stops working at once: the record is gone from the working copy that resolve() reads, and the
+        backup deletion is retried. But that retry is kept on the container disk, which in a Space does not survive a
+        restart: if the app restarts before the backup deletion goes through, the record comes back from the dataset
+        and the link works again until it expires. So the caller must tell the owner, who should revoke again after a
+        restart.
         """
         revoked = 0
+        pending = False
         for record in self.links_for(store, owner, project_id):
             try:
                 store.delete(owner, SHARES_NAMESPACE, record.link_id)
             except DeletionPending:
-                pass
+                pending = True
             revoked += 1
-        return revoked
+        return revoked, pending
