@@ -70,8 +70,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-          # The whole history, not only the last commit, so every commit is scanned.
+          # The whole history, not only the last commit, so every commit is scanned (merge commits too: the Makefile
+          # passes -m to git log, see GITLEAKS_LOG_OPTS).
           fetch-depth: 0
 
-      - name: Scan every commit for secrets (gitleaks)
+      - name: Scan every commit, merge commits included, for secrets (gitleaks)
         run: make scan-secrets

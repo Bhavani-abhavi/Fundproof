@@ -528,7 +528,10 @@ verify-audit:  ## Check the audit log chain + head anchor (UWC_AUDIT_LOG; no key
 #   while, add `--ignore-vuln <ID>` to PIP_AUDIT_IGNORE with a comment giving the package, the reason and a review date.
 # scan-secrets: a pinned gitleaks release (Linux x64), checked against its SHA-256, scans every commit with the
 #   default rules and the narrow allow-lists in .gitleaks.toml. `detect` is the older name of `gitleaks git`; it
-#   scans the git history the same way. --redact keeps any flagged value out of the output.
+#   scans the git history the same way. --redact keeps any flagged value out of the output. GITLEAKS_LOG_OPTS adds
+#   -m: plain `git log -p` shows no diff for a merge commit, so without it a key typed in while resolving a merge
+#   conflict would never be scanned. With -m each merge commit is compared with each of its parents, so a finding
+#   from a merged branch is reported again at the merge commit.
 
 .PHONY: audit-deps scan-secrets
 
@@ -540,6 +543,8 @@ GITLEAKS_VERSION := 8.30.1
 GITLEAKS_SHA256 := 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 GITLEAKS_RELEASE := https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)
 GITLEAKS_TARBALL := gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
+# git log options for the history scan: every ref, the full history, and merge commits diffed against each parent.
+GITLEAKS_LOG_OPTS := --all --full-history -m
 
 audit-deps:  ## Check the locked Python packages for known vulnerabilities (pip-audit; network)
 	tmp=$$(mktemp -d) && uv export --locked --format requirements-txt --no-emit-project > "$$tmp/requirements.txt" && \
@@ -547,9 +552,10 @@ audit-deps:  ## Check the locked Python packages for known vulnerabilities (pip-
 		--progress-spinner off $(PIP_AUDIT_IGNORE); \
 	status=$$?; rm -rf "$$tmp"; exit $$status
 
-scan-secrets:  ## Scan every commit for secrets (pinned gitleaks, SHA-256 checked; Linux x64; network)
+scan-secrets:  ## Scan every commit, merges included, for secrets (pinned gitleaks, SHA-256 checked; Linux x64; network)
 	tmp=$$(mktemp -d) && curl -sSfL -o "$$tmp/gitleaks.tar.gz" $(GITLEAKS_RELEASE)/$(GITLEAKS_TARBALL) && \
 	echo "$(GITLEAKS_SHA256)  $$tmp/gitleaks.tar.gz" | sha256sum --check --strict && \
 	tar -xzf "$$tmp/gitleaks.tar.gz" -C "$$tmp" gitleaks && \
-	"$$tmp/gitleaks" detect --source . --config .gitleaks.toml --redact --verbose --no-banner; \
+	"$$tmp/gitleaks" detect --source . --config .gitleaks.toml --log-opts="$(GITLEAKS_LOG_OPTS)" \
+		--redact --verbose --no-banner; \
 	status=$$?; rm -rf "$$tmp"; exit $$status
