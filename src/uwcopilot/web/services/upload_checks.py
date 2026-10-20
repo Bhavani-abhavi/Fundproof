@@ -7,10 +7,17 @@ sent anywhere or read by anything else:
     if not verdict.allowed:
         answer 422 with verdict.message (it never repeats the file's text) and drop the bytes
 
-`text` is the file's text as the route extracted it (the text layer of a PDF, OCR of an image). For CSV and plain-text
-files the module decodes `data` itself, and also screens `text` when it is given. text=None for a PDF or an image
-means "not read", and such a file is refused (fail closed): a file whose text was never read cannot be shown to be
-free of SSNs, tax returns and account numbers. An image that holds no text is passed with text="".
+`text` is the file's text as the route extracted it. For a PDF that is the text layer of every page PLUS the OCR text
+of every page that has no text layer: a scanned page is an image, so its text layer is empty (docintel/pdftext.py
+treats a page with fewer than MIN_TEXT_CHARS = 20 characters as having no text layer and sends it to OCR). For an
+image it is the OCR text. For CSV and plain-text files the module decodes `data` itself, and also screens `text` when
+it is given. text=None for a PDF or an image means "not read", and such a file is refused (fail closed): a file whose
+text was never read cannot be shown to be free of SSNs, tax returns and account numbers. A PDF whose text holds fewer
+than MIN_PDF_TEXT_CHARS (20) visible characters is refused the same way: that is what a scanned PDF (a paper Form
+1040 or bank statement put through a scanner) gives when nobody ran OCR on it, and the screen cannot tell that from
+a PDF that was OCR'd and holds almost no text. An image that holds no text (a site photo) is passed with text="":
+an image has no text layer, so a text for it can only come from OCR; the route must pass text=None for an image it
+did not OCR.
 
 What is refused (refusal_codes, always in this order). The first four are gates: a file stopped at a gate is not
 read further and gets exactly one code.
@@ -43,7 +50,11 @@ read further and gets exactly one code.
    The declared type is compared without its parameters ("text/csv; charset=utf-8" is text/csv) and ignoring case,
    and so is the extension (only the last one counts: "statement.pdf.exe" is an .exe). An empty or generic declared
    type (application/octet-stream) is refused.
-4. unreadable: a PDF, PNG or JPEG given with text=None (see above).
+4. unreadable: a PDF, PNG or JPEG given with text=None, or a PDF whose whole text holds fewer than
+   MIN_PDF_TEXT_CHARS visible characters (whitespace and invisible characters are not counted; see above). 20 is the
+   number docintel/pdftext.py uses for one page: a page with fewer printed characters has no text layer. The
+   short-PDF test runs after the text cap of rule 1, so it never counts more than MAX_TEXT_CHARS characters. A PDF
+   that is only a photo is refused too: upload the photo as a PNG or JPEG.
 
 Then the content: the file name and the file's text. Each is read as written and after a light normalization
 (invisible characters removed, NFKC, lookalike letters and typographic dashes folded; uwcopilot.security.normalize),
@@ -111,6 +122,9 @@ Known limits (a future route must not rely on this screen for more):
 - the magic-byte check proves only the first bytes; it is not a parser, so a malformed or polyglot file can pass.
   Open uploads only with a maintained parser, never execute them, and serve them back only as downloads;
 - the screen is only as good as the text it is given: an OCR error ("Form 1O40" with a letter O) defeats it;
+- the PDF minimum (gate 4) applies to the whole text, not page by page: a PDF with one typed page and one scanned
+  page passes on the typed page alone unless the route OCRs the scanned page, and so does a scan with a few words of
+  text layer on top. Only the route can see the pages, so it must OCR every page without a text layer;
 - the markers are in English and for US forms only.
 """
 
@@ -131,6 +145,7 @@ from uwcopilot.web.services.text_checks import PRIVACY_NOTICE, SPACED_SSN
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB, a design choice
 MAX_TEXT_CHARS = 1_000_000  # characters of text screened per file, a design choice (module docstring, rule 1)
 MAX_FILENAME_CHARS = 255  # the longest file name common file systems allow (ext4, NTFS), a design choice
+MIN_PDF_TEXT_CHARS = 20  # docintel.pdftext.MIN_TEXT_CHARS, applied to a PDF's whole text (gate 4), a design choice
 NEAR_CHARS = 300  # how close "Department of the Treasury - Internal Revenue Service" must be to a form number
 
 RefusalCode = Literal[
@@ -445,11 +460,24 @@ def texts_to_screen(kind: FileKind, data: bytes, text: str | None) -> list[str] 
     return texts
 
 
+def too_little_pdf_text(kind: FileKind, text: str | None) -> bool:
+    """Gate 4 for a PDF: True when its text holds fewer than MIN_PDF_TEXT_CHARS visible characters.
+
+    Whitespace and invisible characters are not counted. Such a PDF is most likely a scan whose pages are images and
+    were never OCR'd (module docstring), so its content was not read.
+    """
+    if kind.name != "pdf" or text is None:
+        return False
+    visible = strip_invisible("".join(text.split()))
+    return len(visible) < MIN_PDF_TEXT_CHARS
+
+
 def screen_upload(filename: str, content_type: str, data: bytes, text: str | None) -> UploadVerdict:
     """Screen one uploaded file: the size, emptiness, type and readability gates, then its name and text.
 
     filename and content_type are what the client declared; data is the file's bytes; text is the text the route
-    extracted from a PDF or an image (None when it did not read it). See the module docstring for every rule.
+    extracted from a PDF (its text layer plus OCR of every page without one) or an image (its OCR text), None when it
+    did not read it. See the module docstring for every rule.
     """
     if len(data) > MAX_UPLOAD_BYTES or len(filename) > MAX_FILENAME_CHARS:
         return gate_verdict("too_large")
@@ -463,6 +491,8 @@ def screen_upload(filename: str, content_type: str, data: bytes, text: str | Non
         return gate_verdict("unreadable", kind)
     if any(len(item) > MAX_TEXT_CHARS for item in texts):
         return gate_verdict("too_large", kind)
+    if too_little_pdf_text(kind, text):
+        return gate_verdict("unreadable", kind)
     name_as_words = code_as_words(filename)
     codes = content_refusals([filename, name_as_words, *texts])
     patterns = injection_patterns([name_as_words, *texts])

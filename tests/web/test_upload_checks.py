@@ -20,6 +20,7 @@ from uwcopilot.web.services.upload_checks import (
     MAX_FILENAME_CHARS,
     MAX_TEXT_CHARS,
     MAX_UPLOAD_BYTES,
+    MIN_PDF_TEXT_CHARS,
     NEAR_CHARS,
     ROUTING_PREFIXES,
     UPLOAD_LABELED_ACCOUNT,
@@ -39,6 +40,7 @@ SYNTHETIC_1040_HEADER = (
     "Form 1040 Department of the Treasury—Internal Revenue Service\n"
     "U.S. Individual Income Tax Return 2025 (SYNTHETIC sample, not a real return)\n"
 )
+PDF_PAGE_TEXT = "SYNTHETIC business plan, page 1"  # more visible characters than MIN_PDF_TEXT_CHARS
 
 
 def text_file(body: str, name: str = "notes.txt") -> UploadVerdict:
@@ -47,8 +49,9 @@ def text_file(body: str, name: str = "notes.txt") -> UploadVerdict:
 
 
 def pdf_with_text(text: str, name: str = "plan.pdf") -> UploadVerdict:
-    """Screen a SYNTHETIC PDF whose extracted text is text."""
-    return screen_upload(name, "application/pdf", PDF, text)
+    """Screen a SYNTHETIC PDF whose extracted text is text followed by a line of ordinary page text (PDF_PAGE_TEXT),
+    so the PDF always holds enough text to be screened (gate 4)."""
+    return screen_upload(name, "application/pdf", PDF, f"{text}\n{PDF_PAGE_TEXT}")
 
 
 def with_check_digit(stem: str) -> str:
@@ -65,8 +68,8 @@ def with_check_digit(stem: str) -> str:
 @pytest.mark.parametrize(
     ("filename", "content_type", "data", "text", "kind"),
     [
-        ("plan.pdf", "application/pdf", PDF, "", "pdf"),
-        ("Plan.PDF", "application/pdf", PDF, "", "pdf"),
+        ("plan.pdf", "application/pdf", PDF, PDF_PAGE_TEXT, "pdf"),
+        ("Plan.PDF", "application/pdf", PDF, PDF_PAGE_TEXT, "pdf"),
         ("site.png", "image/png", PNG, "", "png"),
         ("site.jpg", "image/jpeg", JPEG, "", "jpeg"),
         ("site.JPEG", "image/jpeg", JPEG, "", "jpeg"),
@@ -112,9 +115,9 @@ def test_other_types_and_disagreeing_files_are_refused_as_file_type(
 
 def test_the_size_cap_is_checked_on_the_bytes_before_anything_else() -> None:
     at_cap = PDF + b"0" * (MAX_UPLOAD_BYTES - len(PDF))
-    assert screen_upload("plan.pdf", "application/pdf", at_cap, "").allowed
+    assert screen_upload("plan.pdf", "application/pdf", at_cap, PDF_PAGE_TEXT).allowed
     over = at_cap + b"0"
-    assert screen_upload("plan.pdf", "application/pdf", over, "").refusal_codes == ("too_large",)
+    assert screen_upload("plan.pdf", "application/pdf", over, PDF_PAGE_TEXT).refusal_codes == ("too_large",)
     # The size gate comes first: a too-large file of a refused type is reported as too large.
     assert screen_upload("tool.exe", "application/octet-stream", over, None).refusal_codes == ("too_large",)
 
@@ -148,13 +151,51 @@ def test_an_empty_file_is_refused() -> None:
         ("a.jpg", "image/jpeg", JPEG, "jpeg"),
     ],
 )
-def test_a_pdf_or_image_whose_text_was_not_read_is_refused_but_empty_text_passes(
+def test_a_pdf_or_image_whose_text_was_not_read_is_refused(
     filename: str, content_type: str, data: bytes, kind: str
 ) -> None:
     unread = screen_upload(filename, content_type, data, None)
     assert unread.refusal_codes == ("unreadable",) and unread.file_kind == kind
     assert "could not be read" in unread.message
-    assert screen_upload(filename, content_type, data, "").allowed  # read, and it holds no text
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type", "data"), [("site.png", "image/png", PNG), ("a.jpg", "image/jpeg", JPEG)]
+)
+def test_an_image_whose_ocr_found_no_text_passes(filename: str, content_type: str, data: bytes) -> None:
+    # A site photo: an image has no text layer, so text="" can only mean OCR ran and found nothing.
+    assert screen_upload(filename, content_type, data, "").allowed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",  # a scanned page: an image, with an empty text layer and no OCR
+        " \n\n \t \n",  # the page breaks of a multi-page scan
+        "\u200b" * (MIN_PDF_TEXT_CHARS * 2),  # zero-width spaces: invisible characters are not counted
+        "x" * (MIN_PDF_TEXT_CHARS - 1),
+        "Page 1 (SYNTHETIC)",  # a page number stamped on a scan
+    ],
+)
+def test_a_pdf_with_almost_no_text_is_refused_as_unreadable(text: str) -> None:
+    # UP-2: the usual SYNTHETIC case is a scanned paper return whose route passed the empty text layer.
+    verdict = screen_upload("scan.pdf", "application/pdf", PDF, text)
+    assert verdict.refusal_codes == ("unreadable",) and verdict.file_kind == "pdf"
+    assert "could not be read" in verdict.message
+
+
+def test_a_pdf_with_just_enough_text_is_screened() -> None:
+    assert screen_upload("plan.pdf", "application/pdf", PDF, "x" * MIN_PDF_TEXT_CHARS).allowed
+    # The same scan with its pages OCR'd, as the module docstring tells the route to do: the text is screened.
+    verdict = screen_upload("scan.pdf", "application/pdf", PDF, SYNTHETIC_1040_HEADER)
+    assert verdict.refusal_codes == ("tax_return",)
+
+
+def test_the_pdf_minimum_is_the_threshold_docintel_uses_for_a_page_without_a_text_layer() -> None:
+    pytest.importorskip("pdfplumber")
+    from uwcopilot.docintel.pdftext import MIN_TEXT_CHARS
+
+    assert MIN_PDF_TEXT_CHARS == MIN_TEXT_CHARS
 
 
 # --- SSNs ---
