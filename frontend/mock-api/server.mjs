@@ -14,8 +14,14 @@
 // - "Apply this change" on the demo plan returns the recorded version 2; other edits just bump the version;
 // - edited path targets are answered only for the recorded edits (path_demo_targets.json), and a bound on extra
 //   owner cash is not replayed at all; those get a 501.
-// Error paths for testing pages: a plan id starting with "timeout" answers 503 on its heavy routes, and
-// MOCK_LATENCY_MS delays every /api answer.
+// - share links (Studio S8) live in memory with their plan and expiry. GET /api/share/{token} builds its answer from
+//   the plan (figures, opening date, site names and positions; never the idea text or addresses) with a mock notice,
+//   and answers one identical 404 for every link that does not work (unknown, expired, revoked, plan deleted);
+// - "Delete all my data" (DELETE /api/me/data) deletes EVERY plan and share link in memory (the mock keeps no owner
+//   per plan; its plan list shows them all) and the user's demo decisions, then signs out. Restart the mock to get the
+//   demo plan back.
+// Error paths for testing pages: a plan id starting with "timeout" answers 503 on its heavy routes, a user whose name
+// starts with "pending" gets "pending": true from "Delete all my data", and MOCK_LATENCY_MS delays every /api answer.
 
 import { randomBytes } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
@@ -59,6 +65,13 @@ const REFUSED = fixture("lender_decision_refused.json");
 const RECORDED = fixture("lender_decision_recorded.json");
 const RECORD = fixture("lender_record.json");
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Share links: whole days from 1 to 30, 7 when the body does not say (the S8 contract). */
+const SHARE_DAYS = { min: 1, max: 30, default: 7 };
+/** The one answer for every share link that does not work, so a visitor cannot tell the cases apart. */
+const SHARE_NOT_FOUND = { detail: "This link is invalid or has expired." };
+const SHARE_HEADERS = { "Referrer-Policy": "no-referrer" };
+
 // ---- in-memory state -------------------------------------------------------------------------------------------
 
 /** session id -> {username, role} */
@@ -70,6 +83,8 @@ if (DEMO) {
 }
 /** `${username}:${fileId}` -> {decision, markdown} */
 const decisions = new Map();
+/** share token -> {planId, username, expiresAt (ms since 1970)} */
+const shareLinks = new Map();
 
 // ---- helpers -----------------------------------------------------------------------------------------------------
 
@@ -219,6 +234,41 @@ function planFromInput(body) {
   };
 }
 
+/** GET /api/share/{token}: the plan read-only and minimized (no idea text, no addresses, nothing about the owner). */
+function sharedPlan(plan, link) {
+  return {
+    plan_name: plan.name ?? null,
+    business_type: plan.business_type_name,
+    metro_id: plan.metro_id,
+    metro_name: plan.metro_name,
+    money: plan.money,
+    opening_date: plan.opening_date,
+    sites: plan.sites.map((site) => ({ name: site.label, lat: site.lat, lon: site.lon })),
+    expires_at: new Date(link.expiresAt).toISOString(),
+    disclaimer: CONFIG?.disclaimer ?? "",
+    notice: "mock API: a read-only plan shared by its owner with a link. The real server writes its own notice.",
+  };
+}
+
+/** "Delete all my data": every plan and share link in memory, and this user's demo decisions. Returns the count. */
+function deleteEverything(username) {
+  let count = plans.size;
+  for (const link of shareLinks.values()) {
+    if (link.username === username) {
+      count += 1;
+    }
+  }
+  for (const key of [...decisions.keys()]) {
+    if (key.startsWith(`${username}:`)) {
+      decisions.delete(key);
+      count += 1;
+    }
+  }
+  plans.clear();
+  shareLinks.clear();
+  return count;
+}
+
 // ---- routes ------------------------------------------------------------------------------------------------------
 
 async function handleApi(request, response, url) {
@@ -272,6 +322,26 @@ async function handleApi(request, response, url) {
     sessions.delete(cookies.uwc_session);
     return sendJson(response, 200, { ok: true }, { "Set-Cookie": "uwc_session=; Path=/; Max-Age=0" });
   }
+  if (path === "/api/me/data" && method === "DELETE") {
+    if (!session) {
+      return problem(response, 401, "Sign in first.");
+    }
+    const deleted = deleteEverything(session.username);
+    sessions.delete(cookies.uwc_session);
+    const body = { deleted_objects: deleted, pending: session.username.startsWith("pending"), signed_out: true };
+    return sendJson(response, 200, body, { "Set-Cookie": "uwc_session=; Path=/; Max-Age=0" });
+  }
+
+  // A shared plan: no sign-in needed (Studio S8)
+  const shareRead = path.match(/^\/api\/share\/([^/]+)$/);
+  if (shareRead && method === "GET") {
+    const link = shareLinks.get(decodeURIComponent(shareRead[1]));
+    const plan = link && link.expiresAt > Date.now() ? plans.get(link.planId) : undefined;
+    if (!plan) {
+      return sendJson(response, 404, SHARE_NOT_FOUND, SHARE_HEADERS);
+    }
+    return sendJson(response, 200, sharedPlan(plan, link), SHARE_HEADERS);
+  }
 
   // Founder Studio (options and the tract layer are public, as on the real server)
   if (path === "/api/studio/options") {
@@ -320,6 +390,27 @@ async function handleApi(request, response, url) {
       return problem(response, 404, "Plan not found.");
     }
     const rest = planRoute[2] ?? "";
+    if (rest === "/share" && method === "POST") {
+      const body = await readBody(request);
+      const days = body?.expires_in_days ?? SHARE_DAYS.default;
+      if (body === null || !Number.isInteger(days) || days < SHARE_DAYS.min || days > SHARE_DAYS.max) {
+        return problem(response, 422, [{ loc: ["body", "expires_in_days"], msg: "Input should be a whole number of days from 1 to 30" }]);
+      }
+      const token = randomBytes(24).toString("base64url");
+      const expiresAt = Date.now() + days * DAY_MS;
+      shareLinks.set(token, { planId: plan.id, username: session.username, expiresAt });
+      return sendJson(response, 200, { url: `/share?t=${token}`, token, expires_at: new Date(expiresAt).toISOString() });
+    }
+    if (rest === "/share" && method === "DELETE") {
+      let revoked = 0;
+      for (const [token, link] of shareLinks) {
+        if (link.planId === plan.id) {
+          shareLinks.delete(token);
+          revoked += 1;
+        }
+      }
+      return sendJson(response, 200, { revoked });
+    }
     if (rest !== "" && plan.id.startsWith("timeout")) {
       return problem(response, 503, "The simulation took longer than the server's time limit. It keeps running; try again in a moment. (mock)");
     }
