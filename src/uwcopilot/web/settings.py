@@ -17,6 +17,7 @@ SPACE_HOST and the OAuth variables a Hugging Face Space injects) are read from t
 | UWC_FERNET_KEY | Fernet key(s) for data at rest; REQUIRED with UWC_STORE=hf_dataset | dev fallback |
 | UWC_STORE | local or hf_dataset | local |
 | UWC_STORE_DIR | folder of the local store (and the local mirror of the dataset) | data/web/store |
+| UWC_WEB_AUDIT_LOG | access log of founders' plans (audit_log.py) | data/web/audit/plan_access_events.jsonl |
 | UWC_HF_DATASET_REPO | private dataset repo id for UWC_STORE=hf_dataset, e.g. astra6/fundproof-data | unset |
 | HF_TOKEN | Hugging Face token with write access to that dataset | unset |
 | UWC_HF_FLUSH_EVERY_S | seconds between batched dataset commits | 300 |
@@ -61,6 +62,10 @@ ALLOWLIST_ROLES: tuple[str, ...] = ("lender_reviewer", "lender_senior", "admin")
 StoreBackend = Literal["local", "hf_dataset"]
 
 DEFAULT_STORE_DIR = DATA_DIR / "web" / "store"
+# The plan access log lives NEXT TO the store folder, never inside it: the dataset store mirrors only its own folder.
+AUDIT_LOG_FOLDER = "audit"
+AUDIT_LOG_FILE_NAME = "plan_access_events.jsonl"
+DEFAULT_WEB_AUDIT_LOG = DEFAULT_STORE_DIR.parent / AUDIT_LOG_FOLDER / AUDIT_LOG_FILE_NAME
 DEFAULT_STATIC_DIR = REPO_ROOT / "frontend" / "out"
 DEFAULT_SESSION_MAX_AGE_S = 8 * 60 * 60
 DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024
@@ -113,6 +118,7 @@ class WebSettings(BaseModel):
     fernet_keys: tuple[SecretStr, ...] = ()
     store_backend: StoreBackend = "local"
     store_dir: Path = DEFAULT_STORE_DIR
+    web_audit_log: Path = DEFAULT_WEB_AUDIT_LOG
     hf_dataset_repo: str | None = None
     hf_token: SecretStr | None = None
     hf_flush_every_s: int = Field(default=300, gt=0)
@@ -266,6 +272,11 @@ def read_store(read: SettingReader) -> tuple[StoreBackend, str | None, SecretStr
     return "hf_dataset", repo, SecretStr(token)
 
 
+def default_audit_log(store_dir: Path) -> Path:
+    """The plan access log's default place: data/web/store -> data/web/audit/plan_access_events.jsonl."""
+    return store_dir.parent / AUDIT_LOG_FOLDER / AUDIT_LOG_FILE_NAME
+
+
 def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, str] | None = None) -> WebSettings:
     """Read and check every web setting. Pass env_file=None to skip the repo .env file (tests do)."""
     process_env = os.environ if environ is None else environ
@@ -288,7 +299,8 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
     role_allowlist = parse_role_allowlist(read("UWC_ROLE_ALLOWLIST"))
     warn_about_unpinned_entries(role_allowlist, is_space)
     static_dir = read("UWC_STATIC_DIR")
-    store_dir = read("UWC_STORE_DIR")
+    store_dir = Path(read("UWC_STORE_DIR") or DEFAULT_STORE_DIR)
+    audit_log = read("UWC_WEB_AUDIT_LOG")
     values = {
         "app_version": package_version(),
         "git_sha": read("UWC_GIT_SHA"),
@@ -303,7 +315,8 @@ def load_web_settings(env_file: Path | None = ENV_FILE, environ: Mapping[str, st
         "session_max_age_s": read_int(read, "UWC_SESSION_MAX_AGE_S", DEFAULT_SESSION_MAX_AGE_S),
         "fernet_keys": fernet_keys,
         "store_backend": backend,
-        "store_dir": Path(store_dir) if store_dir else DEFAULT_STORE_DIR,
+        "store_dir": store_dir,
+        "web_audit_log": Path(audit_log) if audit_log else default_audit_log(store_dir),
         "hf_dataset_repo": dataset_repo,
         "hf_token": hf_token,
         "hf_flush_every_s": read_int(read, "UWC_HF_FLUSH_EVERY_S", 300),

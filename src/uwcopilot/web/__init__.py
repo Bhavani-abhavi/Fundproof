@@ -7,9 +7,12 @@ Modules:
 - cookies.py: cookie attributes for the Space iframe (Secure; SameSite=None; Partitioned) and HMAC-signed values;
 - security.py: security headers (CSP), body size limit, rate limiter, CSRF check;
 - access_log.py: one redacted log line per request;
+- audit_log.py: the hash-chained access log of founders' plans (one event before every access);
 - static.py: serves frontend/out with correct MIME types, cache headers and the route-to-file fallback;
 - crypto.py: Fernet encryption for everything a user stores;
 - store.py: the Store interface and the encrypted local-folder store;
 - hf_store.py: the same data mirrored to a private Hugging Face dataset repo (batched commits);
-- routers/: the /api endpoints (system.py: health and config; auth.py: me, csrf, login, logout, dev login).
+- schemas_studio.py, schemas_lender.py, schemas_privacy.py: request and response models of the feature routers;
+- routers/: the /api endpoints (system.py: health and config; auth.py: me, csrf, login, logout, dev login;
+  account.py: delete all my data; studio.py, lender.py, share.py: the features).
 """

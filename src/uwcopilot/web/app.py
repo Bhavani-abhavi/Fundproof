@@ -5,7 +5,8 @@
 
 Startup refuses unsafe settings (see settings.py): the dev login inside a Space, a Space without a session
 secret, or the dataset store without an encryption key. The store is opened in the lifespan (startup) and the
-dataset store flushes its last batch at shutdown.
+dataset store flushes its last batch at shutdown. Every access to a founder's plan is written to the plan access log
+(audit_log.py, UWC_WEB_AUDIT_LOG) before it happens.
 
 Retention: expired objects are deleted once at startup and then every UWC_PURGE_EVERY_S seconds (default one
 hour) by a background task, so data does not outlive UWC_RETENTION_DAYS by more than that interval while the app
@@ -25,12 +26,15 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from uwcopilot.web.access_log import AccessLogMiddleware, configure_web_logging
+from uwcopilot.web.audit_log import PlanAccessLog
 from uwcopilot.web.auth import HfOAuthClient, rate_limit_user_key, session_serializer
 from uwcopilot.web.cookies import CookiePolicy
 from uwcopilot.web.crypto import encryptor_for_settings
 from uwcopilot.web.hf_store import HFDatasetStore, HubApi
+from uwcopilot.web.routers import account as account_router
 from uwcopilot.web.routers import auth as auth_router
 from uwcopilot.web.routers import lender as lender_router
+from uwcopilot.web.routers import share as share_router
 from uwcopilot.web.routers import studio as studio_router
 from uwcopilot.web.routers import system as system_router
 from uwcopilot.web.security import (
@@ -44,6 +48,7 @@ from uwcopilot.web.security import (
     inline_script_hashes,
 )
 from uwcopilot.web.services import install_services
+from uwcopilot.web.services.share_links import ShareLinks
 from uwcopilot.web.settings import DEV_FRONTEND_ORIGIN, WebSettings, load_web_settings
 from uwcopilot.web.static import StaticSite
 from uwcopilot.web.store import LocalFileStore, Store
@@ -215,12 +220,16 @@ def create_app(
     app.state.static_site = StaticSite(settings.static_dir, settings.product_name, settings.disclaimer)
     app.state.store = store
     app.state.hub_api = hub_api
+    app.state.access_log = PlanAccessLog(settings.web_audit_log)
+    app.state.share_links = ShareLinks(settings.session_secret.get_secret_value())
     install_services(app)
 
     app.include_router(system_router.router)
     app.include_router(auth_router.router)
+    app.include_router(account_router.router)
     app.include_router(studio_router.router)
     app.include_router(lender_router.router)
+    app.include_router(share_router.router)
     for router in extra_routers:
         app.include_router(router)
 

@@ -1,4 +1,5 @@
-"""FastAPI glue shared by the feature routers: error responses, the store dependency, no-store caching.
+"""FastAPI glue shared by the feature routers: error responses, the store and share-link dependencies, no-store
+caching.
 
 Error bodies keep FastAPI's shape, {"detail": "..."}, and add "reasons" when there are several problems:
 
@@ -17,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from uwcopilot.web.services.compute import ComputeBusy, ComputeTimeout
 from uwcopilot.web.services.errors import ServiceError
+from uwcopilot.web.services.share_links import ShareLinks
 from uwcopilot.web.store import DeletionPending, Store
 
 BUSY_MESSAGE = "The server is busy with other calculations right now. Please try again in a moment."
@@ -100,6 +102,11 @@ def get_store(request: Request) -> Store:
     if store is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage is not ready")
     return store
+
+
+def get_share_links(request: Request) -> ShareLinks:
+    """FastAPI dependency: the app's share links (services/share_links.py)."""
+    return request.app.state.share_links
 
 
 def no_store(response: Response) -> None:

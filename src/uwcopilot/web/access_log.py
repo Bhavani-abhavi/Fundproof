@@ -5,6 +5,9 @@ status code and the time taken. It never holds cookies, headers, bodies, query v
 The path goes through the same PiiRedactor that cleans traces (uwcopilot.observability.redaction), so an e-mail
 address, phone number or SSN-shaped number in a URL path is masked before it reaches the log.
 
+A share-link token in a path (GET /api/share/<token>) is a credential: such a path is logged as "/api/share/*".
+(The share PAGE carries its token in the query, /share?t=..., whose value is masked like every query value.)
+
 The path is used as the server already decoded it (uvicorn percent-decodes it once); it is NOT decoded a second
 time. Every character that is not printable (CR, LF, tab, other control characters, Unicode line separators) is
 written as an escape such as \\n or \\x1b, so a request can never start a new, forged log line.
@@ -20,6 +23,8 @@ from uwcopilot.observability.redaction import PiiRedactor
 
 logger = logging.getLogger("uwcopilot.web.access")
 MAX_LOGGED_PATH_CHARS = 300
+# Paths whose rest is a credential (a share-link token): only the prefix is logged, followed by "*".
+CREDENTIAL_PATH_PREFIXES: tuple[str, ...] = ("/api/share/",)
 
 
 def escape_unprintable(text: str) -> str:
@@ -33,12 +38,20 @@ def escape_unprintable(text: str) -> str:
     return "".join(pieces)
 
 
+def without_credentials(path: str) -> str:
+    """The path, or "<prefix>*" when it starts with one of CREDENTIAL_PATH_PREFIXES."""
+    for prefix in CREDENTIAL_PATH_PREFIXES:
+        if path.startswith(prefix):
+            return prefix + "*"
+    return path
+
+
 def redacted_target(scope: Scope, redactor: PiiRedactor) -> str:
     """The path with identifiers masked, plus the query parameter names only ("?id=*&q=*"), length capped.
 
     scope["path"] is already percent-decoded by the server. The raw query string is decoded once by parse_qsl.
     """
-    path = escape_unprintable(redactor.redact_text(scope.get("path", "")))
+    path = escape_unprintable(redactor.redact_text(without_credentials(scope.get("path", ""))))
     query = scope.get("query_string", b"").decode("latin-1")
     names = [escape_unprintable(redactor.redact_text(name)) for name, _ in parse_qsl(query, keep_blank_values=True)]
     target = path + ("?" + "&".join(f"{name}=*" for name in names) if names else "")

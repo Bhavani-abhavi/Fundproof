@@ -38,6 +38,7 @@ from uwcopilot.studio.data.errors import NotAvailable, StudioDataError
 from uwcopilot.studio.data.provenance import SourceRecord
 from uwcopilot.studio.profiles import Profile
 from uwcopilot.studio.siteiq.context import OWN_TRACT_MAX_MILES
+from uwcopilot.web.schemas_privacy import SharedPlanOut, SharedSite
 from uwcopilot.web.schemas_studio import (
     PLAN_CHANGE_FIELDS,
     IdeaOut,
@@ -73,6 +74,11 @@ MONEY_NOTE = (
 )
 # A design choice: enough for real planning, small enough to bound storage and the cost of the plan list.
 MAX_PLANS_PER_USER = 20
+SHARED_NOTICE = (
+    "A read-only view of a plan, shared by its owner through a link that expires. The owner can revoke the link at "
+    "any time, and it ends when the plan is deleted. The founder's idea text, street addresses and account details "
+    "are not shared."
+)
 
 
 class StoredSite(BaseModel):
@@ -349,9 +355,12 @@ def check_text(name: str | None, idea_text: str | None) -> list[str]:
     return injection_flags(idea_text)
 
 
-def build_record(body: ProjectIn, geocoder: Geocoder, now: datetime | None = None) -> ProjectRecord:
+def build_record(
+    body: ProjectIn, geocoder: Geocoder, now: datetime | None = None, project_id: str | None = None
+) -> ProjectRecord:
     """A new, checked ProjectRecord (version 1) from a POST body. Addresses are looked up through geocoder (the
-    router passes a PrefetchedGeocoder, so no network call happens here)."""
+    router passes a PrefetchedGeocoder, so no network call happens here). project_id: the id to use (the router
+    picks it first, so the access event names the plan before it is stored); None picks a new one."""
     created = now or utc_now()
     entry = metro_entry(body.metro_id)
     profile_for(body.business_type_id, body.metro_id)
@@ -359,7 +368,7 @@ def build_record(body: ProjectIn, geocoder: Geocoder, now: datetime | None = Non
         check_opening_date(body.opening_date, created.date())
     flags = check_text(body.name, body.idea_text)
     record = ProjectRecord(
-        id=new_project_id(),
+        id=project_id or new_project_id(),
         version=1,
         created_at=created,
         updated_at=created,
@@ -454,10 +463,12 @@ def check_plan_count(store: Store, owner: str) -> None:
         )
 
 
-def create(store: Store, owner: str, body: ProjectIn, geocoder: Geocoder) -> tuple[ProjectRecord, ObjectMeta]:
+def create(
+    store: Store, owner: str, body: ProjectIn, geocoder: Geocoder, project_id: str | None = None
+) -> tuple[ProjectRecord, ObjectMeta]:
     """Check the plan count, build the record and save it (blocking: the router runs it in a worker thread)."""
     check_plan_count(store, owner)
-    record = build_record(body, geocoder)
+    record = build_record(body, geocoder, project_id=project_id)
     return record, save(store, owner, record)
 
 
@@ -594,4 +605,25 @@ def project_summary(record: ProjectRecord, meta: ObjectMeta | None) -> ProjectSu
         updated_at=record.updated_at,
         expires_at=meta.expires_at if meta else None,
         idea_flagged=bool(record.idea_flags),
+    )
+
+
+def shared_plan_out(record: ProjectRecord, expires_at: datetime) -> SharedPlanOut:
+    """What a share link shows, built field by field so nothing else of the plan is shared (schemas_privacy.py).
+
+    Each site keeps its name and map position only; its street address, the geocoder's matched address and its
+    source record stay out, and so do the idea text and the plan's id, version and seed."""
+    entry = metro_entry(record.metro_id)
+    profile = profile_for(record.business_type_id, record.metro_id)
+    return SharedPlanOut(
+        plan_name=record.name,
+        business_type=profile.display_name,
+        metro_id=record.metro_id,
+        metro_name=entry.config.name,
+        money=money_out(record),
+        opening_date=record.opening_date,
+        sites=[SharedSite(name=site.label, lat=site.lat, lon=site.lon) for site in record.sites],
+        expires_at=expires_at,
+        disclaimer=DISCLAIMER,
+        notice=SHARED_NOTICE,
     )
