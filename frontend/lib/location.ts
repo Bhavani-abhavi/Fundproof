@@ -29,6 +29,23 @@ export function useQueryParam(name: string): string | null {
   return new URLSearchParams(useLocationSearch()).get(name);
 }
 
+function subscribeNever(): () => void {
+  // Hydration happens once; there is nothing to subscribe to.
+  return () => {};
+}
+
+/**
+ * False in the pre-rendered HTML and during hydration, true afterwards. Before hydration `useQueryParam` always
+ * answers null, so a page that shows a message for a missing parameter waits for this first (no false flash).
+ */
+export function useIsHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+}
+
 /** The current path plus query ("/lender/file/?id=3"), for coming back here after sign-in. */
 export function useCurrentPath(): string {
   const pathname = usePathname() ?? "/";

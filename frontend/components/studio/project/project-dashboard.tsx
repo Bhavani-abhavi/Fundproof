@@ -17,6 +17,7 @@ import { FeasibilityPanel } from "@/components/studio/project/feasibility-panel"
 import { PathPanel } from "@/components/studio/project/path-panel";
 import { PlanActions } from "@/components/studio/project/plan-actions";
 import { PlanEditor } from "@/components/studio/project/plan-editor";
+import { ShareLinks } from "@/components/studio/project/share-links";
 import { isScored, SiteCards, SiteCardsSkeleton, SiteDetail } from "@/components/studio/project/site-panels";
 import type { TargetEdits } from "@/components/studio/project/target-editor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -331,6 +332,7 @@ function Dashboard({ project, options, onProjectChange }: { project: Project; op
         </p>
         {options ? <PlanEditor key={version} project={project} business={business} limits={options.limits} onSaved={onSaved} /> : null}
         <PlanActions projectId={project.id} download={downloadPayload} />
+        <ShareLinks projectId={project.id} />
       </section>
 
       <section aria-labelledby="sites-title" className="flex flex-col gap-4">

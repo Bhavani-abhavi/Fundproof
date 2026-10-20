@@ -222,6 +222,10 @@ export default function AboutPage() {
             Geocoder to find it. Nothing else you type leaves the server, and no language model reads it.
           </li>
           <li>
+            A plan is shown to someone else only through a share link you create on its page: anyone with the link sees
+            the plan&apos;s figures and site names, not your idea text or addresses, until the link expires or you revoke it.
+          </li>
+          <li>
             Social Security numbers, account numbers and long digit runs are refused, never stored. There are no uploads,
             no payments, nothing to buy, and no analytics or tracking scripts.
           </li>
