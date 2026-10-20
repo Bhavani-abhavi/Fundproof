@@ -6,8 +6,9 @@ import pytest
 from package_helpers import package, pdf
 
 from uwcopilot.studio.package import PackageNotAudited, audit_pdf, pdf_page_count, pdf_text, render_pdf
-from uwcopilot.studio.package.audit import page_texts, pages_missing_labels
+from uwcopilot.studio.package.audit import audit_package, page_texts, pages_missing_labels
 from uwcopilot.studio.package.constants import FULL_DISCLAIMER, PRODUCT_NAME, SYNTHETIC_BANNER
+from uwcopilot.studio.package.models import Package, Paragraph
 from uwcopilot.studio.package.pdf_figures import draw_cash_band, draw_map, draw_tornado
 
 METRO, TYPE = "synthetic_metro", "car_wash"
@@ -47,11 +48,31 @@ def test_rendering_is_deterministic() -> None:
     assert render_pdf(package(METRO, TYPE)) == pdf(METRO, TYPE)
 
 
-def test_a_package_with_untraced_numbers_is_not_printed() -> None:
+def with_paragraph(built: Package, draft: str) -> Package:
+    """The package with one more paragraph in its first section; its stored audit is left as it was (clean)."""
+    first = built.sections[0]
+    edited = first.model_copy(update={"blocks": [*first.blocks, Paragraph(draft=draft)]})
+    return built.model_copy(update={"sections": [edited, *built.sections[1:]]})
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Revenue could change 37% next year.",
+        "The owner adds $777,777 of equity.",
+        "Rank 93 of the inputs.",
+    ],
+)
+def test_a_package_with_untraced_numbers_is_not_printed_even_if_its_stored_audit_is_clean(draft: str) -> None:
     built = package(METRO, TYPE)
-    broken = built.model_copy(update={"audit": built.audit.model_copy(update={"untraced": ["$1"]})})
+    assert built.audit.untraced == []
     with pytest.raises(PackageNotAudited):
-        render_pdf(broken)
+        render_pdf(with_paragraph(built, draft))
+
+
+def test_a_label_number_without_a_unit_is_still_layout() -> None:
+    built = package(METRO, TYPE)
+    assert audit_package(with_paragraph(built, "See the Year 2 column and Change-set 0.")).untraced == []
 
 
 def test_figures_are_png_images_drawn_from_the_package() -> None:

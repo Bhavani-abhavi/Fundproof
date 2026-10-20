@@ -4,19 +4,22 @@
     untraced = audit_pdf(pdf_bytes, ledger)  # on the text pypdf extracts from the PDF itself
 
 Both run provenance.renderer.round_trip_audit (the S4 / SIG audit) on the text, against an AuditLedger: the founder
-ledger plus two documented kinds of ledger data that are not a claim's own value:
-- the low and high end of a claim's range (Claim.value_range), printed in the claim's display format;
-- numbers inside a TEXT claim's value: the founder's own words (a business name such as "Route 9 Wash", a site
-  label), printed as data. They trace to that claim.
-Before the audit, two documented steps:
+ledger plus the low and high end of a claim's range (Claim.value_range), printed in the claim's display format.
+Before the audit, three documented steps:
+- every TEXT claim's value (the founder's own words: a business name such as "Route 9 Wash", a site label) is
+  blanked where it is printed, matched word by word so a line break inside it still matches. Its digits are data,
+  not figures, but only there: the same digits printed anywhere else must trace like any other number;
 - money_sign is undone ("-$53,735" back to the renderer's "$-53,735"), so the audit reads exactly the renderer's
   format;
 - LAYOUT_PATTERNS are blanked: structural labels that are not quantities: "Page 3/14" in the footer, the percentile
-  column labels P10 / P50 / P90, period labels "Year 2" / "year-2" / "Month 3", ordinal labels "rank 1" and
-  "Change-set 2" / "change 1", and the phrase "below zero" (a sign, not a figure). A label number is never followed
-  by a decimal part and never reaches across a line break (except "below zero" and "year-" at a hyphen), so a value
-  printed on the next line ("per year" then "9.25") is never blanked. The number extractor itself
-  already skips section ids, dates, list markers and anything in square brackets (citations, claim ids, hashes).
+  column labels P10 / P50 / P90, period labels "Year 1"-"Year 5" / "year-2" / "Month 1"-"Month 60" / "Loan year
+  1"-"Loan year 30" (a loan term is at most 360 months), ordinal labels "rank 1"-"rank 10", "Tornado rank 24:" (a
+  claim label in the evidence appendix, always followed by a colon), "Change-set 0"-"Change-set 9" / "change 0"-
+  "change 9", and the phrase "below zero" (a sign, not a figure). A label number is never followed by a decimal
+  part, a percent sign or a unit word, has no more digits than its range allows, and never reaches across a line
+  break (except "below zero" and "year-" at a hyphen), so "change 37%", "year 47" or "rank 93" stay figures that
+  must trace. The number extractor itself already skips section ids, dates, list markers and anything in square
+  brackets (citations, claim ids, hashes).
 Every other number must equal a claim value as the renderer prints it. The list returned is what does not trace.
 """
 
@@ -35,24 +38,19 @@ from uwcopilot.studio.package.models import Block, Package, PackageAudit, Sectio
 from uwcopilot.studio.package.runs import RunIndex
 from uwcopilot.studio.package.text import cell_text, render_draft
 
+# What may not follow a label number: a decimal part, a percent sign or a unit word (then it is a figure).
+NOT_A_FIGURE = r"(?![.,]\d|\s*%|\s*(?:percent|dollars?|points?|times|x)\b)"
 LAYOUT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bPage[ \t]+\d+/\d+\b"),
     re.compile(r"\bP(?:10|50|90)\b(?![.,]\d)"),
-    re.compile(r"\b[Yy]ear(?:-\s*|[ \t]+)\d{1,2}\b(?![.,]\d)"),
-    re.compile(r"\b[Mm]onth[ \t]+\d{1,2}\b(?![.,]\d)"),
-    re.compile(r"\b[Rr]ank[ \t]+\d{1,2}\b(?![.,]\d)"),
-    re.compile(r"\b[Cc]hange(?:-set)?[ \t]+\d{1,2}\b(?![.,]\d)"),
+    re.compile(r"\b[Yy]ear(?:-\s*|[ \t]+)[1-5]\b" + NOT_A_FIGURE),
+    re.compile(r"\bLoan[ \t]+year[ \t]+(?:30|[12]\d|[1-9])\b" + NOT_A_FIGURE),
+    re.compile(r"\b[Mm]onth[ \t]+(?:60|[1-5]\d|[1-9])\b" + NOT_A_FIGURE),
+    re.compile(r"\b[Rr]ank[ \t]+(?:10|[1-9])\b" + NOT_A_FIGURE),
+    re.compile(r"\bTornado[ \t]+rank[ \t]+\d{1,2}(?=:)"),
+    re.compile(r"\b[Cc]hange(?:-set)?[ \t]+\d\b" + NOT_A_FIGURE),
     re.compile(r"\bbelow\s+zero\b"),
 )
-TEXT_DISPLAYS: dict[str, str] = {
-    "USD": "usd2",
-    "PERCENT": "pct1",
-    "MONTHS": "months",
-    "YEARS": "years",
-    "RATIO": "ratio2",
-    "COUNT": "int",
-    "NONE": "ratio2",
-}
 
 
 def mask_layout(text: str) -> str:
@@ -68,17 +66,40 @@ def renderer_money(text: str) -> str:
     return text.replace("-$", "$-")
 
 
-def prepare(text: str) -> str:
+def text_claim_patterns(ledger: Ledger) -> list[re.Pattern[str]]:
+    """One pattern per text claim value that holds a digit, word by word (a line break between words still matches)."""
+    patterns = []
+    for item in ledger.claims:
+        if item.display != "text" or not isinstance(item.value, str) or not re.search(r"\d", item.value):
+            continue
+        words = item.value.split()
+        if words:
+            patterns.append(re.compile(r"\s+".join(re.escape(word) for word in words)))
+    return patterns
+
+
+def mask_text_claims(text: str, ledger: Ledger) -> str:
+    """The text with every printed text claim value blanked (module docstring)."""
+    masked = text
+    for pattern in text_claim_patterns(ledger):
+        masked = pattern.sub(lambda match: re.sub(r"\S", " ", match.group(0)), masked)
+    return masked
+
+
+def prepare(text: str, ledger: Ledger | None = None) -> str:
     """The text as the audit reads it (module docstring)."""
-    return mask_layout(renderer_money(text))
+    prepared = renderer_money(text)
+    if ledger is not None:
+        prepared = mask_text_claims(prepared, ledger)
+    return mask_layout(prepared)
 
 
 class AuditLedger:
-    """The founder ledger plus range bounds and numbers in text claims (a LedgerLike for round_trip_audit)."""
+    """The founder ledger plus the ends of claim ranges (a LedgerLike for round_trip_audit)."""
 
     def __init__(self, ledger: Ledger) -> None:
         self.ledger = ledger
-        self.extra = list(self.range_bounds()) + list(self.text_numbers())
+        self.extra = list(self.range_bounds())
 
     def range_bounds(self) -> Iterable[SimpleClaim]:
         """Both ends of every claim's range, in the claim's display format."""
@@ -87,18 +108,6 @@ class AuditLedger:
                 continue
             for end, value in (("low", item.value_range.low), ("high", item.value_range.high)):
                 yield SimpleClaim(id=f"{item.id}#{end}", label=item.label, value=value, display=item.display)
-
-    def text_numbers(self) -> Iterable[SimpleClaim]:
-        """Every number inside a text claim's value (the founder's own words, printed as data)."""
-        for item in self.ledger.claims:
-            if item.display != "text" or not isinstance(item.value, str):
-                continue
-            for index, mention in enumerate(extract_numbers(item.value)):
-                display = TEXT_DISPLAYS.get(mention.unit)
-                if display is not None:
-                    yield SimpleClaim(
-                        id=f"{item.id}#n{index}", label=item.label, value=float(mention.value), display=display
-                    )
 
     def claim(self, claim_id: str) -> Claim | None:
         """A ledger claim by id."""
@@ -156,12 +165,12 @@ def package_text(package: Package) -> str:
 
 def untraced_numbers(text: str, ledger: Ledger) -> list[str]:
     """The numbers of a printed text that trace to no ledger value (module docstring)."""
-    return round_trip_audit(RenderedMemo(body=prepare(text)), AuditLedger(ledger))
+    return round_trip_audit(RenderedMemo(body=prepare(text, ledger)), AuditLedger(ledger))
 
 
-def count_numbers(text: str) -> int:
+def count_numbers(text: str, ledger: Ledger | None = None) -> int:
     """How many numbers the audit reads in a printed text."""
-    return len(extract_numbers(prepare(text)))
+    return len(extract_numbers(prepare(text, ledger)))
 
 
 def value_cell_count(sections: list[Section]) -> int:
@@ -180,7 +189,7 @@ def audit_package(package: Package) -> PackageAudit:
     """The audit of the package text (module docstring)."""
     text = package_text(package)
     return PackageAudit(
-        numbers=count_numbers(text),
+        numbers=count_numbers(text, package.ledger),
         untraced=untraced_numbers(text, package.ledger),
         value_cells=value_cell_count(package.sections),
         sections=len(package.sections),

@@ -12,7 +12,7 @@ from uwcopilot.evidence.ledger_models import Ledger
 from uwcopilot.studio.metros import list_metros
 from uwcopilot.studio.narrative import ids
 from uwcopilot.studio.package import ApplicationNotReady, application_id_for, to_application
-from uwcopilot.studio.package.models import Package
+from uwcopilot.studio.package.models import Package, Paragraph
 
 # Golden document variants (package/golden.py): index 0 none, 1 statements match, 2 statements conflict.
 NO_DOCUMENTS = ("synthetic_metro", "car_wash")
@@ -140,3 +140,12 @@ def test_missing_experience_stops_the_conversion() -> None:
     applicant = built.applicant.model_copy(update={"owners": [owner]})
     with pytest.raises(ApplicationNotReady, match="relevant experience"):
         to_application(built.model_copy(update={"applicant": applicant}))
+
+
+def test_the_application_reruns_the_audit_instead_of_trusting_the_stored_one() -> None:
+    built = package(*NO_DOCUMENTS)
+    first = built.sections[0]
+    edited = first.model_copy(update={"blocks": [*first.blocks, Paragraph(draft="Sales grow 41% a year.")]})
+    broken = built.model_copy(update={"sections": [edited, *built.sections[1:]]})
+    with pytest.raises(ApplicationNotReady, match="41%"):
+        to_application(broken)

@@ -27,6 +27,7 @@ from uwcopilot.agent.applications import StartupCreditApplication
 from uwcopilot.agent.policy_startup import EQUITY_STATEMENTS_DOCUMENT, EXPERIENCE_EVIDENCE_DOCUMENT
 from uwcopilot.evidence.ledger_models import Claim
 from uwcopilot.studio.narrative import ids
+from uwcopilot.studio.package.audit import audit_package
 from uwcopilot.studio.package.models import Package
 
 APPLICATION_ID_DIGITS = 8
@@ -199,7 +200,14 @@ def material_assumptions(package: Package) -> list[dict[str, Any]]:
 def to_application(
     package: Package, *, application_id: str | None = None, submitted_date: date | None = None
 ) -> StartupCreditApplication:
-    """The startup credit application of a founder package (module docstring)."""
+    """The startup credit application of a founder package (module docstring).
+
+    Raises ApplicationNotReady when the package text holds a number that traces to no claim; the audit is re-run
+    here, never read from package.audit, so a package loaded from JSON or edited later is checked as it is now.
+    """
+    untraced = audit_package(package).untraced
+    if untraced:
+        raise ApplicationNotReady([f"untraced number in the package text: {number}" for number in untraced[:10]])
     reader = LedgerReader(package)
     applicant = package.applicant
     amount = reader.number(ids.FOUNDER_LOAN, "loan amount")

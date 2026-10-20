@@ -38,6 +38,7 @@ from reportlab.platypus import (
 
 from uwcopilot.studio.package import pdf_figures
 from uwcopilot.studio.package import pdf_styles as ui
+from uwcopilot.studio.package.audit import audit_package, audit_pdf
 from uwcopilot.studio.package.constants import STATUS_MEANINGS, STATUS_WORDS
 from uwcopilot.studio.package.cover import contents_note, contents_rows, cover_lines, is_synthetic
 from uwcopilot.studio.package.models import Block, Cell, Figure, KeyFacts, Package, Section
@@ -469,9 +470,14 @@ def story(package: Package) -> list[Flowable]:
 
 
 def render_pdf(package: Package) -> bytes:
-    """The package as PDF bytes (module docstring). Raises PackageNotAudited when the audit found untraced numbers."""
-    if package.audit.untraced:
-        raise PackageNotAudited(f"untraced numbers in the package text: {package.audit.untraced[:10]}")
+    """The package as PDF bytes (module docstring). Raises PackageNotAudited when a number traces to no claim.
+
+    The audit is re-run here, never read from package.audit: a package loaded from JSON or edited after it was built
+    could carry an audit that no longer describes its text. The PDF's own text is audited before it is returned.
+    """
+    untraced = audit_package(package).untraced
+    if untraced:
+        raise PackageNotAudited(f"untraced numbers in the package text: {untraced[:10]}")
     ui.register_fonts()
     buffer = io.BytesIO()
     document = PackageDocument(
@@ -490,4 +496,8 @@ def render_pdf(package: Package) -> bytes:
     frame = Frame(MARGIN_X, MARGIN_BOTTOM, CONTENT_WIDTH, PAGE_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM, id="body")
     document.addPageTemplates([PageTemplate(id="page", frames=[frame])])
     document.build(story(package), canvasmaker=canvas_class(package))
-    return buffer.getvalue()
+    pdf = buffer.getvalue()
+    untraced = audit_pdf(pdf, package.ledger)
+    if untraced:
+        raise PackageNotAudited(f"untraced numbers in the rendered PDF: {untraced[:10]}")
+    return pdf
