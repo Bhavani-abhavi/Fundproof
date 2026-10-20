@@ -6,7 +6,7 @@
 # full-history scan (gitleaks 8.30.1, 2026-10-20: 24 findings, all rule generic-api-key), each checked by hand: none
 # is a secret. Never allow-list a real key: rotate it, then remove it from the history. Merge commits are diffed
 # against each parent (-m in the Makefile), so the same values are found again in the merge commits that brought
-# them in: 42 findings over HEAD's 123 commits on 2026-10-20, all of them the values counted below.
+# them in: 42 findings over the 123 commits of 2026-10-20 (commit 0d3b606), all of them the values counted below.
 
 [extend]
 useDefault = true

@@ -471,7 +471,8 @@ export function PlanWizard() {
         description={
           <p>
             Six short steps. The plan is private to your account and stored encrypted. For a real city, a street address you
-            type is sent to the US Census Geocoder to find it; nothing else you type leaves the server.
+            type is sent to the US Census Geocoder to find it; nothing else you type is sent to any other service. A share
+            link you choose to create lets its holder see the plan&apos;s figures and site names.
           </p>
         }
       />

@@ -649,3 +649,36 @@ def test_the_verdict_is_frozen_and_allowed_matches_the_refusals() -> None:
         UploadVerdict(allowed=True, refusal_codes=("ssn",), message="x")
     with pytest.raises(ValidationError):
         UploadVerdict(allowed=False, message="x")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # S8 review (second round): writings the widened patterns refused although they are ordinary founder text.
+        "Social Security 450 450 450 450 450 450 450 450 450 450 450 450 5400 (SYNTHETIC payroll tax row)",
+        "Social Security tax 450 450 450 (SYNTHETIC)",
+        "Social Security 6200 14500 (SYNTHETIC)",
+        "Social Security 31000 6200 37200 (SYNTHETIC)",
+        "Revenue goes to the operating account. 2025-2026 projections follow. (SYNTHETIC)",
+        "Cash sits in the business account. 12 500 dollars (SYNTHETIC)",
+        "Fees billed to the account - 2025 2026 summary (SYNTHETIC)",
+        "The account is 30 60 90 days old (SYNTHETIC)",
+        "Account ID 2025-26 report (SYNTHETIC)",
+        "Insurance -350 12 -4200 (SYNTHETIC budget row with negative amounts)",
+    ],
+)
+def test_ordinary_budget_rows_and_prose_are_not_refused(body: str) -> None:
+    assert text_file(body).allowed
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "SSN 123456789 (SYNTHETIC)",
+        "Social Security Number: 1 2 3 4 5 6 7 8 9 (SYNTHETIC, comb boxes)",
+        "SSN-123-45-6789 (SYNTHETIC)",
+        "123- 45- 6789 (SYNTHETIC)",
+    ],
+)
+def test_the_narrowed_ssn_shapes_still_refuse_ssns(body: str) -> None:
+    assert text_file(body).refusal_codes == ("ssn",)

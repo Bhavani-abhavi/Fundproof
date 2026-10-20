@@ -72,19 +72,25 @@ below. The file name is also read with its separators turned into spaces (agent.
 
 5. ssn: an SSN-shaped number. First the shapes typed text refuses (web/services/text_checks.py): 123-45-6789
    (observability.redaction.SSN) and 123 45 6789 or mixed separators (text_checks.SPACED_SSN). Uploads also refuse
-   dashes with up to two spaces or tabs on each side ("123 - 45 - 6789") and these shapes right after a word and a
-   hyphen ("SSN-123-45-6789") (SEPARATED_SSN), and the digits one per box with the dashes kept, as the comb fields
-   of a paper form extract ("1 2 3 - 4 5 - 6 7 8 9", COMB_SSN). Then nine digits, also one per box
-   ("1 2 3 4 5 6 7 8 9"), after an SSN label: "SSN", "SS#", "Social Security" (also "Social-Security"), "Social
+   dashes with one or two spaces or tabs on both sides ("123 - 45 - 6789") and these shapes right after a word and a
+   hyphen ("SSN-123-45-6789") (SEPARATED_SSN; a space-dash-digit is a negative amount and never a separator, so
+   "Insurance -350 12 -4200" is allowed), and the digits one per box with the dashes kept, as the comb fields of a
+   paper form extract ("1 2 3 - 4 5 - 6 7 8 9", COMB_SSN). Then nine digits written together or one per box
+   ("123456789", "1 2 3 4 5 6 7 8 9"; not other groupings, so "Social Security 450 450 450" is a row of amounts), after
+   an SSN label: "SSN", "SS#", "Social Security" (also "Social-Security"), "Social
    Security Number" or "Social Security No.", then up to 12 characters of short filler (letters, spaces and
    : # = ( ) . - /, as in "SSN/TIN: ", "Social Security Number (SSN): ", "SSN No. " or "SSN - ") and any run of
    spaces, ":" or "#" (LABELED_SSN). Only the shape is checked, not whether the Social Security Administration could
    issue the number, so a part number written 123-45-6789 is refused too.
-6. bank_account: a labeled account number (UPLOAD_LABELED_ACCOUNT): the word "account", "acct", "a/c" or "acc"
-   (only before "." or "#", as in "Acc# "), an optional ".", optionally "no.", "number", "#" or "ID", then
-   optionally ":", "#", "=", "-" (an en or em dash is folded to "-") or "is", then a number of at least five digits,
-   spaces or dashes that starts and ends with a digit ("Account Number: 000123456789", "acct 1234-5678",
-   "Acct. No. 12345678", "Account number is 12345678"). This widens the typed-text rule
+6. bank_account: a labeled account number (UPLOAD_LABELED_ACCOUNT): the word "account", "acct" or "acct.", "a/c",
+   or "acc" (only before "." or "#", as in "Acc# "), then one of:
+   - optionally ":", "#" or "=", then a number of at least five digits, spaces or dashes that starts and ends with a
+     digit ("acct 1234-5678", "account=12345678");
+   - "no.", "number" or "#", then optionally ":", "#", "=", "-" (an en or em dash is folded to "-") or "is", then
+     such a number ("Account Number: 000123456789", "Acct. No. 12345678", "Account number is 12345678");
+   - "ID", then optionally ":", "#", "=" or "-", then at least eight digits ("Account ID 12345678").
+   Prose stays allowed: "the operating account. 2025-2026 projections", "the account - 2025 2026 summary", "the
+   account is 30 60 90 days old", "Account ID 2025-26 report". This widens the typed-text rule
    (observability.redaction.LABELED_ACCOUNT) and runs in linear time; typed text needs it less, because it also
    refuses every run of 8 to 17 digits, which uploads do not (see "Not refused"). A masked number ("Account ending
    in 1234", "Account ****5678") is not refused.
@@ -151,6 +157,9 @@ Known limits (a future route must not rely on this screen for more):
   (write ZIP+4 codes with the dash). No exception was added for nine digits after a two-letter state code ("ID" is
   Idaho's code and also the usual label of an id, so "Bank ID 123456780" would pass), and an exception for a "ZIP"
   label would not help an address table, whose ZIP column has its label only in the header row;
+- a nine-digit identifier that is not a routing number (an EIN written without its dash, an order id) passes the
+  routing-number tests about 37 times in 1,000 at random (the probability under rule 7), also in a CSV column next to
+  other numbers, so a file with a column of many such ids is likely to be refused; write EINs with the dash;
 - the magic-byte check proves only the first bytes; it is not a parser, so a malformed or polyglot file can pass.
   Open uploads only with a maintained parser, never execute them, and serve them back only as downloads;
 - the screen is only as good as the text it is given: an OCR error ("Form 1O40" with a letter O) defeats it;
@@ -209,23 +218,26 @@ ALLOWED_KINDS: tuple[FileKind, ...] = (
     FileKind("text", (".txt",), ("text/plain",), None),
 )
 
-# Rule 5 (the typed-text shapes SSN and SPACED_SSN are checked too). One separator inside an SSN: a dash with up to
-# two spaces or tabs on each side ("123 - 45 - 6789"), or one space ("123 45 6789").
-SSN_SEPARATOR = r"(?:[ \t]{0,2}-[ \t]{0,2}| )"
+# Rule 5 (the typed-text shapes SSN and SPACED_SSN are checked too). One separator inside an SSN: a dash with no
+# space before it ("123-45-6789", "123- 45"), a dash with one or two spaces or tabs on BOTH sides ("123 - 45 - 6789"),
+# or one space ("123 45 6789"). A space then a dash then a digit is a negative amount ("12 -4200"), not a separator.
+SSN_SEPARATOR = r"(?:-[ \t]{0,2}|[ \t]{1,2}-[ \t]{1,2}| )"
 # An SSN with those separators. It may follow a word and a hyphen ("SSN-123-45-6789"; the typed-text shapes refuse
 # any hyphen before the digits). It is not found inside a longer number: a digit, or a digit and a dash, right before
-# it, or a digit, or a dash and a digit, right after it.
-SEPARATED_SSN = re.compile(rf"(?<!\d)(?<!\d-)\d{{3}}{SSN_SEPARATOR}\d{{2}}{SSN_SEPARATOR}\d{{4}}(?!-?\d)")
+# it, or a digit, or a dash and a digit, right after it. A dash right before it counts only after a letter, so a
+# negative amount ("-350 12 4200") is not read as an SSN.
+SEPARATED_SSN = re.compile(rf"(?:(?<=[A-Za-z]-)|(?<![\d-]))\d{{3}}{SSN_SEPARATOR}\d{{2}}{SSN_SEPARATOR}\d{{4}}(?!-?\d)")
 # The same with each digit in its own box and the dashes kept, as the comb fields of a paper form extract
 # ("1 2 3 - 4 5 - 6 7 8 9").
 COMB_SSN = re.compile(r"(?<!\d)\d \d \d[ \t]{0,2}-[ \t]{0,2}\d \d[ \t]{0,2}-[ \t]{0,2}\d \d \d \d(?!\d)")
-# Nine digits (or nine digits one per box: "1 2 3 4 5 6 7 8 9") after an SSN label. Between the label and the digits
-# stand at most 12 characters of short filler (letters, spaces and : # = ( ) . - /, as in "SSN/TIN: ",
+# Nine digits written together, or one per box ("1 2 3 4 5 6 7 8 9"), after an SSN label. Not any grouping with
+# single spaces: a payroll-tax row "Social Security 450 450 450" is three amounts, not an SSN. Between the label and
+# the digits stand at most 12 characters of short filler (letters, spaces and : # = ( ) . - /, as in "SSN/TIN: ",
 # " (SSN): " or " No. "), then any run of spaces, ":" or "#". The filler is bounded and the run is possessive
 # ("*+", see UPLOAD_LABELED_ACCOUNT), so the time stays linear. "ssn" must not run on into a word ("ssnake").
 LABELED_SSN = re.compile(
     r"\b(?:ssn(?![a-z])|ss\s*#|social[\s-]+security(?:\s+(?:number|no\.?))?)"
-    r"[\s:#=().\-/a-z]{0,12}?[\s:#]*+\d(?: ?\d){8}(?!\d)",
+    r"[\s:#=().\-/a-z]{0,12}?[\s:#]*+(?:\d{9}|\d(?: \d){8})(?!\d)",
     re.IGNORECASE,
 )
 # Rule 6: the typed-text rule (observability.redaction.LABELED_ACCOUNT), widened for uploads and written so that it
@@ -233,12 +245,20 @@ LABELED_SSN = re.compile(
 # typed-text pattern has two plain "\s*" next to each other (around an optional ":" or "#"), and on "account" followed
 # by a long run of spaces the regex engine tries every way to split that run between them, which takes time that
 # grows with the square of the run (UP-1). Nothing after a whitespace run can be whitespace, so giving it back never
-# finds a match that keeping it misses. Widened (UP-7): a "." after the label ("Acct. No."), "acc" before "." or "#"
-# ("Acc# "; plain "ACC 2025-26" is a sports conference), "ID" as well as "no.", "number" and "#", and "=", "-" or
-# "is" before the number ("Account Number - 1234...", "account number is 1234...").
+# finds a match that keeping it misses. Widened (UP-7), but only where the label is unambiguous: a "." only after
+# the abbreviations ("Acct. No.", never "account." at the end of a sentence), "acc" before "." or "#" ("Acc# "; plain
+# "ACC 2025-26" is a sports conference), "-" or "is" only after "no.", "number" or "#" ("the account - 2025 2026
+# summary" and "the account is 30 60 90 days old" are prose), and "ID" only with at least eight digits.
 UPLOAD_LABELED_ACCOUNT = re.compile(
-    r"\b(?:account|acct|acc(?=[.#])|a/c)\.?(?:\s*+(?:no\.?|number|#|id))?\s*+(?:(?:[:#=-]|\bis\b)\s*+)?"
-    r"\d[\d -]{3,}\d",
+    r"\b(?:account|acct\.?|acc(?=[.#])\.?|a/c)"
+    r"(?:"
+    # the bare label: only ":", "#" or "=" before the number ("acct 1234-5678", "account=12345678")
+    r"\s*+(?:[:#=]\s*+)?\d[\d -]{3,}\d"
+    # "no.", "number" or "#" after the label: also "-" or "is" ("Account Number - 1234...", "account number is ...")
+    r"|\s*+(?:no\.?|number|#)\s*+(?:(?:[:#=-]|\bis\b)\s*+)?\d[\d -]{3,}\d"
+    # "ID" after the label: at least eight digits ("Account ID 2025-26" names a report, not an account)
+    r"|\s*+id\s*+(?:[:#=-]\s*+)?\d(?:[ -]?\d){7,}"
+    r")",
     re.IGNORECASE,
 )
 # Exactly nine digits, not inside a longer or dashed number, a decimal number, or an amount (rule 7). A comma next to
