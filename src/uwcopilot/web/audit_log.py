@@ -7,7 +7,18 @@
 It reuses the repo's hash-chained AuditLog (uwcopilot.security.audit): the same event shape, chain, head anchor, file
 lock and redactor, so scripts/verify_audit.py checks it too (pass --log with this file). It is its own FILE, apart
 from the agent's audit log (UWC_AUDIT_LOG): UWC_WEB_AUDIT_LOG, by default data/web/audit/plan_access_events.jsonl,
-next to the store folder and never inside it, so the dataset store never uploads it.
+next to the store folder and never inside it, so the dataset store never uploads it. The startup stops when the log
+cannot be written (check_writable).
+
+Where it lives in the hosted Space. The log is on the container disk, which does not survive a restart, unless the
+operator points UWC_WEB_AUDIT_LOG at persistent storage. On the container disk, every restart starts the log (and its
+head anchor) again empty, while the plans come back from the dataset, so the log does not cover the plans' whole
+life. With the dataset store and UWC_WEB_AUDIT_LOG unset, the startup logs an error saying so
+(settings.read_web_audit_log).
+
+What stays after "Delete all my data" and after retention deletion: the events in this log. They hold the owner
+digest, plan ids, action names and times, never plan content, names, addresses or IPs. There is no automatic deletion
+of the access log yet.
 
 What is logged. One event per request, for each action below; the exact action is always in `action`:
 
@@ -23,14 +34,16 @@ What is logged. One event per request, for each action below; the exact action i
 | delete_plan | DELETE /api/studio/projects/{id} | permission_change |
 | delete_all_data | DELETE /api/me/data | permission_change |
 
-security/audit.py has no event type for changing or deleting data (its list was written for lender files), and this
-package may not change it. So event_type is the closest existing type: "view" when the response shows the plan or
+security/audit.py has no event type for changing or deleting data (its list was written for lender files, and the
+agent's log shares it), so event_type is the closest existing type: "view" when the response shows the plan or
 results computed from it (create and update answer with the whole plan), "permission_change" when the request
 changes who can reach the plan (a link grants or loses read access; a deletion ends every access, links included).
 Adding "data_change" and "data_deletion" types to security/audit.py is an open follow-up.
 
 Who. The actor id is the owner digest (store.owner_digest: the first 32 hex characters of SHA-256 of the owner id),
-never the account id or the username; a share-link view has the actor "share_link:<link id>", never an IP address.
+never the account id or the username in clear. The digest is not anonymous: anyone who knows an account id can
+compute it and find that account's events. A share-link view has the actor "share_link:<link id>", never an IP
+address.
 security.rbac has no founder role, so actor.role is "unknown" ("no access role") and details.actor_kind says
 "founder" or "share_link". actor.role_source is "dev_login" for a dev session, "session_allowlist" for a Hugging
 Face session (docs/security.md section 9), and "claimed" for a link holder (the token proves only that they hold it).
@@ -60,6 +73,7 @@ bytes) per plan access, bounded only by the rate limits.
 """
 
 import logging
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -101,6 +115,10 @@ class AuditUnavailable(Unavailable):
     """The access event could not be written, so the access is refused (503)."""
 
 
+class AuditLogNotWritable(RuntimeError):
+    """The access log cannot be written at all (checked at startup, so the app does not start half working)."""
+
+
 def owner_actor(principal: Principal) -> rbac.Principal:
     """The audit actor of a signed-in founder: their owner digest, never the account id or the username."""
     role_source = "dev_login" if principal.auth_mode == "dev" else "session_allowlist"
@@ -128,6 +146,27 @@ class PlanAccessLog:
     def path(self) -> Path:
         """The JSON Lines file of the events."""
         return self.audit.path
+
+    def check_writable(self) -> None:
+        """Fail fast at startup: create the log's folder, open the log for appending (it is created empty when
+        missing) and check that the folder takes new files (the head anchor is written there).
+
+        Without this check, a log the app's user cannot write (for example in a folder it cannot create) is found
+        only at the first plan access, and then every plan route answers 503 while /api/health says healthy.
+        AuditLogNotWritable names the file and the setting to change.
+        """
+        folder = self.path.parent
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            with self.path.open("ab"):
+                pass
+            if not os.access(folder, os.W_OK | os.X_OK):
+                raise PermissionError(f"the folder {folder} does not take new files")
+        except OSError as error:
+            raise AuditLogNotWritable(
+                f"the plan access log {self.path} cannot be written ({error}); set UWC_WEB_AUDIT_LOG to a writable "
+                "file outside the store folder"
+            ) from error
 
     def record(
         self,

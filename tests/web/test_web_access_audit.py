@@ -20,7 +20,13 @@ from web_helpers import csrf_headers, dev_login
 from uwcopilot.security.audit import verify_audit_file
 from uwcopilot.studio.siteiq.context import metro_context
 from uwcopilot.web.app import create_app
-from uwcopilot.web.audit_log import ACTION_EVENT_TYPES, AUDIT_UNAVAILABLE_MESSAGE, PlanAccessLog, owner_actor
+from uwcopilot.web.audit_log import (
+    ACTION_EVENT_TYPES,
+    AUDIT_UNAVAILABLE_MESSAGE,
+    AuditLogNotWritable,
+    PlanAccessLog,
+    owner_actor,
+)
 from uwcopilot.web.auth import Principal
 from uwcopilot.web.services.projects import PROJECTS_NAMESPACE
 from uwcopilot.web.store import owner_digest
@@ -85,6 +91,20 @@ def test_the_log_sits_next_to_the_store_and_is_a_setting(make_settings, tmp_path
     assert make_settings().web_audit_log == tmp_path / "audit" / "plan_access_events.jsonl"
     custom = tmp_path / "elsewhere" / "access.jsonl"
     assert make_settings(UWC_WEB_AUDIT_LOG=str(custom)).web_audit_log == custom
+
+
+def test_the_app_does_not_start_when_the_log_cannot_be_written(make_settings, tmp_path: Path) -> None:
+    """S8-AUD-4: such a log used to be found only at the first plan access: every plan route answered 503 while
+    /api/health said healthy. The startup now checks it and stops with a message naming the setting."""
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("SYNTHETIC: a file where the log's folder should be", encoding="utf-8")
+    settings = make_settings(UWC_WEB_AUDIT_LOG=str(blocker / "plan_access_events.jsonl"))
+    with pytest.raises(AuditLogNotWritable, match="UWC_WEB_AUDIT_LOG"), TestClient(create_app(settings)):
+        pass
+    writable = make_settings(UWC_WEB_AUDIT_LOG=str(tmp_path / "new-folder" / "plan_access_events.jsonl"))
+    with TestClient(create_app(writable)) as client:
+        assert client.get("/api/health").status_code == 200
+    assert (tmp_path / "new-folder" / "plan_access_events.jsonl").is_file()  # created empty by the check
 
 
 def test_every_plan_route_writes_one_event(studio: TestClient) -> None:

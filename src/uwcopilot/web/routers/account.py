@@ -10,9 +10,12 @@ DELETE /api/me/data  (signed in; X-CSRF-Token) -> 200 {"deleted_objects": 3, "pe
     and the page must say so. 401 when signed out; 403 without the CSRF token; 503 (and nothing deleted) when the
     access event cannot be written.
 
-What stays: the access log keeps its events about you (they hold your owner digest and plan ids, never your account
-id, username or plan content): an audit trail must outlive the data it describes. The CSRF cookie stays (it is not
-tied to an account).
+What stays after "Delete all my data" (and after retention deletion): the plan access log (UWC_WEB_AUDIT_LOG,
+web/audit_log.py) keeps its events about you. They hold your owner digest (the first 32 hex characters of SHA-256 of
+your account id, so anyone who knows the account id can link them back to it), plan ids, action names and times,
+never plan content, names, addresses or IPs. In the hosted Space this log is on the container disk, which does not
+survive a restart, unless the operator points UWC_WEB_AUDIT_LOG at persistent storage; there is no automatic deletion
+of the access log yet. The CSRF cookie stays (it is not tied to an account).
 """
 
 from typing import Annotated
