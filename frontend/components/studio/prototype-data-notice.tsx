@@ -1,4 +1,5 @@
 import { TriangleAlert } from "lucide-react";
+import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
@@ -19,8 +20,12 @@ export function PrototypeDataNotice({ className }: { className?: string }) {
           Prototype: please use a made-up plan
         </h2>
         <p className="text-sm leading-relaxed text-foreground/85">
-          The privacy notice for this prototype is still a draft. Until it is approved, try Studio with invented figures
-          and public addresses only, and do not describe real people. Plans can be deleted when the server restarts.
+          The{" "}
+          <Link href="/privacy/" className="font-medium text-accent underline underline-offset-4">
+            privacy policy
+          </Link>{" "}
+          for this prototype is still a draft. Until it is approved, try Studio with invented figures and public addresses
+          only, and do not describe real people. Plans can be deleted when the server restarts.
         </p>
       </div>
     </aside>

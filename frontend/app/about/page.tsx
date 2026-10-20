@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { SystemStatus } from "@/components/about/system-status";
 import { PageIntro } from "@/components/layout/page-intro";
@@ -16,7 +17,8 @@ export const metadata: Metadata = {
  * together. Founder Studio sources are split by what the web app really uses: the Census Geocoder for every
  * real-city address, and the data-snapshot sources only where a city's snapshot is on the server (the container
  * image has none, so real cities run in limited mode there). Details: docs/studio/data_sources.md.
- * "Your information" is the short privacy notice (docs/studio/privacy.md); error messages point here.
+ * "Your information" is the short privacy notice (docs/studio/privacy.md), with links to the full privacy policy
+ * (/privacy/) and the Terms of Use (/terms/); error messages point here.
  */
 interface DataSource {
   name: string;
@@ -192,6 +194,17 @@ export default function AboutPage() {
         <h2 id="privacy-title" className="font-serif text-2xl font-semibold text-foreground">
           Your information
         </h2>
+        <p className="text-base leading-relaxed text-muted-foreground">
+          The short version. The full{" "}
+          <Link href="/privacy/" className="font-medium text-accent underline underline-offset-4">
+            privacy policy
+          </Link>{" "}
+          and the{" "}
+          <Link href="/terms/" className="font-medium text-accent underline underline-offset-4">
+            Terms of Use
+          </Link>{" "}
+          are drafts, pending the owners&apos; approval.
+        </p>
         <ul className="flex flex-col gap-2 text-base leading-relaxed text-muted-foreground">
           <li>
             Sign-in uses your Hugging Face account; only your account id, username and display name are kept, in a signed

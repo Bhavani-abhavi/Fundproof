@@ -6,7 +6,10 @@ import Link from "next/link";
 import { useSession } from "@/lib/auth";
 import { REPO_URL } from "@/lib/config";
 
-/** Footer on EVERY page: the disclaimer (Studio addendum rule C), the prototype + SYNTHETIC notes, and links. */
+/**
+ * Footer on EVERY page: the disclaimer (Studio addendum rule C), the prototype + SYNTHETIC notes, and links (About,
+ * the privacy policy and the Terms of Use, source code).
+ */
 export function SiteFooter() {
   const { productName, disclaimer } = useSession();
 
@@ -25,6 +28,16 @@ export function SiteFooter() {
             <li>
               <Link href="/about" className="underline-offset-4 hover:text-foreground hover:underline">
                 About and data sources
+              </Link>
+            </li>
+            <li>
+              <Link href="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
+                Privacy policy
+              </Link>
+            </li>
+            <li>
+              <Link href="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
+                Terms of Use
               </Link>
             </li>
             <li>
