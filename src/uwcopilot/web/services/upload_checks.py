@@ -7,21 +7,37 @@ sent anywhere or read by anything else:
     if not verdict.allowed:
         answer 422 with verdict.message (it never repeats the file's text) and drop the bytes
 
-`text` is the file's text as the route extracted it (the text layer of a PDF, OCR of an image). For CSV and plain-text
-files the module decodes `data` itself, and also screens `text` when it is given. text=None for a PDF or an image
-means "not read", and such a file is refused (fail closed): a file whose text was never read cannot be shown to be
-free of SSNs, tax returns and account numbers. An image that holds no text is passed with text="".
+`text` is the file's text as the route extracted it. For a PDF that is the text layer of every page PLUS the OCR text
+of every page that has no text layer: a scanned page is an image, so its text layer is empty (docintel/pdftext.py
+treats a page with fewer than MIN_TEXT_CHARS = 20 characters as having no text layer and sends it to OCR). For an
+image it is the OCR text. For CSV and plain-text files the module decodes `data` itself, and also screens `text` when
+it is given. text=None for a PDF or an image means "not read", and such a file is refused (fail closed): a file whose
+text was never read cannot be shown to be free of SSNs, tax returns and account numbers. A PDF whose text holds fewer
+than MIN_PDF_TEXT_CHARS (20) visible characters is refused the same way: that is what a scanned PDF (a paper Form
+1040 or bank statement put through a scanner) gives when nobody ran OCR on it, and the screen cannot tell that from
+a PDF that was OCR'd and holds almost no text. An image that holds no text (a site photo) is passed with text="":
+an image has no text layer, so a text for it can only come from OCR; the route must pass text=None for an image it
+did not OCR.
 
 What is refused (refusal_codes, always in this order). The first four are gates: a file stopped at a gate is not
 read further and gets exactly one code.
 
-1. too_large: more than MAX_UPLOAD_BYTES bytes (10 MiB, a design choice). The route should also stop reading the
-   request body at that cap (web/security.py limits request bodies per path prefix); this check is the second line.
-   Checked again once the text is known (after gate 4): a text longer than MAX_TEXT_CHARS characters (1,000,000, a
-   design choice), whether given by the route or decoded from a CSV or plain-text file, is refused as too_large too.
-   Every character is read (the normalization in security.normalize goes character by character in Python), so the
-   text is capped to keep one screen short; screening only part of a longer text would let the rest through
-   unchecked.
+1. too_large: more than MAX_UPLOAD_BYTES bytes (10 MiB, a design choice), or a file name longer than
+   MAX_FILENAME_CHARS characters (255, the longest name common file systems allow; a design choice). The route
+   should also stop reading the request body at that cap (web/security.py limits request bodies per path prefix);
+   this check is the second line. Checked again once the text is known (after gate 4): a text longer than
+   MAX_TEXT_CHARS characters (1,000,000, a design choice), whether given by the route or decoded from a CSV or
+   plain-text file, is refused as too_large too. Every character is read (the normalization in security.normalize
+   goes character by character in Python), so the text is capped to keep one screen short; screening only part of a
+   longer text would let the rest through unchecked. The cap keeps a screen short only if every check takes time in
+   proportion to the length of the text. The upload patterns are written for that: none has two unbounded runs that
+   can share the same characters (two "\\s*" next to each other make the regex engine try every way to split a long
+   run of spaces between them, which takes time that grows with the square of the run); where the typed-text
+   patterns have that shape, the upload patterns use possessive "\\s*+" (see UPLOAD_LABELED_ACCOUNT). The agency line
+   of rule 8 is matched to form numbers in one pass. A test screens long adversarial texts (a label followed by a long
+   run of spaces, many agency lines far from many form numbers) at two sizes and checks that eight times the text
+   takes less than 24 times as long (time in proportion to the length gives about 8, time that grows with the square
+   about 64).
 2. empty: zero bytes.
 3. file_type: the file is not one of ALLOWED_KINDS, or its name, its declared type and its content disagree. A kind
    is accepted only when all three agree:
@@ -37,33 +53,52 @@ read further and gets exactly one code.
    The declared type is compared without its parameters ("text/csv; charset=utf-8" is text/csv) and ignoring case,
    and so is the extension (only the last one counts: "statement.pdf.exe" is an .exe). An empty or generic declared
    type (application/octet-stream) is refused.
-4. unreadable: a PDF, PNG or JPEG given with text=None (see above).
+4. unreadable: a PDF, PNG or JPEG given with text=None, or a PDF whose whole text holds fewer than
+   MIN_PDF_TEXT_CHARS visible characters (whitespace and invisible characters are not counted; see above). 20 is the
+   number docintel/pdftext.py uses for one page: a page with fewer printed characters has no text layer. The
+   short-PDF test runs after the text cap of rule 1, so it never counts more than MAX_TEXT_CHARS characters. A PDF
+   that is only a photo is refused too: upload the photo as a PNG or JPEG.
 
 Then the content: the file name and the file's text. Each is read as written and after a light normalization
 (invisible characters removed, NFKC, lookalike letters and typographic dashes folded; uwcopilot.security.normalize),
 so an SSN written in fullwidth digits, with en dashes or with a zero-width space inside is still found. Runs of
-whitespace are NOT collapsed (security.normalize.normalize_text would collapse them), so numbers in separate columns
-of a table ("120    45    2026") are not joined into an SSN shape. The file name is also read with its separators
-turned into spaces (agent.injection.code_as_words: "Form_1040_2025.pdf" is read as "Form 1040 2025 pdf").
+whitespace are NOT collapsed (security.normalize.normalize_text would collapse them), so table columns set several
+spaces apart ("120    45    2026") are not joined into an SSN shape. That helps only text that keeps those runs (a
+plain-text or fixed-width file). Text extracted from a PDF has one space between the cells of a table row
+(docintel/layout.py joins the words of a line with single spaces), and a budget row such as "Insurance 350 12 4200"
+(a monthly cost, 12 months, the year's total) then has the SSN shape 123 45 6789 and is refused: a known limit
+below. The file name is also read with its separators turned into spaces (agent.injection.code_as_words:
+"Form_1040_2025.pdf" is read as "Form 1040 2025 pdf").
 
-5. ssn: an SSN-shaped number, the shapes typed text refuses (web/services/text_checks.py): 123-45-6789
-   (observability.redaction.SSN) and 123 45 6789 or mixed separators (text_checks.SPACED_SSN); plus nine digits
-   right after an SSN label: "SSN", "SS#", "Social Security", "Social Security Number" or "Social Security No.",
-   then optional spaces, ":" or "#" (LABELED_SSN). Only the shape is checked, not whether the Social Security
-   Administration could issue the number, so a part number written 123-45-6789 is refused too.
-6. bank_account: a labeled account number, the typed-text rule (observability.redaction.LABELED_ACCOUNT): the word
-   "account", "acct" or "a/c", optionally "no.", "number" or "#", then a number of at least five digits, spaces or
-   dashes that starts and ends with a digit ("Account Number: 000123456789", "acct 1234-5678"). A masked number
-   ("Account ending in 1234", "Account ****5678") is not refused.
+5. ssn: an SSN-shaped number. First the shapes typed text refuses (web/services/text_checks.py): 123-45-6789
+   (observability.redaction.SSN) and 123 45 6789 or mixed separators (text_checks.SPACED_SSN). Uploads also refuse
+   dashes with up to two spaces or tabs on each side ("123 - 45 - 6789") and these shapes right after a word and a
+   hyphen ("SSN-123-45-6789") (SEPARATED_SSN), and the digits one per box with the dashes kept, as the comb fields
+   of a paper form extract ("1 2 3 - 4 5 - 6 7 8 9", COMB_SSN). Then nine digits, also one per box
+   ("1 2 3 4 5 6 7 8 9"), after an SSN label: "SSN", "SS#", "Social Security" (also "Social-Security"), "Social
+   Security Number" or "Social Security No.", then up to 12 characters of short filler (letters, spaces and
+   : # = ( ) . - /, as in "SSN/TIN: ", "Social Security Number (SSN): ", "SSN No. " or "SSN - ") and any run of
+   spaces, ":" or "#" (LABELED_SSN). Only the shape is checked, not whether the Social Security Administration could
+   issue the number, so a part number written 123-45-6789 is refused too.
+6. bank_account: a labeled account number (UPLOAD_LABELED_ACCOUNT): the word "account", "acct", "a/c" or "acc"
+   (only before "." or "#", as in "Acc# "), an optional ".", optionally "no.", "number", "#" or "ID", then
+   optionally ":", "#", "=", "-" (an en or em dash is folded to "-") or "is", then a number of at least five digits,
+   spaces or dashes that starts and ends with a digit ("Account Number: 000123456789", "acct 1234-5678",
+   "Acct. No. 12345678", "Account number is 12345678"). This widens the typed-text rule
+   (observability.redaction.LABELED_ACCOUNT) and runs in linear time; typed text needs it less, because it also
+   refuses every run of 8 to 17 digits, which uploads do not (see "Not refused"). A masked number ("Account ending
+   in 1234", "Account ****5678") is not refused.
 7. routing_number: a nine-digit number that has the form of an ABA routing transit number: its first two digits are
    in ROUTING_PREFIXES (01-12, 21-32, 61-72 or 80) AND it passes the ABA check digit,
    3 x (d1 + d4 + d7) + 7 x (d2 + d5 + d8) + (d3 + d6 + d9) is divisible by 10. The two tests cut false positives:
    37 of the 100 two-digit prefixes are allowed and, for any first eight digits, exactly one ninth digit of ten
    passes the checksum, so a random nine-digit number passes both with probability 37/100 x 1/10 (a test checks
    both counts). Digits that are part of a longer digit run, of a dashed number (a ZIP+4 such as 60601-1234), of a
-   decimal or comma-grouped number, or that follow a "$" (an amount) are not candidates. The prefix 00 (reserved for
-   the U.S. government) is left out: zero-padded ids such as 000000000 are common in tables, and a government
-   routing number is not a person's bank detail.
+   decimal number, or that follow a "$" (an amount) are not candidates. A comma next to the digits does not stop
+   them: in a CSV it is a delimiter ("SYNTHETIC Bank,123456780,4500"), and a nine-digit run can never be one group of
+   a comma-grouped number such as 123,456,780. The prefix 00 (reserved for the U.S. government) is left out:
+   zero-padded ids such as 000000000 are common in tables, and a government routing number is not a person's bank
+   detail.
    Source of the checksum and the prefix ranges: the Wikipedia article "ABA routing transit number" (read
    2026-10-20), which cites Bankers' Hotline (2004), "Training Page: Learning the Bank Numbering System", for the
    check digit and gives no citation for the prefix list. Neither was checked against the routing number registrar's
@@ -81,12 +116,16 @@ turned into spaces (agent.injection.code_as_words: "Form_1040_2025.pdf" is read 
    A text that only mentions a form ("we can send our Form 1040 later") is refused too: the screen cannot tell a
    mention from the form itself.
 
-Not refused (each has a test): phone numbers ((312) 555-0147, 312-555-0147, 3125550147), ZIP+4 codes (60601-1234,
-606011234), 11-digit census tract ids, dollar amounts ($1,250,000.00, $250000), dates (2026-10-20, 10/20/2026,
-20261020), an EIN (12-3456789, a business id that typed text allows too). Typed text also refuses every run of 8 to 17
-digits (redaction.LONG_DIGITS); uploads do not, because CSV and PDF tables are full of such runs (tract ids, FIPS
-codes, dates and phone numbers written without separators, invoice numbers). The price is the first known limit
-below.
+Not refused (each has a test): phone numbers ((312) 555-0147, 312-555-0147, 3125550147), ZIP+4 codes written with
+the dash (60601-1234), 11-digit census tract ids, dollar amounts ($1,250,000.00, $250000), dates (2026-10-20,
+10/20/2026, 20261020), an EIN (12-3456789, a business id that typed text allows too). A ZIP+4 written without the
+dash is a plain nine-digit number to rule 7: it is not refused when its first two digits are outside
+ROUTING_PREFIXES (606011234, Chicago), but when they are inside (a ZIP code that starts with 01-12, 21-32, 61-72 or
+80, such as 02138 in Cambridge, MA or 10001 in New York, NY) it passes the check digit for exactly 1 of every 10
+four-digit extensions and is refused as a bank routing number (a known limit below). Typed text also refuses every
+run of 8 to 17 digits (redaction.LONG_DIGITS); uploads do not, because CSV and PDF tables are full of such runs (tract
+ids, FIPS codes, dates and phone numbers written without separators, invoice numbers). The price is the first known
+limit below.
 
 Injection is a FLAG, never a refusal: uploaded text is data, never instructions. The text and the file name are read
 by the agent's tripwire (uwcopilot.agent.injection.detect_untrusted: as written and after
@@ -101,9 +140,23 @@ Known limits (a future route must not rely on this screen for more):
 - an unlabeled account number, or an SSN written as nine bare digits without a label, is not found; nor is a column
   of them under a header (an "ssn" header on the first row of a CSV), because the label must come right before the
   number;
+- these SSN writings are not found either: dotted (123.45.6789), and the digits one per box without dashes and
+  without a label ("1 2 3 4 5 6 7 8 9"), because a row of numbered table columns looks the same;
+- an account number written with dots (0001.2345.6789) is not found: allowing dots in the number would also refuse an
+  amount such as "account 1250.00";
+- false refusals the shape rules accept. A PDF budget row with one space between its cells ("Insurance 350 12 4200")
+  is refused as an SSN: without a label the screen cannot tell it from an SSN written 123 45 6789, which typed text
+  refuses too. A ZIP+4 written without its dash in a ZIP area that starts with 01-12, 21-32, 61-72 or 80 is refused
+  as a routing number 1 time in 10, so an address table with such nine-digit ZIP codes is likely to be refused
+  (write ZIP+4 codes with the dash). No exception was added for nine digits after a two-letter state code ("ID" is
+  Idaho's code and also the usual label of an id, so "Bank ID 123456780" would pass), and an exception for a "ZIP"
+  label would not help an address table, whose ZIP column has its label only in the header row;
 - the magic-byte check proves only the first bytes; it is not a parser, so a malformed or polyglot file can pass.
   Open uploads only with a maintained parser, never execute them, and serve them back only as downloads;
 - the screen is only as good as the text it is given: an OCR error ("Form 1O40" with a letter O) defeats it;
+- the PDF minimum (gate 4) applies to the whole text, not page by page: a PDF with one typed page and one scanned
+  page passes on the typed page alone unless the route OCRs the scanned page, and so does a scan with a few words of
+  text layer on top. Only the route can see the pages, so it must OCR every page without a text layer;
 - the markers are in English and for US forms only.
 """
 
@@ -117,12 +170,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from uwcopilot.agent.injection import ALL_PATTERNS, code_as_words, detect_untrusted
-from uwcopilot.observability.redaction import LABELED_ACCOUNT, SSN
+from uwcopilot.observability.redaction import SSN
 from uwcopilot.security.normalize import fold_lookalikes, strip_invisible
 from uwcopilot.web.services.text_checks import PRIVACY_NOTICE, SPACED_SSN
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB, a design choice
 MAX_TEXT_CHARS = 1_000_000  # characters of text screened per file, a design choice (module docstring, rule 1)
+MAX_FILENAME_CHARS = 255  # the longest file name common file systems allow (ext4, NTFS), a design choice
+MIN_PDF_TEXT_CHARS = 20  # docintel.pdftext.MIN_TEXT_CHARS, applied to a PDF's whole text (gate 4), a design choice
 NEAR_CHARS = 300  # how close "Department of the Treasury - Internal Revenue Service" must be to a form number
 
 RefusalCode = Literal[
@@ -154,24 +209,53 @@ ALLOWED_KINDS: tuple[FileKind, ...] = (
     FileKind("text", (".txt",), ("text/plain",), None),
 )
 
-# Nine digits right after an SSN label (rule 5). The dashed and spaced shapes come from SSN and SPACED_SSN.
+# Rule 5 (the typed-text shapes SSN and SPACED_SSN are checked too). One separator inside an SSN: a dash with up to
+# two spaces or tabs on each side ("123 - 45 - 6789"), or one space ("123 45 6789").
+SSN_SEPARATOR = r"(?:[ \t]{0,2}-[ \t]{0,2}| )"
+# An SSN with those separators. It may follow a word and a hyphen ("SSN-123-45-6789"; the typed-text shapes refuse
+# any hyphen before the digits). It is not found inside a longer number: a digit, or a digit and a dash, right before
+# it, or a digit, or a dash and a digit, right after it.
+SEPARATED_SSN = re.compile(rf"(?<!\d)(?<!\d-)\d{{3}}{SSN_SEPARATOR}\d{{2}}{SSN_SEPARATOR}\d{{4}}(?!-?\d)")
+# The same with each digit in its own box and the dashes kept, as the comb fields of a paper form extract
+# ("1 2 3 - 4 5 - 6 7 8 9").
+COMB_SSN = re.compile(r"(?<!\d)\d \d \d[ \t]{0,2}-[ \t]{0,2}\d \d[ \t]{0,2}-[ \t]{0,2}\d \d \d \d(?!\d)")
+# Nine digits (or nine digits one per box: "1 2 3 4 5 6 7 8 9") after an SSN label. Between the label and the digits
+# stand at most 12 characters of short filler (letters, spaces and : # = ( ) . - /, as in "SSN/TIN: ",
+# " (SSN): " or " No. "), then any run of spaces, ":" or "#". The filler is bounded and the run is possessive
+# ("*+", see UPLOAD_LABELED_ACCOUNT), so the time stays linear. "ssn" must not run on into a word ("ssnake").
 LABELED_SSN = re.compile(
-    r"\b(?:ssn|ss\s*#|social\s+security(?:\s+(?:number|no\.?))?)[\s:#]*\d{9}(?!\d)",
+    r"\b(?:ssn(?![a-z])|ss\s*#|social[\s-]+security(?:\s+(?:number|no\.?))?)"
+    r"[\s:#=().\-/a-z]{0,12}?[\s:#]*+\d(?: ?\d){8}(?!\d)",
     re.IGNORECASE,
 )
-# Exactly nine digits, not inside a longer or dashed number, a decimal or grouped number, or an amount (rule 7).
-NINE_DIGITS = re.compile(r"(?<![\d$-])(?<!\d[.,])\d{9}(?![\d-]|[.,]\d)")
+# Rule 6: the typed-text rule (observability.redaction.LABELED_ACCOUNT), widened for uploads and written so that it
+# runs in linear time. In "\s*+" the "+" makes the run of whitespace possessive: once read it is never given back. The
+# typed-text pattern has two plain "\s*" next to each other (around an optional ":" or "#"), and on "account" followed
+# by a long run of spaces the regex engine tries every way to split that run between them, which takes time that
+# grows with the square of the run (UP-1). Nothing after a whitespace run can be whitespace, so giving it back never
+# finds a match that keeping it misses. Widened (UP-7): a "." after the label ("Acct. No."), "acc" before "." or "#"
+# ("Acc# "; plain "ACC 2025-26" is a sports conference), "ID" as well as "no.", "number" and "#", and "=", "-" or
+# "is" before the number ("Account Number - 1234...", "account number is 1234...").
+UPLOAD_LABELED_ACCOUNT = re.compile(
+    r"\b(?:account|acct|acc(?=[.#])|a/c)\.?(?:\s*+(?:no\.?|number|#|id))?\s*+(?:(?:[:#=-]|\bis\b)\s*+)?"
+    r"\d[\d -]{3,}\d",
+    re.IGNORECASE,
+)
+# Exactly nine digits, not inside a longer or dashed number, a decimal number, or an amount (rule 7). A comma next to
+# the digits is a CSV delimiter, not digit grouping: a nine-digit run can never be one group of a grouped number.
+NINE_DIGITS = re.compile(r"(?<![\d$-])(?<!\d\.)\d{9}(?![\d-]|\.\d)")
 ROUTING_PREFIXES: frozenset[int] = frozenset([*range(1, 13), *range(21, 33), *range(61, 73), 80])
 ABA_WEIGHTS: tuple[int, ...] = (3, 7, 1, 3, 7, 1, 3, 7, 1)
 
-# Rule 8: markers that are enough on their own.
+# Rule 8: markers that are enough on their own. The K-1 marker uses possessive "\s*+" for the reason given at
+# UPLOAD_LABELED_ACCOUNT ("schedule\s*k\s*-?\s*1" had two "\s*" next to each other when the dash is missing).
 TAX_RETURN_MARKERS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bform\s*1040(?!\d)", re.IGNORECASE),
     re.compile(r"\bform\s*1120(?!\d)", re.IGNORECASE),
     re.compile(r"\bform\s*1065(?!\d)", re.IGNORECASE),
     re.compile(r"(?<![\w-])1120\s*-\s*s\b", re.IGNORECASE),
     re.compile(r"\bu\.?\s*s\.?\s*individual\s+income\s+tax\s+return\b", re.IGNORECASE),
-    re.compile(r"\bschedule\s*k\s*-?\s*1(?!\d)", re.IGNORECASE),
+    re.compile(r"\bschedule\s*+k\s*+(?:-\s*+)?1(?!\d)", re.IGNORECASE),
     re.compile(r"\bschedule\s*c\b[\s(]*(?:form\s*1040|profit\s+or\s+loss\s+from\s+business)", re.IGNORECASE),
 )
 # Rule 8: the agency line counts only near a form number.
@@ -181,7 +265,7 @@ FORM_NUMBER = re.compile(r"\bform\s*\d{3,4}(?!\d)", re.IGNORECASE)
 GATE_MESSAGES: dict[RefusalCode, str] = {
     "too_large": (
         f"The file is larger than the upload limit ({MAX_UPLOAD_BYTES // (1024 * 1024)} MB, or {MAX_TEXT_CHARS:,} "
-        "characters of text)."
+        f"characters of text), or its name is longer than {MAX_FILENAME_CHARS} characters."
     ),
     "empty": "The file is empty.",
     "file_type": (
@@ -290,13 +374,16 @@ def readings(text: str) -> list[str]:
 
 
 def has_ssn(text: str) -> bool:
-    """Rule 5: an SSN-shaped number (dashes, spaces or mixed) or nine digits right after an SSN label."""
-    return bool(SSN.search(text) or SPACED_SSN.search(text) or LABELED_SSN.search(text))
+    """Rule 5: an SSN-shaped number (dashes, spaces, spaced dashes, comb boxes) or nine digits after an SSN label."""
+    for pattern in (SSN, SPACED_SSN, SEPARATED_SSN, COMB_SSN, LABELED_SSN):
+        if pattern.search(text):
+            return True
+    return False
 
 
 def has_bank_account(text: str) -> bool:
-    """Rule 6: a labeled account number (the same pattern the typed-text check and the trace redactor use)."""
-    return LABELED_ACCOUNT.search(text) is not None
+    """Rule 6: a labeled account number (UPLOAD_LABELED_ACCOUNT: the typed-text rule, widened, in linear time)."""
+    return UPLOAD_LABELED_ACCOUNT.search(text) is not None
 
 
 def aba_checksum_ok(digits: str) -> bool:
@@ -325,13 +412,24 @@ def has_routing_number(text: str) -> bool:
 
 
 def treasury_line_near_form_number(text: str) -> bool:
-    """Rule 8: "Department of the Treasury - Internal Revenue Service" within NEAR_CHARS characters of a form number."""
+    """Rule 8: "Department of the Treasury - Internal Revenue Service" within NEAR_CHARS characters of a form number.
+
+    finditer returns matches left to right and they do not overlap, so both lists are sorted by start and by end.
+    One pass walks them together: a form number that ends more than NEAR_CHARS before an agency line starts is too
+    far left for that line and for every later one, so it is skipped for good. The first form number left is the
+    leftmost one that does not end too early, so the line has a form number near it exactly when that one starts
+    no more than NEAR_CHARS after the line ends. Each form number is passed over at most once, so the time grows
+    with the number of matches, not with their product (comparing every line with every form number did, UP-1).
+    """
     form_numbers = list(FORM_NUMBER.finditer(text))
+    next_form = 0
     for agency in TREASURY_IRS.finditer(text):
-        for form in form_numbers:
-            gap = max(form.start() - agency.end(), agency.start() - form.end(), 0)
-            if gap <= NEAR_CHARS:
-                return True
+        while next_form < len(form_numbers) and form_numbers[next_form].end() < agency.start() - NEAR_CHARS:
+            next_form += 1
+        if next_form == len(form_numbers):
+            return False
+        if form_numbers[next_form].start() <= agency.end() + NEAR_CHARS:
+            return True
     return False
 
 
@@ -416,13 +514,26 @@ def texts_to_screen(kind: FileKind, data: bytes, text: str | None) -> list[str] 
     return texts
 
 
+def too_little_pdf_text(kind: FileKind, text: str | None) -> bool:
+    """Gate 4 for a PDF: True when its text holds fewer than MIN_PDF_TEXT_CHARS visible characters.
+
+    Whitespace and invisible characters are not counted. Such a PDF is most likely a scan whose pages are images and
+    were never OCR'd (module docstring), so its content was not read.
+    """
+    if kind.name != "pdf" or text is None:
+        return False
+    visible = strip_invisible("".join(text.split()))
+    return len(visible) < MIN_PDF_TEXT_CHARS
+
+
 def screen_upload(filename: str, content_type: str, data: bytes, text: str | None) -> UploadVerdict:
     """Screen one uploaded file: the size, emptiness, type and readability gates, then its name and text.
 
     filename and content_type are what the client declared; data is the file's bytes; text is the text the route
-    extracted from a PDF or an image (None when it did not read it). See the module docstring for every rule.
+    extracted from a PDF (its text layer plus OCR of every page without one) or an image (its OCR text), None when it
+    did not read it. See the module docstring for every rule.
     """
-    if len(data) > MAX_UPLOAD_BYTES:
+    if len(data) > MAX_UPLOAD_BYTES or len(filename) > MAX_FILENAME_CHARS:
         return gate_verdict("too_large")
     if not data:
         return gate_verdict("empty")
@@ -434,6 +545,8 @@ def screen_upload(filename: str, content_type: str, data: bytes, text: str | Non
         return gate_verdict("unreadable", kind)
     if any(len(item) > MAX_TEXT_CHARS for item in texts):
         return gate_verdict("too_large", kind)
+    if too_little_pdf_text(kind, text):
+        return gate_verdict("unreadable", kind)
     name_as_words = code_as_words(filename)
     codes = content_refusals([filename, name_as_words, *texts])
     patterns = injection_patterns([name_as_words, *texts])

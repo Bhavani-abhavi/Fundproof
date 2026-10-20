@@ -7,21 +7,29 @@ person's data. No network.
 """
 
 import re
+import time
+from collections.abc import Callable
 
 import pytest
 from pydantic import ValidationError
 
+from uwcopilot.docintel.layout import Word, make_line
+from uwcopilot.observability.redaction import LABELED_ACCOUNT
 from uwcopilot.web.services.text_checks import forbidden_identifiers
 from uwcopilot.web.services.upload_checks import (
     ABA_WEIGHTS,
+    MAX_FILENAME_CHARS,
     MAX_TEXT_CHARS,
     MAX_UPLOAD_BYTES,
+    MIN_PDF_TEXT_CHARS,
     NEAR_CHARS,
     ROUTING_PREFIXES,
+    UPLOAD_LABELED_ACCOUNT,
     UploadVerdict,
     aba_checksum_ok,
     is_routing_number,
     screen_upload,
+    treasury_line_near_form_number,
 )
 
 PDF = b"%PDF-1.7\n%SYNTHETIC test file, not a real PDF body\n"
@@ -33,6 +41,7 @@ SYNTHETIC_1040_HEADER = (
     "Form 1040 Department of the Treasury—Internal Revenue Service\n"
     "U.S. Individual Income Tax Return 2025 (SYNTHETIC sample, not a real return)\n"
 )
+PDF_PAGE_TEXT = "SYNTHETIC business plan, page 1"  # more visible characters than MIN_PDF_TEXT_CHARS
 
 
 def text_file(body: str, name: str = "notes.txt") -> UploadVerdict:
@@ -41,8 +50,9 @@ def text_file(body: str, name: str = "notes.txt") -> UploadVerdict:
 
 
 def pdf_with_text(text: str, name: str = "plan.pdf") -> UploadVerdict:
-    """Screen a SYNTHETIC PDF whose extracted text is text."""
-    return screen_upload(name, "application/pdf", PDF, text)
+    """Screen a SYNTHETIC PDF whose extracted text is text followed by a line of ordinary page text (PDF_PAGE_TEXT),
+    so the PDF always holds enough text to be screened (gate 4)."""
+    return screen_upload(name, "application/pdf", PDF, f"{text}\n{PDF_PAGE_TEXT}")
 
 
 def with_check_digit(stem: str) -> str:
@@ -59,8 +69,8 @@ def with_check_digit(stem: str) -> str:
 @pytest.mark.parametrize(
     ("filename", "content_type", "data", "text", "kind"),
     [
-        ("plan.pdf", "application/pdf", PDF, "", "pdf"),
-        ("Plan.PDF", "application/pdf", PDF, "", "pdf"),
+        ("plan.pdf", "application/pdf", PDF, PDF_PAGE_TEXT, "pdf"),
+        ("Plan.PDF", "application/pdf", PDF, PDF_PAGE_TEXT, "pdf"),
         ("site.png", "image/png", PNG, "", "png"),
         ("site.jpg", "image/jpeg", JPEG, "", "jpeg"),
         ("site.JPEG", "image/jpeg", JPEG, "", "jpeg"),
@@ -106,9 +116,9 @@ def test_other_types_and_disagreeing_files_are_refused_as_file_type(
 
 def test_the_size_cap_is_checked_on_the_bytes_before_anything_else() -> None:
     at_cap = PDF + b"0" * (MAX_UPLOAD_BYTES - len(PDF))
-    assert screen_upload("plan.pdf", "application/pdf", at_cap, "").allowed
+    assert screen_upload("plan.pdf", "application/pdf", at_cap, PDF_PAGE_TEXT).allowed
     over = at_cap + b"0"
-    assert screen_upload("plan.pdf", "application/pdf", over, "").refusal_codes == ("too_large",)
+    assert screen_upload("plan.pdf", "application/pdf", over, PDF_PAGE_TEXT).refusal_codes == ("too_large",)
     # The size gate comes first: a too-large file of a refused type is reported as too large.
     assert screen_upload("tool.exe", "application/octet-stream", over, None).refusal_codes == ("too_large",)
 
@@ -119,6 +129,14 @@ def test_text_over_the_character_cap_is_too_large_whether_given_or_decoded() -> 
     decoded = text_file("a" * (MAX_TEXT_CHARS + 1))
     assert decoded.refusal_codes == ("too_large",) and decoded.file_kind == "text"
     assert text_file("a" * MAX_TEXT_CHARS).allowed
+
+
+def test_a_file_name_longer_than_the_cap_is_too_large() -> None:
+    at_cap = "n" * (MAX_FILENAME_CHARS - len(".txt")) + ".txt"
+    assert text_file("SYNTHETIC notes", name=at_cap).allowed
+    over = text_file("SYNTHETIC notes", name="n" + at_cap)
+    assert over.refusal_codes == ("too_large",) and over.file_kind is None
+    assert f"name is longer than {MAX_FILENAME_CHARS} characters" in over.message
 
 
 def test_an_empty_file_is_refused() -> None:
@@ -134,13 +152,51 @@ def test_an_empty_file_is_refused() -> None:
         ("a.jpg", "image/jpeg", JPEG, "jpeg"),
     ],
 )
-def test_a_pdf_or_image_whose_text_was_not_read_is_refused_but_empty_text_passes(
+def test_a_pdf_or_image_whose_text_was_not_read_is_refused(
     filename: str, content_type: str, data: bytes, kind: str
 ) -> None:
     unread = screen_upload(filename, content_type, data, None)
     assert unread.refusal_codes == ("unreadable",) and unread.file_kind == kind
     assert "could not be read" in unread.message
-    assert screen_upload(filename, content_type, data, "").allowed  # read, and it holds no text
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type", "data"), [("site.png", "image/png", PNG), ("a.jpg", "image/jpeg", JPEG)]
+)
+def test_an_image_whose_ocr_found_no_text_passes(filename: str, content_type: str, data: bytes) -> None:
+    # A site photo: an image has no text layer, so text="" can only mean OCR ran and found nothing.
+    assert screen_upload(filename, content_type, data, "").allowed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",  # a scanned page: an image, with an empty text layer and no OCR
+        " \n\n \t \n",  # the page breaks of a multi-page scan
+        "\u200b" * (MIN_PDF_TEXT_CHARS * 2),  # zero-width spaces: invisible characters are not counted
+        "x" * (MIN_PDF_TEXT_CHARS - 1),
+        "Page 1 (SYNTHETIC)",  # a page number stamped on a scan
+    ],
+)
+def test_a_pdf_with_almost_no_text_is_refused_as_unreadable(text: str) -> None:
+    # UP-2: the usual SYNTHETIC case is a scanned paper return whose route passed the empty text layer.
+    verdict = screen_upload("scan.pdf", "application/pdf", PDF, text)
+    assert verdict.refusal_codes == ("unreadable",) and verdict.file_kind == "pdf"
+    assert "could not be read" in verdict.message
+
+
+def test_a_pdf_with_just_enough_text_is_screened() -> None:
+    assert screen_upload("plan.pdf", "application/pdf", PDF, "x" * MIN_PDF_TEXT_CHARS).allowed
+    # The same scan with its pages OCR'd, as the module docstring tells the route to do: the text is screened.
+    verdict = screen_upload("scan.pdf", "application/pdf", PDF, SYNTHETIC_1040_HEADER)
+    assert verdict.refusal_codes == ("tax_return",)
+
+
+def test_the_pdf_minimum_is_the_threshold_docintel_uses_for_a_page_without_a_text_layer() -> None:
+    pytest.importorskip("pdfplumber")
+    from uwcopilot.docintel.pdftext import MIN_TEXT_CHARS
+
+    assert MIN_PDF_TEXT_CHARS == MIN_TEXT_CHARS
 
 
 # --- SSNs ---
@@ -160,6 +216,20 @@ def test_a_pdf_or_image_whose_text_was_not_read_is_refused_but_empty_text_passes
         "Owner id １２３-４５-６７８９ (SYNTHETIC, fullwidth digits)",
         "Owner id 123​-45-6789 (SYNTHETIC, zero-width space)",
         "Owner id 123–45–6789 (SYNTHETIC, en dashes)",
+        # UP-4: spaced dashes, a hyphen before the digits, comb boxes and the usual label variants
+        "Owner id 123 - 45 - 6789 (SYNTHETIC)",
+        "Owner id 123-45 - 6789 (SYNTHETIC)",
+        "Owner id 123\t-\t45\t-\t6789 (SYNTHETIC)",
+        "SSN-123-45-6789 (SYNTHETIC)",
+        "Owner-123-45-6789 (SYNTHETIC)",
+        "Owner id 1 2 3 - 4 5 - 6 7 8 9 (SYNTHETIC, comb boxes)",
+        "SSN: 1 2 3 4 5 6 7 8 9 (SYNTHETIC, comb boxes)",
+        "Social Security Number (SSN): 123456789 (SYNTHETIC)",
+        "SSN - 123456789 (SYNTHETIC)",
+        "SSN No. 123456789 (SYNTHETIC)",
+        "SSN/TIN: 123456789 (SYNTHETIC)",
+        "Social-Security Number: 123456789 (SYNTHETIC)",
+        "SSN" + " " * 40 + "123456789 (SYNTHETIC, fixed-width columns)",
     ],
 )
 def test_ssn_shaped_numbers_are_refused(body: str) -> None:
@@ -188,6 +258,15 @@ def test_what_typed_text_refuses_as_an_ssn_or_labeled_account_is_refused_in_an_u
         "Account Number: 000123456789 (SYNTHETIC)",
         "acct 1234-5678 (SYNTHETIC)",
         "A/C No. 98765432 (SYNTHETIC)",
+        # UP-7: label writings the typed-text pattern misses (typed text catches them as long digit runs)
+        "Acct. 12345678 (SYNTHETIC)",
+        "Acct. No. 12345678 (SYNTHETIC)",
+        "Account Number - 12345678 (SYNTHETIC)",
+        "Account Number – 12345678 (SYNTHETIC, en dash)",
+        "Account number is 12345678 (SYNTHETIC)",
+        "Account ID 12345678 (SYNTHETIC)",
+        "Acc# 12345678 (SYNTHETIC)",
+        "account=12345678 (SYNTHETIC)",
     ],
 )
 def test_labeled_account_numbers_are_refused(body: str) -> None:
@@ -197,6 +276,45 @@ def test_labeled_account_numbers_are_refused(body: str) -> None:
 
 def test_a_masked_account_number_is_allowed() -> None:
     assert text_file("Checking account ending in 1234; Account ****5678 (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "ACC 2025-26 season schedule (SYNTHETIC; a sports conference, not the label)",
+        "Account balance 1250.00 (SYNTHETIC)",
+        "Account Number: 0001.2345.6789 (SYNTHETIC; dotted, a documented limit)",
+    ],
+)
+def test_text_near_a_labeled_account_number_but_not_one_is_allowed(body: str) -> None:
+    assert text_file(body).allowed, body
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [
+        "Account Number: 000123456789",
+        "acct 1234-5678",
+        "A/C No. 98765432",
+        "account #: 12345678",
+        "account ## 12345678",
+        "Account No.12345678",
+        "account no 1234 5678",
+        "ACCOUNT\n\n# 12345678",
+        "account:12345",
+        "account number   :   12345678",
+    ],
+)
+def test_the_linear_time_account_pattern_finds_what_the_typed_text_pattern_finds(sample: str) -> None:
+    # SYNTHETIC samples. The upload pattern is the typed-text pattern with possessive whitespace (UP-1).
+    assert LABELED_ACCOUNT.search(sample) is not None
+    assert UPLOAD_LABELED_ACCOUNT.search(sample) is not None
+    assert not text_file(f"{sample} (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize("sample", ["acct 1234", "accounting 12345678", "Account ****5678"])
+def test_neither_account_pattern_finds_a_short_masked_or_unlabeled_number(sample: str) -> None:
+    assert LABELED_ACCOUNT.search(sample) is None and UPLOAD_LABELED_ACCOUNT.search(sample) is None
 
 
 def test_the_aba_checksum_and_the_synthetic_routing_number() -> None:
@@ -220,6 +338,10 @@ def test_the_two_counts_the_module_docstring_states_for_routing_numbers() -> Non
         f"Wire to routing {SYNTHETIC_ROUTING} (SYNTHETIC)",
         f"bank,routing\nSYNTHETIC Bank,{SYNTHETIC_ROUTING}\n",
         f"Payments: {with_check_digit('21000000')} (SYNTHETIC thrift prefix)",
+        # UP-5: a CSV comma next to the digits is a delimiter, not digit grouping
+        f"bank,routing,balance\nSYNTHETIC Bank,{SYNTHETIC_ROUTING},4500\n",
+        f"amount,routing\n4500,{SYNTHETIC_ROUTING}\n",
+        f"amount,routing,balance\n4500,{SYNTHETIC_ROUTING},120\n",
     ],
 )
 def test_nine_digit_numbers_that_pass_the_aba_checksum_are_refused(body: str) -> None:
@@ -238,6 +360,29 @@ def test_nine_digit_numbers_that_fail_the_checksum_or_the_prefix_are_allowed() -
 def test_a_bare_nine_digit_ssn_without_a_label_is_a_documented_limit() -> None:
     # Not SSN-shaped (no separators), not labeled, and it fails the ABA checksum: the screen does not find it.
     assert text_file("Owner reference 123456789 (SYNTHETIC)").allowed
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Owner id 123.45.6789 (SYNTHETIC; dotted)",
+        "Owner id 1 2 3 4 5 6 7 8 9 (SYNTHETIC; one per box, no dashes, no label)",
+    ],
+)
+def test_the_ssn_writings_the_module_docstring_lists_as_not_found_pass(body: str) -> None:
+    assert text_file(body).allowed, body
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Month 1 2 3 4 5 6 7 8 9 10 11 12 (SYNTHETIC column numbers)",
+        "Part 12-123-45-6789 (SYNTHETIC; a longer dashed number)",
+        "Ssnake 123456789 (SYNTHETIC; not the SSN label)",
+    ],
+)
+def test_text_near_an_ssn_but_not_one_is_allowed(body: str) -> None:
+    assert text_file(body).allowed, body
 
 
 # --- tax returns ---
@@ -301,6 +446,83 @@ def test_text_near_a_tax_marker_but_not_one_is_allowed(body: str) -> None:
     assert pdf_with_text(body).allowed, body
 
 
+AGENCY_LINE = "Department of the Treasury Internal Revenue Service"
+
+
+def near_by_comparing_every_pair(text: str) -> bool:
+    """The rule-8 proximity test written the slow, obvious way: every agency line against every form number."""
+    agencies = list(re.finditer(AGENCY_LINE, text))
+    forms = list(re.finditer(r"\bForm \d{3,4}(?!\d)", text))
+    for agency in agencies:
+        for form in forms:
+            if max(form.start() - agency.end(), agency.start() - form.end(), 0) <= NEAR_CHARS:
+                return True
+    return False
+
+
+@pytest.mark.parametrize("gap", [1, 2, NEAR_CHARS - 1, NEAR_CHARS, NEAR_CHARS + 1, 2 * NEAR_CHARS])
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "{form}{gap}{agency}",
+        "{agency}{gap}{form}",
+        "{form}{far}{form}{gap}{agency}",
+        "{agency}{far}{agency}{gap}{form}",
+        "{form}{far}{agency}{gap}{form}",
+        "{form}{far}{agency}{far}{agency}{gap}{form}{far}{form}",
+    ],
+)
+def test_the_one_pass_proximity_check_agrees_with_comparing_every_pair(layout: str, gap: int) -> None:
+    # SYNTHETIC layouts of agency lines and form numbers at distances around NEAR_CHARS.
+    text = layout.format(form="Form 941", agency=AGENCY_LINE, gap=" " * gap, far=" " * (3 * NEAR_CHARS))
+    assert treasury_line_near_form_number(text) == near_by_comparing_every_pair(text)
+    assert treasury_line_near_form_number(text) == (gap <= NEAR_CHARS)
+
+
+# --- running time on adversarial text (UP-1) ---
+
+SMALL_SIZE = 4_000  # characters of adversarial text in the small run
+SIZE_MULTIPLE = 8  # the large run is this many times longer
+# Linear time makes the large run about SIZE_MULTIPLE (8) times slower; quadratic time about 64 times. The limit sits
+# far from both, so a busy test machine does not make the test flaky; each timing is the shortest of five runs.
+MAX_SLOWDOWN = 24
+
+
+def adversarial_bodies() -> dict[str, Callable[[int], str]]:
+    """SYNTHETIC texts that made the screen slow down with the square of their length, by name."""
+    return {
+        "account label then spaces": lambda size: "account" + " " * size + "x",
+        "account label then line breaks": lambda size: "Account No." + "\n" * size + "x",
+        "account label then spaces, non-ASCII text": lambda size: "café account" + " " * size + "x",
+        "schedule k then spaces": lambda size: "Schedule K" + " " * size + "x",
+        "acct. no. then spaces": lambda size: "Acct. No." + " " * size + "x",
+        "ssn label then spaces": lambda size: "SSN" + " " * size + "x",
+        "social security number then spaces": lambda size: "Social Security Number" + " " * size + "x",
+        "agency lines far from many form numbers": lambda size: (
+            "Form 941 " * (size // 9) + " " * (NEAR_CHARS + 1) + f"{AGENCY_LINE} " * (size // len(AGENCY_LINE))
+        ),
+    }
+
+
+def shortest_screen_seconds(body: str) -> float:
+    """The shortest of five timings of screening body as a plain-text upload."""
+    timings = []
+    for _ in range(5):
+        start = time.perf_counter()
+        verdict = text_file(body)
+        timings.append(time.perf_counter() - start)
+    assert verdict.allowed  # none of these bodies holds anything the screen refuses
+    return min(timings)
+
+
+@pytest.mark.parametrize("name", list(adversarial_bodies()))
+def test_screening_time_grows_in_proportion_to_the_text_on_adversarial_input(name: str) -> None:
+    build = adversarial_bodies()[name]
+    small = shortest_screen_seconds(build(SMALL_SIZE))
+    large = shortest_screen_seconds(build(SMALL_SIZE * SIZE_MULTIPLE))
+    assert large < MAX_SLOWDOWN * small, f"{name}: {small:.4f} s -> {large:.4f} s"
+
+
 # --- near misses that must pass ---
 
 
@@ -313,7 +535,7 @@ def test_text_near_a_tax_marker_but_not_one_is_allowed(body: str) -> None:
         "Call 312.555.0147",
         "Call 3125550147",
         "ZIP 60601-1234",
-        "ZIP 606011234",
+        "ZIP 606011234",  # without the dash: 60 is not a routing prefix (see the ZIP+4 test below)
         "Census tract 17031010400",
         "Census tract 8391.02",
         "Build-out $1,250,000.00",
@@ -324,7 +546,7 @@ def test_text_near_a_tax_marker_but_not_one_is_allowed(body: str) -> None:
         "Opening 2026-10-20, 10/20/2026, 20261020, October 20, 2026",
         "EIN 12-3456789",
         "Ledger account 4000 rent",
-        "Seats  120    45    2026",  # numbers in separate table columns
+        "Seats  120    45    2026",  # table columns several spaces apart (plain text keeps the spaces)
         "Café seats  120    45    2026",  # the same with a non-ASCII letter: whitespace is not collapsed
     ],
 )
@@ -341,6 +563,29 @@ def test_a_synthetic_csv_full_of_near_misses_is_allowed() -> None:
     )
     verdict = screen_upload("sites.csv", "text/csv", csv.encode(), None)
     assert verdict.allowed and verdict.file_kind == "csv"
+
+
+def test_a_pdf_budget_row_with_single_spaces_is_refused_as_an_ssn_a_documented_limit() -> None:
+    # UP-3: docintel joins the words of a PDF line with single spaces however far apart the table cells are, so a
+    # SYNTHETIC monthly x 12 budget row has the SSN shape 123 45 6789. The module docstring lists the false refusal.
+    words = []
+    for column, cell in enumerate(["Insurance", "350", "12", "4200"]):  # cells 100 points apart
+        words.append(Word(text=cell, x0=100.0 * column, top=10.0, x1=100.0 * column + 40.0, bottom=20.0))
+    row = make_line(1, words).text
+    assert row == "Insurance 350 12 4200"
+    assert pdf_with_text(f"{row} (SYNTHETIC budget)").refusal_codes == ("ssn",)
+
+
+def test_a_zip_plus_4_without_its_dash_is_refused_1_time_in_10_where_zip_codes_start_like_routing_numbers() -> None:
+    # UP-6 / S8-CL-5: what the module docstring's "Not refused" list and known limits state. SYNTHETIC addresses.
+    assert 2 in ROUTING_PREFIXES and 10 in ROUTING_PREFIXES and 60 not in ROUTING_PREFIXES
+    for zip_code in ["02138", "10001"]:  # Cambridge, MA and New York, NY
+        passing = [extension for extension in range(10_000) if is_routing_number(f"{zip_code}{extension:04d}")]
+        assert len(passing) == 1_000, zip_code
+    assert not any(is_routing_number(f"60601{extension:04d}") for extension in range(10_000))  # Chicago, IL
+    assert text_file("Ship to Cambridge MA 021380000 (SYNTHETIC address)").refusal_codes == ("routing_number",)
+    assert text_file("New York NY 100010000 (SYNTHETIC address)").refusal_codes == ("routing_number",)
+    assert text_file("Ship to Cambridge MA 02138-0000 (SYNTHETIC address, with the dash)").allowed
 
 
 # --- injection: a flag, never a refusal ---
