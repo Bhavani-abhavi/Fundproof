@@ -219,17 +219,24 @@ export default function AboutPage() {
           </li>
           <li>
             When you type a street address for a real city, the server sends that address to the US Census Bureau
-            Geocoder to find it. Nothing else you type leaves the server, and no language model reads it.
+            Geocoder to find it. Nothing else you type is sent to another service, and no language model reads it.
           </li>
           <li>
             A plan is shown to someone else only through a share link you create on its page: anyone with the link sees
-            the plan&apos;s figures and site names, not your idea text or addresses, until the link expires or you revoke it.
+            the plan&apos;s name if it has one (the text you typed), its business type and city, its money figures, its
+            opening date, and its site names and approximate site locations (rounded to about 1 km), not your idea text,
+            street addresses or account, until the link expires or you revoke it.
           </li>
           <li>
             Social Security numbers, account numbers and long digit runs are refused, never stored. There are no uploads,
             no payments, nothing to buy, and no analytics or tracking scripts.
           </li>
           <li>Logs hold the request path with personal patterns masked, never what you typed.</li>
+          <li>
+            A plan access log records each access to your plans: a digest of your account id (anyone who knows the id can
+            link it to you), the plan ids, the action and the time, never the plan&apos;s content. &ldquo;Delete all my
+            data&rdquo; and the retention period do not remove it, and nothing deletes it automatically yet.
+          </li>
         </ul>
         <DeleteMyData />
       </section>

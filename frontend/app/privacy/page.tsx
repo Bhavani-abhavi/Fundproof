@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 /**
  * /privacy/: the plain-language privacy policy.
  *
- * Source of truth: docs/studio/privacy.md (what the v0.1 code does, with the file that does it) plus the Studio S8
- * API contract (delete all my data, share links). Nothing here goes beyond those two. Where privacy.md says a
+ * Source of truth: docs/studio/privacy.md (what the v0.1 code does, with the file that does it, including the Studio
+ * S8 share links, "delete all my data" and the plan access log). Nothing here goes beyond it. Where privacy.md says a
  * commitment is the owners' decision ("never sold"), the page states only the fact the code supports and the
  * DraftBanner says the page is not approved yet. Update this page and privacy.md together.
  */
@@ -24,7 +24,8 @@ export const metadata: Metadata = {
 const SHORT_VERSION = [
   <>
     <strong>Collected:</strong> your Hugging Face account id, username and display name (no e-mail address), the plans and
-    DEMO decisions you save, and a record of each share link you create.
+    DEMO decisions you save, a record of each share link you create, and an access-log event for each access to one of
+    your plans.
   </>,
   <>
     <strong>Stored under your account only,</strong> with plans and decisions encrypted, and deleted automatically after
@@ -32,18 +33,29 @@ const SHORT_VERSION = [
   </>,
   <>
     <strong>Shared</strong> in two ways only: a street address for a real city is sent to the US Census Bureau Geocoder,
-    and a share link you create shows that plan&apos;s figures to whoever has the link. Hugging Face hosts the app.
+    and a share link you create shows whoever has the link that plan&apos;s name (if it has one), business type, city,
+    money figures, opening date, and site names and approximate site locations. Hugging Face hosts the app.
   </>,
   <>
     <strong>No language model</strong> reads what you type in version 0.1. There are no analytics or tracking scripts and
     no uploads.
   </>,
   <>
-    <strong>Delete everything</strong> at any time with &ldquo;Delete all my data&rdquo; on the{" "}
+    <strong>Delete everything stored under your account</strong> at any time with &ldquo;Delete all my data&rdquo; on
+    the{" "}
     <Link href="/about/#delete-data" className="font-medium text-accent underline underline-offset-4">
       About page
     </Link>
     .
+  </>,
+  <>
+    <strong>The access log stays.</strong> Its events about your plans (a digest of your account id, plan ids, actions and
+    times; never plan content) are not removed by &ldquo;Delete all my data&rdquo; or by the retention period, and
+    nothing deletes them automatically yet (see{" "}
+    <a href="#logs" className="font-medium text-accent underline underline-offset-4">
+      Logs
+    </a>
+    ).
   </>,
 ];
 
@@ -78,8 +90,9 @@ export default function PrivacyPage() {
             </>,
             <>
               <strong>Your plans.</strong> For each plan: the city, the business type, your idea text (up to 2,000
-              characters), the money figures, the opening date, and 1 to 3 sites (a map pin, or for a real city a street
-              address). Why: to score the sites and simulate the plan. Each plan is stored as one encrypted object.
+              characters), the money figures, the opening date, 1 to 3 sites (a map pin, or for a real city a street
+              address), and a name if you give the plan one. Why: to score the sites and simulate the plan. Each plan is
+              stored as one encrypted object.
             </>,
             <>
               <strong>Your DEMO decisions.</strong> On the Lender Desk, the action and rationale you record on a SYNTHETIC
@@ -87,7 +100,17 @@ export default function PrivacyPage() {
             </>,
             <>
               <strong>Your share links.</strong> When you create a share link for a plan, the server stores a record of
-              that link under your account, so it can check, expire and revoke it.
+              that link under your account (its id, the plan&apos;s id and two dates), so it can check, expire and revoke
+              it.
+            </>,
+            <>
+              <strong>Accesses to your plans.</strong> Before the server lists, opens, creates, changes, scores, simulates,
+              shares or deletes a plan of yours, revokes its share links or deletes all your data, and before it shows a
+              plan to someone who opens one of your share links, it writes an event to the plan access log (see{" "}
+              <a href="#logs" className="font-medium text-accent underline underline-offset-4">
+                Logs
+              </a>
+              ). Why: a record of who reached each plan, and when. If the event cannot be written, the request is refused.
             </>,
           ]}
         />
@@ -127,9 +150,10 @@ export default function PrivacyPage() {
             </>,
             <>
               <strong>People you send a share link to.</strong> Only if you create one. Anyone who has the link can see,
-              without signing in, that plan&apos;s figures, its city and business type, and its site names and map positions,
-              until the link expires (you choose 1 to 30 days) or you revoke it. They do not see your idea text, street
-              addresses or anything about your account. Deleting the plan also ends its links.
+              without signing in, that plan&apos;s name if it has one (free text you typed), its business type and city,
+              its money figures, its opening date, and its site names and approximate site locations (rounded to about
+              1 km), until the link expires (you choose 1 to 30 days) or you revoke it. They do not see your idea text,
+              street addresses or anything about your account. Deleting the plan also ends its links.
             </>,
             <>
               <strong>Hugging Face</strong> hosts the app and, if the owners turn it on, a private dataset that holds a copy
@@ -148,9 +172,9 @@ export default function PrivacyPage() {
         <PolicyList
           items={[
             <>
-              <strong>Encrypted at rest.</strong> Plans and decision records are encrypted (Fernet) before they are
-              written, both on the server&apos;s disk and in the optional private Hugging Face dataset. The app refuses to use
-              a public dataset.
+              <strong>Encrypted at rest.</strong> Plans, decision records and share-link records are encrypted (Fernet)
+              before they are written, both on the server&apos;s disk and in the optional private Hugging Face dataset. The
+              app refuses to use a public dataset.
             </>,
             <>
               <strong>Per account.</strong> Everything you save is stored under a digest of your account id.
@@ -172,8 +196,9 @@ export default function PrivacyPage() {
         <PolicyList
           items={[
             <>
-              Every stored object is deleted automatically when the retention period ends: <strong>30 days</strong> by
-              default (a design choice, set on the server). Expired objects are deleted when the server
+              Every object stored under your account is deleted automatically when its retention period ends: plans and
+              DEMO decision records after <strong>30 days</strong> by default (a design choice, set on the server), a
+              share-link record within about a day after its link expires. Expired objects are deleted when the server
               starts and then every hour. Each plan&apos;s page shows its own deletion date.
             </>,
             <>
@@ -182,6 +207,15 @@ export default function PrivacyPage() {
             <>
               Without the optional dataset copy, everything also disappears when the app&apos;s server restarts or is
               rebuilt.
+            </>,
+            <>
+              <strong>The plan access log has no retention period yet:</strong> nothing deletes its events automatically.
+              In the hosted app it is on the server&apos;s own disk, which does not survive a restart, unless the operator
+              moves it to lasting storage (see{" "}
+              <a href="#logs" className="font-medium text-accent underline underline-offset-4">
+                Logs
+              </a>
+              ).
             </>,
           ]}
         />
@@ -197,15 +231,22 @@ export default function PrivacyPage() {
               </Link>{" "}
               deletes every plan, DEMO decision record and share-link record stored under your account, drops your results
               from the server&apos;s memory, and signs you out. Your share links stop working. It cannot be undone. The server
-              records an audit event that the deletion happened.
+              first writes an access-log event for the deletion. <strong>What stays:</strong> that event and every earlier
+              access-log event about your plans (see{" "}
+              <a href="#logs" className="font-medium text-accent underline underline-offset-4">
+                Logs
+              </a>
+              ).
             </>,
             <>
-              <strong>One plan:</strong> &ldquo;Delete plan&rdquo; on the plan&apos;s page deletes the plan and drops its
-              results from memory.
+              <strong>One plan:</strong> &ldquo;Delete plan&rdquo; on the plan&apos;s page deletes the plan, ends its share
+              links and drops its results from memory.
             </>,
             <>
               <strong>Share links only:</strong> &ldquo;Revoke all share links&rdquo; on the plan&apos;s page stops every link to
-              that plan.
+              that plan. With the optional dataset copy, if the copy of a link&apos;s record there cannot be deleted at once,
+              the page says so: the app&apos;s server stops accepting the link at once, but if the app restarts before that
+              deletion goes through, revoke again.
             </>,
             <>
               <strong>One DEMO decision record:</strong> the server can delete a single record, but the Lender Desk page has
@@ -224,9 +265,9 @@ export default function PrivacyPage() {
         <PolicyList
           items={[
             <>
-              One line per request: the method, the path with personal patterns masked, the names of query parameters (never
-              their values), the status and the time. No request bodies, cookies, headers, IP addresses or usernames are
-              logged.
+              One line per request: the method, the path with personal patterns and share-link tokens masked, the names of
+              query parameters (never their values), the status and the time. No request bodies, cookies, headers, IP
+              addresses or usernames are logged.
             </>,
             <>
               A failed address lookup is logged with the geocoder&apos;s web address (without the query) and the error, never
@@ -235,6 +276,21 @@ export default function PrivacyPage() {
             <>
               When a Lender Desk demo tool fails, the full error is logged on the server only; the page and the DEMO record
               show a plain sentence.
+            </>,
+            <>
+              <strong>The plan access log.</strong> One event for each access listed under &ldquo;What is collected&rdquo;.
+              An event holds the time, the action (for example &ldquo;read plan&rdquo; or &ldquo;view shared plan&rdquo;),
+              the plan&apos;s id, a share link&apos;s id and number of days where one is involved, and who acted: for you,
+              an owner digest (the first 32 hex characters of the SHA-256 of your account id); for someone opening a share
+              link, the link&apos;s id. It never holds plan content, names, addresses or IP addresses. The digest is not
+              anonymous: anyone who knows your account id can compute it and link the events to your account. The log is
+              a plain (not encrypted) file, kept apart from your stored data and never copied to the dataset.{" "}
+              <strong>
+                It is not deleted by &ldquo;Delete all my data&rdquo;, by deleting a plan or by the retention period, and
+                nothing deletes it automatically yet.
+              </strong>{" "}
+              In the hosted app it is on the server&apos;s own disk, which does not survive a restart, unless the operator
+              points the server&apos;s <code className="text-sm">UWC_WEB_AUDIT_LOG</code> setting at lasting storage.
             </>,
           ]}
         />

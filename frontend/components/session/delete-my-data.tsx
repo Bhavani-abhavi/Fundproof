@@ -149,6 +149,14 @@ export function DeleteMyData() {
           <p className="text-sm text-muted-foreground">
             You will be signed out. To keep a plan&apos;s results, download them from the plan&apos;s page first.
           </p>
+          <p className="text-sm text-muted-foreground">
+            What stays: the plan access log keeps its events about your plans (a digest of your account id, plan ids,
+            actions and times; never plan content), as the{" "}
+            <Link href="/privacy/#logs" className="font-medium text-accent underline underline-offset-4">
+              privacy policy
+            </Link>{" "}
+            explains.
+          </p>
           {problem ? <ProblemNotice problem={problem} onRetry={deleteEverything} retrying={deleting} /> : null}
           <DialogFooter>
             <DialogClose asChild>

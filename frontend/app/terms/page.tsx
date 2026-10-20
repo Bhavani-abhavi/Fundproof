@@ -103,8 +103,9 @@ export default function TermsPage() {
 
       <PolicySection id="share-links" title="Share links">
         <p>
-          A share link is created only when you ask for one. Anyone who has it can see that plan&apos;s figures, its city and
-          business type, and its site names and map positions, without signing in, until it expires or you revoke it. Send
+          A share link is created only when you ask for one. Anyone who has it can see, without signing in and until it
+          expires or you revoke it, that plan&apos;s name if it has one (the text you typed), its business type and city, its
+          money figures, its opening date, and its site names and approximate site locations (rounded to about 1 km). Send
           it only to people you choose. Your idea text, street addresses and account are never shown through it.
         </p>
       </PolicySection>

@@ -15,13 +15,16 @@
 // - edited path targets are answered only for the recorded edits (path_demo_targets.json), and a bound on extra
 //   owner cash is not replayed at all; those get a 501.
 // - share links (Studio S8) live in memory with their plan and expiry. GET /api/share/{token} builds its answer from
-//   the plan (figures, opening date, site names and positions; never the idea text or addresses) with a mock notice,
-//   and answers one identical 404 for every link that does not work (unknown, expired, revoked, plan deleted);
+//   the plan (name, business type, city, figures, opening date, site names and locations rounded to 2 decimal places
+//   as the real server does; never the idea text or addresses) with a mock notice, and answers one identical 404 for
+//   every link that does not work (unknown, expired, revoked, plan deleted). Revoking answers {revoked, pending} and,
+//   like the real server, does not count expired links;
 // - "Delete all my data" (DELETE /api/me/data) deletes EVERY plan and share link in memory (the mock keeps no owner
 //   per plan; its plan list shows them all) and the user's demo decisions, then signs out. Restart the mock to get the
 //   demo plan back.
 // Error paths for testing pages: a plan id starting with "timeout" answers 503 on its heavy routes, a user whose name
-// starts with "pending" gets "pending": true from "Delete all my data", and MOCK_LATENCY_MS delays every /api answer.
+// starts with "pending" gets "pending": true from "Delete all my data" and from revoking share links (when a link was
+// revoked), and MOCK_LATENCY_MS delays every /api answer.
 
 import { randomBytes } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
@@ -234,6 +237,11 @@ function planFromInput(body) {
   };
 }
 
+/** A site coordinate as a share link shows it: rounded to 2 decimal places (about 1 km), as the real server does. */
+function approximate(degrees) {
+  return Math.round(degrees * 100) / 100;
+}
+
 /** GET /api/share/{token}: the plan read-only and minimized (no idea text, no addresses, nothing about the owner). */
 function sharedPlan(plan, link) {
   return {
@@ -243,7 +251,7 @@ function sharedPlan(plan, link) {
     metro_name: plan.metro_name,
     money: plan.money,
     opening_date: plan.opening_date,
-    sites: plan.sites.map((site) => ({ name: site.label, lat: site.lat, lon: site.lon })),
+    sites: plan.sites.map((site) => ({ name: site.label, lat: approximate(site.lat), lon: approximate(site.lon) })),
     expires_at: new Date(link.expiresAt).toISOString(),
     disclaimer: CONFIG?.disclaimer ?? "",
     notice: "mock API: a read-only plan shared by its owner with a link. The real server writes its own notice.",
@@ -406,10 +414,13 @@ async function handleApi(request, response, url) {
       for (const [token, link] of shareLinks) {
         if (link.planId === plan.id) {
           shareLinks.delete(token);
-          revoked += 1;
+          if (link.expiresAt > Date.now()) {
+            revoked += 1; // expired links are not counted
+          }
         }
       }
-      return sendJson(response, 200, { revoked });
+      const pending = revoked > 0 && session.username.startsWith("pending");
+      return sendJson(response, 200, { revoked, pending });
     }
     if (rest !== "" && plan.id.startsWith("timeout")) {
       return problem(response, 503, "The simulation took longer than the server's time limit. It keeps running; try again in a moment. (mock)");

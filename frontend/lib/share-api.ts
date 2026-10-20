@@ -4,9 +4,14 @@
  * - The plan's owner creates a link (POST /api/studio/projects/{id}/share {expires_in_days}) and can revoke every link
  *   of that plan at once (DELETE /api/studio/projects/{id}/share). Both go through `request`, so they carry the
  *   session cookie and the CSRF header like every other change.
+ * - The answer to a revoke says whether the revoke is complete: `pending` is true when the backup dataset copy of a
+ *   link's record could not be deleted yet. The link stops working on this server at once, but if the app restarts
+ *   before that deletion goes through, the founder has to revoke again; the plan page says so.
  * - Anyone who has the link reads the plan without signing in (GET /api/share/{token}). The server decides what the
- *   answer holds: the plan's figures, city, business type, site names and map positions, the disclaimer and a notice.
- *   Never the founder's idea text, street addresses or anything about the owner's account (data minimization).
+ *   answer holds: the plan's name if it has one (free text its owner typed), its business type and city, its money
+ *   figures, its opening date, and its site names and approximate site locations (latitude and longitude rounded to
+ *   2 decimal places, about 1 km), plus the disclaimer and a notice. Never the founder's idea text, street addresses
+ *   or anything about the owner's account (data minimization).
  * - An invalid, tampered, expired or revoked link, or one to a deleted plan, answers 404 with one identical body,
  *   so a visitor cannot tell the cases apart. The page shows one message for all of them.
  * - The page for a link is /share?t=<token>: a query parameter, because the static export cannot pre-render dynamic
@@ -37,12 +42,19 @@ export interface ShareLinkCreated {
   expires_at: string;
 }
 
-/** DELETE /api/studio/projects/{id}/share: how many links of the plan were revoked. */
+/**
+ * DELETE /api/studio/projects/{id}/share: how many working links of the plan were revoked (expired links are not
+ * counted), and whether the backup dataset copy of a link's record could not be deleted yet (`pending`).
+ */
 export interface ShareLinksRevoked {
   revoked: number;
+  pending: boolean;
 }
 
-/** A site as a share link shows it: its name and map position, never its street address. */
+/**
+ * A site as a share link shows it: its name and approximate location (the server rounds latitude and longitude to 2
+ * decimal places, about 1 km), never its street address or exact point.
+ */
 export interface SharedSite {
   name: string;
   lat: number;
