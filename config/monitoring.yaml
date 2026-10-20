@@ -1,0 +1,174 @@
+# Continuous monitoring (Phase 6 B): thresholds and the SIMULATED stream used to validate the monitor.
+#
+# This is the ONLY place monitoring thresholds live. src/uwcopilot/governance/monitoring_config.py validates this file
+# (unknown keys are refused) and scripts/monitor.py copies it, with its SHA-256, into
+# results/governance_metrics.json (section "monitoring").
+#
+# Every number below is a DESIGN CHOICE, written down with its reason (`rationale`). None was fitted to the stream
+# results: the threshold values were written before the first validation run and have not been changed since. The
+# extraction and agent thresholds were written while their current values in results/docintel_metrics.json and
+# results/agent_metrics.json were visible, so treat them as reasonable round values, not as validated limits.
+#
+# How a rule reads a value (`direction` says which way is worse):
+#   higher_is_worse: level "warn" when value >= warn, "alert" when value > alert
+#   lower_is_worse:  level "warn" when value <= warn, "alert" when value < alert
+# Only "alert" is a breach: it appends an alert record to data/governance/monitoring_alerts.jsonl and, for a check of
+# the monitored model, marks that model "under_review" in the model status registry
+# (src/uwcopilot/governance/model_status.py). "warn" is shown in the report and the results only.
+#
+# Data: the monitored model is trained on the PUBLIC freMTPL2 data (OpenML 41214/41215). The stream is SIMULATED from
+# its held-out split and every drift is INJECTED (SYNTHETIC scenarios below). freMTPL2 has no date field, so no real
+# out-of-time stream exists. This is a demonstration, not a monitoring programme for any institution.
+
+data_label: SYNTHETIC
+
+monitored_model:
+  model_id: fremtpl2-frequency-glm-monitoring-v1
+  family: fremtpl2_frequency
+  version: "1"
+  description: >-
+    Poisson GLM of claim frequency (log link, offset log(Exposure); risk/insurance.py fit_frequency_glm), trained by
+    scripts/monitor.py on the seeded random training split of freMTPL2 (split seed 42, 60/20/20) and cached under
+    data/governance/monitoring/.
+
+thresholds:
+  # Input drift: PSI of each of the nine rating features, held-out window vs the training split (the reference).
+  input_drift_psi:
+    n_bins: 10
+    rule:
+      direction: higher_is_worse
+      warn: 0.10
+      alert: 0.25
+      rationale: >-
+        The same bands as risk/stability.py and the model cards (stable < 0.10 <= moderate shift <= 0.25 <
+        significant shift). A common industry rule of thumb, not a statistical test.
+
+  # Score drift: PSI of the predicted claim frequency (claims per policy-year), window vs training split.
+  score_drift_psi:
+    n_bins: 10
+    rule:
+      direction: higher_is_worse
+      warn: 0.10
+      alert: 0.25
+      rationale: Same bands as the input PSI, so one scale reads every PSI in the report.
+
+  # Calibration: observed claims / predicted claims per window, with an exact (Garwood) Poisson interval for the
+  # observed count, divided by the predicted count (the prediction is treated as fixed).
+  calibration_ratio:
+    band_low: 0.90
+    band_high: 1.10
+    confidence: 0.95
+    min_expected_claims: 50
+    rationale: >-
+      A +/-10% tolerance on the claim level is a round pricing tolerance. "warn" when the point estimate leaves the
+      band; "alert" only when the whole 95% interval lies outside it, so the random noise of one window should
+      rarely alert (the false alert rate actually measured is in the results). Below 50 predicted claims the check
+      reports insufficient_data instead of a level.
+
+  # Calibration: expected calibration error of P(at least one claim) = 1 - exp(-predicted frequency x exposure)
+  # against "the policy had a claim", per window.
+  calibration_ece:
+    n_bins: 10
+    strategy: quantile
+    rule:
+      direction: higher_is_worse
+      warn: 0.015
+      alert: 0.025
+      rationale: >-
+        Equal-count bins, because most policies have no claim and equal-width bins would put almost every policy in
+        the first bin. With 5,000 policies per window a bin holds 500 policies at a claim share of a few percent, so
+        binomial noise alone keeps the ECE of every window above zero; the warn and alert levels were set above the
+        size that noise was expected to have (the ECE of every demonstration window is in the results).
+
+  # Indicators read from the latest results files (one value each, not a stream).
+  indicators:
+    citation_support_rate:
+      direction: lower_is_worse
+      warn: 0.995
+      alert: 0.99
+      rationale: >-
+        Share of extracted values whose cited page prints the value (results/docintel_metrics.json
+        rules.citations.supported_all_values). One unsupported citation in 100 is the alert level.
+    ocr_page_share:
+      direction: higher_is_worse
+      warn: 0.25
+      alert: 0.40
+      rationale: >-
+        Share of pages with no text layer that had to be read by OCR (the OCR fallback). Field accuracy is lower
+        on scanned pages, so a growing share is an early warning about the input mix.
+    low_confidence_field_share:
+      direction: higher_is_worse
+      warn: 0.05
+      alert: 0.10
+      rationale: >-
+        Share of extracted fields below the extractor's confidence cut. Kept so the rule exists when the metric
+        does; results/docintel_metrics.json has no field-confidence metric today.
+    required_escalations_escalated:
+      direction: lower_is_worse
+      alert: 1.0
+      rationale: >-
+        Every case that must reach a senior human (sanctions potential match, detected injection, policy
+        referral) must be escalated; anything below 100% is a breach (results/agent_metrics.json).
+    unsupported_claim_rate:
+      direction: higher_is_worse
+      warn: 0.01
+      alert: 0.02
+      rationale: >-
+        Share of memo claims with no supporting citation. Needs an LLM run; not measured in this checkout.
+    override_rate:
+      direction: higher_is_worse
+      warn: 0.10
+      alert: 0.20
+      rationale: >-
+        Share of reviewed decisions where the reviewer overrode the recommendation, read from the "feedback"
+        section of results/governance_metrics.json (SIMULATED reviewer decisions). A high rate says reviewers
+        often disagree with the system.
+
+# The SIMULATED stream (scripts/monitor.py). Windows are drawn from the held-out (test) split of freMTPL2; each
+# window is an independent random draw without replacement inside the window, so a policy can appear in two windows.
+stream:
+  window_size: 5000
+  n_windows: 12
+  # Windows are numbered from 0. Windows 0-5 are clean in every scenario; drift (if any) starts at window 6.
+  drift_start_window: 6
+  n_streams: 300
+  seed: 42
+  # Each scenario is SYNTHETIC. covariate_shift resamples each drifted window so that `target_share` of it comes
+  # from a subgroup; claim_rate_multiplier changes the outcomes of each drifted window (above 1: SIMULATED extra
+  # claims drawn from Poisson((m - 1) x predicted claims) are added to the recorded claims; below 1: each recorded
+  # claim is kept with probability m).
+  scenarios:
+    no_drift:
+      description: SIMULATED stream with no injected drift (random held-out windows, recorded outcomes).
+    covariate_shift_young_drivers:
+      description: SYNTHETIC covariate shift - drivers under 26 make up 30% of each drifted window.
+      covariate_shift:
+        subgroup: {column: DrivAge, below: 26}
+        target_share: 0.30
+    covariate_shift_young_drivers_mild:
+      description: SYNTHETIC mild covariate shift - drivers under 26 make up 15% of each drifted window.
+      covariate_shift:
+        subgroup: {column: DrivAge, below: 26}
+        target_share: 0.15
+    covariate_shift_region:
+      description: SYNTHETIC covariate shift - region R93 makes up 35% of each drifted window.
+      covariate_shift:
+        subgroup: {column: Region, equals: R93}
+        target_share: 0.35
+    claim_rate_up_25pct:
+      description: SYNTHETIC claim-rate drift - SIMULATED outcomes with 25% more claims than recorded.
+      claim_rate_multiplier: 1.25
+    claim_rate_up_10pct:
+      description: SYNTHETIC mild claim-rate drift - SIMULATED outcomes with 10% more claims than recorded.
+      claim_rate_multiplier: 1.10
+  # The stream whose per-window values, alerts and registry change are reported (stream 0 of this scenario, so it
+  # is also one of the validation streams).
+  demonstration:
+    scenario: covariate_shift_young_drivers
+    stream: 0
+
+# Confidence intervals for the validation rates (unit = stream).
+bootstrap:
+  resamples: 1000
+  seed: 42
+  confidence: 0.95

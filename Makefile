@@ -567,3 +567,15 @@ scan-secrets:  ## Scan every commit, merges included, for secrets (pinned gitlea
 	"$$tmp/gitleaks" detect --source . --config .gitleaks.toml --log-opts="$(GITLEAKS_LOG_OPTS)" \
 		--redact --verbose --no-banner; \
 	status=$$?; rm -rf "$$tmp"; exit $$status
+
+# Phase 6 part B: continuous monitoring of a freMTPL2 claim-frequency GLM on a SIMULATED stream with SYNTHETIC injected
+# drift. Every threshold is in config/monitoring.yaml. Writes results/governance_metrics.json (section "monitoring") and
+# results/monitoring_report.html; the cached model, the alert log and the model status registry go under
+# data/governance/ (gitignored). See src/uwcopilot/governance/monitoring*.py.
+.PHONY: monitor monitor-test
+
+monitor:  ## Drift, calibration and indicator monitoring -> results/governance_metrics.json + monitoring_report.html (make data first)
+	uv run python scripts/monitor.py
+
+monitor-test:  ## Monitoring tests only (offline, SYNTHETIC data)
+	uv run pytest -q tests/governance/test_monitoring*.py
