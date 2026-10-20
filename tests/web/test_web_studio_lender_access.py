@@ -120,6 +120,8 @@ ROUTES: tuple[RouteCase, ...] = (
     RouteCase("POST", "/api/studio/projects/{project_id}/sites/score"),
     RouteCase("POST", "/api/studio/projects/{project_id}/feasibility", body={"site_index": 0}),
     RouteCase("POST", "/api/studio/projects/{project_id}/path-to-approval", body={"site_index": 0}),
+    RouteCase("POST", "/api/studio/projects/{project_id}/share", body={"expires_in_days": 7}),
+    RouteCase("DELETE", "/api/studio/projects/{project_id}/share"),
     # An unknown metro, so the control does not rank tracts: the route itself answers 422 "unknown metro".
     RouteCase(
         "POST",
@@ -139,7 +141,8 @@ ROUTES: tuple[RouteCase, ...] = (
 STATE_CHANGING = tuple(case for case in ROUTES if case.changes_state)
 
 # Every other /api route the app serves, with its rule and the test file that checks it. They are not in ROUTES
-# because their rules differ (they are how a visitor signs in, or public system routes).
+# because their rules differ (they are how a visitor signs in, public system routes, or the share-link view, whose
+# token is its credential).
 OTHER_API_ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/api/health"): "public: liveness and build identity (tests/web/test_web_system.py)",
     ("GET", "/api/config"): "public: the app's public settings (tests/web/test_web_system.py)",
@@ -149,6 +152,8 @@ OTHER_API_ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/api/auth/callback"): "public: the sign-in callback, checks its own state (tests/web/test_web_auth.py)",
     ("POST", "/api/auth/dev-login"): "CSRF, no sign-in (it signs in; refused in a Space) (tests/web/test_web_auth.py)",
     ("POST", "/api/auth/logout"): "CSRF, no sign-in (tests/web/test_web_auth.py)",
+    ("GET", "/api/share/{token}"): "public: the token is the credential; one 404 for every bad link "
+    "(tests/web/test_web_share.py)",
 }
 
 

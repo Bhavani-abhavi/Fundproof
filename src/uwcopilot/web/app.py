@@ -33,6 +33,7 @@ from uwcopilot.web.crypto import encryptor_for_settings
 from uwcopilot.web.hf_store import HFDatasetStore, HubApi
 from uwcopilot.web.routers import auth as auth_router
 from uwcopilot.web.routers import lender as lender_router
+from uwcopilot.web.routers import share as share_router
 from uwcopilot.web.routers import studio as studio_router
 from uwcopilot.web.routers import system as system_router
 from uwcopilot.web.security import (
@@ -46,6 +47,7 @@ from uwcopilot.web.security import (
     inline_script_hashes,
 )
 from uwcopilot.web.services import install_services
+from uwcopilot.web.services.share_links import ShareLinks
 from uwcopilot.web.settings import DEV_FRONTEND_ORIGIN, WebSettings, load_web_settings
 from uwcopilot.web.static import StaticSite
 from uwcopilot.web.store import LocalFileStore, Store
@@ -218,12 +220,14 @@ def create_app(
     app.state.store = store
     app.state.hub_api = hub_api
     app.state.access_log = PlanAccessLog(settings.web_audit_log)
+    app.state.share_links = ShareLinks(settings.session_secret.get_secret_value())
     install_services(app)
 
     app.include_router(system_router.router)
     app.include_router(auth_router.router)
     app.include_router(studio_router.router)
     app.include_router(lender_router.router)
+    app.include_router(share_router.router)
     for router in extra_routers:
         app.include_router(router)
 

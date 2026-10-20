@@ -38,6 +38,7 @@ from uwcopilot.studio.data.errors import NotAvailable, StudioDataError
 from uwcopilot.studio.data.provenance import SourceRecord
 from uwcopilot.studio.profiles import Profile
 from uwcopilot.studio.siteiq.context import OWN_TRACT_MAX_MILES
+from uwcopilot.web.schemas_privacy import SharedPlanOut, SharedSite
 from uwcopilot.web.schemas_studio import (
     PLAN_CHANGE_FIELDS,
     IdeaOut,
@@ -73,6 +74,11 @@ MONEY_NOTE = (
 )
 # A design choice: enough for real planning, small enough to bound storage and the cost of the plan list.
 MAX_PLANS_PER_USER = 20
+SHARED_NOTICE = (
+    "A read-only view of a plan, shared by its owner through a link that expires. The owner can revoke the link at "
+    "any time, and it ends when the plan is deleted. The founder's idea text, street addresses and account details "
+    "are not shared."
+)
 
 
 class StoredSite(BaseModel):
@@ -599,4 +605,25 @@ def project_summary(record: ProjectRecord, meta: ObjectMeta | None) -> ProjectSu
         updated_at=record.updated_at,
         expires_at=meta.expires_at if meta else None,
         idea_flagged=bool(record.idea_flags),
+    )
+
+
+def shared_plan_out(record: ProjectRecord, expires_at: datetime) -> SharedPlanOut:
+    """What a share link shows, built field by field so nothing else of the plan is shared (schemas_privacy.py).
+
+    Each site keeps its name and map position only; its street address, the geocoder's matched address and its
+    source record stay out, and so do the idea text and the plan's id, version and seed."""
+    entry = metro_entry(record.metro_id)
+    profile = profile_for(record.business_type_id, record.metro_id)
+    return SharedPlanOut(
+        plan_name=record.name,
+        business_type=profile.display_name,
+        metro_id=record.metro_id,
+        metro_name=entry.config.name,
+        money=money_out(record),
+        opening_date=record.opening_date,
+        sites=[SharedSite(name=site.label, lat=site.lat, lon=site.lon) for site in record.sites],
+        expires_at=expires_at,
+        disclaimer=DISCLAIMER,
+        notice=SHARED_NOTICE,
     )

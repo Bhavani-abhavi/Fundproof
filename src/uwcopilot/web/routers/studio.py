@@ -86,7 +86,8 @@ PUT /api/studio/projects/{id}  body: any subset of the POST fields, plus optiona
     "engine_version", "fields": [...the fields this PUT sets], "evidence_needed": [...]}, sent by "Apply this
     change"). Omitted = unchanged; null clears an optional field. -> 200 Project (version + 1)
 DELETE /api/studio/projects/{id} -> 200 {"project_id", "deleted": true, "pending": false, "message"} | 404 |
-    202 {"detail": "..."} when the backup copy could not be deleted yet (retried; the data is not fully gone yet)
+    202 {"detail": "..."} when the backup copy could not be deleted yet (retried; the data is not fully gone yet).
+    The plan's share links (routers/share.py) are revoked first.
 
 POST /api/studio/projects/{id}/sites/score  (no body) -> 200
     {"project_id", "project_version", "metro_id", "metro_name", "data_label", "mode", "mode_reason",
@@ -193,7 +194,8 @@ from uwcopilot.web.schemas_studio import (
 )
 from uwcopilot.web.services import WebServices, get_services, projects, studio_runs
 from uwcopilot.web.services.geocoding import PrefetchedGeocoder
-from uwcopilot.web.services.http import get_store, no_store
+from uwcopilot.web.services.http import get_share_links, get_store, no_store
+from uwcopilot.web.services.share_links import ShareLinks
 from uwcopilot.web.services.studio_options import studio_options
 from uwcopilot.web.store import Store
 
@@ -203,6 +205,7 @@ SignedIn = Annotated[Principal, Depends(require_role())]
 Services = Annotated[WebServices, Depends(get_services)]
 StoreDep = Annotated[Store, Depends(get_store)]
 AccessLog = Annotated[PlanAccessLog, Depends(get_access_log)]
+ShareLinksDep = Annotated[ShareLinks, Depends(get_share_links)]
 ProjectId = Annotated[str, Path(pattern=PROJECT_ID_PATTERN)]
 MetroId = Annotated[str, Path(pattern=STUDIO_ID_PATTERN)]
 GEOJSON_MEDIA_TYPE = "application/geo+json"
@@ -289,12 +292,19 @@ async def update_project(
 
 @router.delete("/projects/{project_id}", response_model=ProjectDeleted, dependencies=[Depends(no_store)])
 def delete_project(
-    project_id: ProjectId, principal: SignedIn, services: Services, store: StoreDep, access_log: AccessLog
+    project_id: ProjectId,
+    principal: SignedIn,
+    services: Services,
+    store: StoreDep,
+    links: ShareLinksDep,
+    access_log: AccessLog,
 ) -> ProjectDeleted:
-    """Delete a plan and every result kept for it (DeletionPending -> 202 with an honest message)."""
+    """Delete a plan, every result kept for it and every share link to it (DeletionPending -> 202 with an honest
+    message)."""
     projects.load(store, principal.owner_id, project_id)
     access_log.record_owner_access(principal, "delete_plan", project_id)
     services.compute.forget(("studio", principal.owner_id, project_id))
+    links.revoke(store, principal.owner_id, project_id)
     store.delete(principal.owner_id, projects.PROJECTS_NAMESPACE, project_id)
     return ProjectDeleted(
         project_id=project_id, deleted=True, pending=False, message="The plan and its stored results are deleted."
