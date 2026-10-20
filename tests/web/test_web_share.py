@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import logging
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from test_web_hf_store import FakeHubApi
 from test_web_studio import FakeGeocoder, first_verified_metro
 from web_helpers import csrf_headers, dev_login
 
+from uwcopilot.studio.data.geocode import GeocodeMatch
 from uwcopilot.studio.metros import load_metro
 from uwcopilot.studio.siteiq.context import metro_context
 from uwcopilot.web.app import create_app
@@ -139,8 +141,9 @@ def test_a_valid_link_shows_the_plan_read_only_without_sign_in(studio: TestClien
     assert shared["metro_id"] == SYNTHETIC_METRO and "SYNTHETIC" in shared["metro_name"]
     assert shared["money"] == plan["money"] and shared["opening_date"] == plan["opening_date"]
     assert shared["sites"] == [
-        {"name": site["label"], "lat": site["lat"], "lon": site["lon"]} for site in plan["sites"]
+        {"name": site["label"], "lat": round(site["lat"], 2), "lon": round(site["lon"], 2)} for site in plan["sites"]
     ]
+    assert "approximate location (rounded to about 1 km)" in shared["notice"]
     assert shared["expires_at"] == created["expires_at"]
     assert shared["disclaimer"].startswith("Educational planning tool") and "read-only" in shared["notice"]
     assert IDEA_TEXT not in response.text and plan["id"] not in response.text and "founder_a" not in response.text
@@ -169,17 +172,26 @@ def test_a_link_never_outlives_the_plans_retention(make_settings) -> None:
         assert datetime.fromisoformat(created["expires_at"]) <= datetime.fromisoformat(plan["expires_at"])
 
 
+class PreciseGeocoder(FakeGeocoder):
+    """The fake geocoder, answering with a precise (SYNTHETIC) point, as the Census Geocoder interpolates one."""
+
+    def geocode(self, address: str) -> GeocodeMatch:
+        return replace(super().geocode(address), lat=29.761234, lon=-95.369876)
+
+
 def test_no_street_address_is_shared(studio: TestClient) -> None:
+    """SL-2: the shared position used to be the exact geocoded point of the address; it is now rounded (~1 km)."""
     metro_id = first_verified_metro()
     if metro_id is None:
         pytest.skip("no real metro has a verified county list in this checkout")
-    studio.app.state.services.geocoding.geocoder = FakeGeocoder(load_metro(metro_id).county_geoids()[0])
+    studio.app.state.services.geocoding.geocoder = PreciseGeocoder(load_metro(metro_id).county_geoids()[0])
     plan = create_plan(studio, plan_body(metro_id=metro_id, sites=[{"label": "Main St", "address": ADDRESS}]))
     assert plan["sites"][0]["address"] == ADDRESS
+    assert (plan["sites"][0]["lat"], plan["sites"][0]["lon"]) == (29.761234, -95.369876)  # the owner sees it all
     response = view(studio, share(studio, plan["id"])["token"])
     assert response.status_code == 200
-    assert response.json()["sites"] == [{"name": "Main St", "lat": 29.0, "lon": -95.0}]
-    for hidden in (ADDRESS, "TEST ADDRESS", "census_geocoder", "fake geocoder"):
+    assert response.json()["sites"] == [{"name": "Main St", "lat": 29.76, "lon": -95.37}]
+    for hidden in (ADDRESS, "TEST ADDRESS", "census_geocoder", "fake geocoder", "29.7612", "95.3698"):
         assert hidden not in response.text, hidden
 
 

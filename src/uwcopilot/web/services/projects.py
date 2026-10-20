@@ -77,8 +77,13 @@ MAX_PLANS_PER_USER = 20
 SHARED_NOTICE = (
     "A read-only view of a plan, shared by its owner through a link that expires. The owner can revoke the link at "
     "any time, and it ends when the plan is deleted. The founder's idea text, street addresses and account details "
-    "are not shared."
+    "are not shared, and each site shows only an approximate location (rounded to about 1 km)."
 )
+# A share link rounds every site's lat and lon to this many decimal places. 0.01 degree is about 1.1 km of latitude
+# (and less of longitude away from the equator), so a link never gives the exact point the Census Geocoder matched
+# for a typed street address. A design choice: it hides the exact point, not the neighbourhood (where few buildings
+# stand, a 1 km area can still narrow a site down).
+SHARED_POSITION_DECIMALS = 2
 
 
 class StoredSite(BaseModel):
@@ -608,11 +613,21 @@ def project_summary(record: ProjectRecord, meta: ObjectMeta | None) -> ProjectSu
     )
 
 
+def shared_site(site: StoredSite) -> SharedSite:
+    """A site as a share link shows it: its name and its position rounded to about 1 km."""
+    return SharedSite(
+        name=site.label,
+        lat=round(site.lat, SHARED_POSITION_DECIMALS),
+        lon=round(site.lon, SHARED_POSITION_DECIMALS),
+    )
+
+
 def shared_plan_out(record: ProjectRecord, expires_at: datetime) -> SharedPlanOut:
     """What a share link shows, built field by field so nothing else of the plan is shared (schemas_privacy.py).
 
-    Each site keeps its name and map position only; its street address, the geocoder's matched address and its
-    source record stay out, and so do the idea text and the plan's id, version and seed."""
+    Each site keeps its name and an approximate map position only (lat and lon rounded to SHARED_POSITION_DECIMALS,
+    about 1 km), so the geocoded point of a street address is never shared; its street address, the geocoder's
+    matched address and its source record stay out, and so do the idea text and the plan's id, version and seed."""
     entry = metro_entry(record.metro_id)
     profile = profile_for(record.business_type_id, record.metro_id)
     return SharedPlanOut(
@@ -622,7 +637,7 @@ def shared_plan_out(record: ProjectRecord, expires_at: datetime) -> SharedPlanOu
         metro_name=entry.config.name,
         money=money_out(record),
         opening_date=record.opening_date,
-        sites=[SharedSite(name=site.label, lat=site.lat, lon=site.lon) for site in record.sites],
+        sites=[shared_site(site) for site in record.sites],
         expires_at=expires_at,
         disclaimer=DISCLAIMER,
         notice=SHARED_NOTICE,

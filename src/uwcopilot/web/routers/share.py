@@ -14,7 +14,9 @@ DELETE /api/studio/projects/{project_id}/share  (owner only; X-CSRF-Token) -> 20
 GET /api/share/{token}  (NO sign-in; rate limited like every /api route) -> 200 SharedPlanOut
     {"plan_name", "business_type" (display name), "metro_id", "metro_name", "money": {MoneyOut, as in a Project},
      "opening_date", "sites": [{"name", "lat", "lon"}], "expires_at", "disclaimer", "notice"}
-    Read-only and minimal: no idea text, no street addresses, nothing about the owner's account.
+    Read-only and minimal: no idea text, no street addresses, nothing about the owner's account. Every site's lat and
+    lon are rounded to 2 decimal places (about 1 km), so a link never gives the exact point of a typed street address;
+    the notice says "approximate location (rounded to about 1 km)".
     A malformed, tampered, expired or revoked token, or one for a deleted plan -> 404 with ONE body for every case:
     {"detail": "This share link is not valid. It may have expired or been revoked."}
     Headers on every answer of this route (200, 404, 503): Cache-Control: no-store and Referrer-Policy: no-referrer.
