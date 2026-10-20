@@ -16,7 +16,12 @@ Steps:
    by value of information (evidence/startup_requests.py);
 4. the lender review request: the agent's review payload, the founder ledger with every claim's status (material
    claims marked), the open items and the ranked requests, each tied to the founder-ledger claims it would firm up
-   (the UNKNOWN, ASSUMPTION and USER_STATED material claims).
+   (the UNKNOWN, ASSUMPTION and USER_STATED material claims), and the material claims that are not data and that no
+   request covers (uncovered_material): the evidence catalog has no document for them, so the reviewer judges them.
+
+A claim is material when a program check reads it, when it is an input of a top-three driver, or when a material
+claim is calculated from it (followed through every calculation's inputs): the year-2 DSCR is checked, so the note
+rate and the annual debt service it rests on are material too.
 """
 
 import hashlib
@@ -98,6 +103,9 @@ class LenderReviewRequest(Frozen):
     status_counts: dict[str, int]
     open_items: list[dict[str, Any]]
     evidence_requests: list[RequestView]
+    uncovered_material: list[str] = Field(
+        description="Material claims that are not data and that no request covers: the reviewer judges them"
+    )
     evidence_catalog_version: str
 
 
@@ -119,11 +127,34 @@ class HandoffResult(Frozen):
     review_request: LenderReviewRequest
 
 
+NOT_DATA_STATUSES = ("UNKNOWN", "CONFLICTING", "ASSUMPTION", "USER_STATED")
+
+
 def material_claim_ids(package: Package) -> set[str]:
-    """Claims a program check reads, plus the inputs of the top drivers (NSP-6.1): the claims a decision rests on."""
+    """The claims a decision rests on (module docstring): checked claims, top-driver inputs and what they rest on."""
+    claims = {item.id: item for item in package.ledger.claims}
     material = {claim_id for assertion in package.ledger.assertions for claim_id in assertion.evidence_ids}
     material |= {item.claim_id for item in package.material_assumptions if item.tornado_rank in (1, 2, 3)}
+    to_visit = list(material)
+    while to_visit:
+        item = claims.get(to_visit.pop())
+        if item is None:
+            continue
+        for input_id in item.inputs:
+            if input_id in claims and input_id not in material:
+                material.add(input_id)
+                to_visit.append(input_id)
     return material
+
+
+def uncovered_material_claims(package: Package, material: set[str], requests: list[RequestView]) -> list[str]:
+    """Material claims that are not data (NOT_DATA_STATUSES) and that no evidence request would firm up."""
+    covered = {claim_id for request in requests for claim_id in request.founder_claims}
+    return [
+        item.id
+        for item in package.ledger.claims
+        if item.id in material and item.status in NOT_DATA_STATUSES and item.id not in covered
+    ]
 
 
 def ledger_view(package: Package, material: set[str]) -> list[LedgerClaimView]:
@@ -242,6 +273,7 @@ def handoff(
     ranked = rank_startup_requests(case, items, current)
     agent_request = dict(outcome.review_request or {})
     material = material_claim_ids(package)
+    views = request_views(package, ranked, items)
     review = LenderReviewRequest(
         package_id=package.package_id,
         application_id=application.application_id,
@@ -250,7 +282,8 @@ def handoff(
         founder_ledger=ledger_view(package, material),
         status_counts=package.ledger.status_counts(),
         open_items=[item.model_dump() for item in items],
-        evidence_requests=request_views(package, ranked, items),
+        evidence_requests=views,
+        uncovered_material=uncovered_material_claims(package, material, views),
         evidence_catalog_version=startup_catalog_version(),
     )
     policy = state.get("policy_result") or {}

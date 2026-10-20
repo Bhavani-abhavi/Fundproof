@@ -14,6 +14,7 @@ from uwcopilot.agent.vocab import COMPLIANCE, FAKE_LLM_STAMP
 from uwcopilot.llm.fake_client import FakeLLM
 from uwcopilot.studio.narrative import ids
 from uwcopilot.studio.package import handoff, to_application
+from uwcopilot.studio.package.handoff import material_claim_ids, uncovered_material_claims
 
 NO_DOCUMENTS = ("synthetic_metro", "car_wash")
 MATCHING_STATEMENTS = ("synthetic_metro", "laundromat")
@@ -99,3 +100,25 @@ def test_the_handoff_application_is_the_package_application(tmp_path: Path) -> N
     result = handoff(built, tool_handlers=offline_handlers(), log_dir=log_dir(tmp_path))
     assert result.application_id == to_application(built).application_id
     assert result.review_request.package_id == built.package_id
+
+
+def test_material_follows_calculations_down_to_the_note_rate(tmp_path: Path) -> None:
+    built = package(*NO_DOCUMENTS)
+    material = material_claim_ids(built)
+    assert {ids.RATE_NOTE, "CALC.projected_annual_debt_service", "CALC.loan_annual_debt_service"} <= material
+    result = handoff(built, tool_handlers=offline_handlers(), log_dir=log_dir(tmp_path))
+    views = {view.claim_id: view for view in result.review_request.founder_ledger}
+    assert views[ids.RATE_NOTE].material and views[ids.RATE_NOTE].status == "ASSUMPTION"
+    covered = {claim for request in result.review_request.evidence_requests for claim in request.founder_claims}
+    assert ids.RATE_NOTE in covered or ids.RATE_NOTE in result.review_request.uncovered_material
+
+
+def test_an_unknown_material_claim_is_shown_to_the_reviewer() -> None:
+    built = package(*NO_DOCUMENTS)
+    claims = list(built.ledger.claims)
+    index = next(position for position, item in enumerate(claims) if item.id == ids.RATE_NOTE)
+    claims[index] = claims[index].model_copy(
+        update={"status": "UNKNOWN", "value": None, "value_range": None, "reason": "no rate quote yet (TEST)"}
+    )
+    unknown = built.model_copy(update={"ledger": built.ledger.model_copy(update={"claims": claims})})
+    assert ids.RATE_NOTE in uncovered_material_claims(unknown, material_claim_ids(unknown), [])
