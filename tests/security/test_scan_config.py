@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,11 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAKEFILE = REPO_ROOT / "Makefile"
 GITLEAKS_CONFIG = REPO_ROOT / ".gitleaks.toml"
+
+
+def synthetic_key(label: str) -> str:
+    """A SYNTHETIC, key-shaped value (32 lowercase hex characters). It is a hash of a label, never a credential."""
+    return hashlib.sha256(f"SYNTHETIC test value: {label}".encode()).hexdigest()[:32]
 
 
 def makefile_variable(name: str) -> str:
@@ -51,13 +57,81 @@ def test_scan_secrets_also_scans_merge_commit_diffs() -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Integration: a real gitleaks binary over a throwaway repository
+# .gitleaks.toml allow-lists
 # ---------------------------------------------------------------------------------------------------------------
 
 
-def synthetic_key(label: str) -> str:
-    """A SYNTHETIC, key-shaped value (32 lowercase hex characters). It is a hash of a label, never a credential."""
-    return hashlib.sha256(f"SYNTHETIC test value: {label}".encode()).hexdigest()[:32]
+def allowlists() -> list[dict]:
+    """The [[allowlists]] tables of .gitleaks.toml."""
+    with GITLEAKS_CONFIG.open("rb") as handle:
+        return tomllib.load(handle)["allowlists"]
+
+
+def skipping_allowlists(rule: str, path: str, secret: str, match: str, line: str) -> list[str]:
+    """Descriptions of the allow-lists that would skip this finding.
+
+    A simplified copy of how gitleaks 8 applies an allow-list: it must name the rule; with condition AND, a path
+    regex must be found in the file path AND a regex must be found in the target (`regexTarget`: the captured
+    secret by default, or the whole match, or the whole line). The regexes here use only syntax that Go's RE2 and
+    Python's `re` read the same way.
+    """
+    skipped_by = []
+    for allowlist in allowlists():
+        if rule not in allowlist["targetRules"]:
+            continue
+        target = {"secret": secret, "match": match, "line": line}[allowlist.get("regexTarget", "secret")]
+        path_found = any(re.search(pattern, path) for pattern in allowlist["paths"])
+        regex_found = any(re.search(pattern, target) for pattern in allowlist["regexes"])
+        assert allowlist["condition"] == "AND"  # every allow-list in this config; OR is not modelled here
+        if path_found and regex_found:
+            skipped_by.append(allowlist["description"])
+    return skipped_by
+
+
+DIGEST = hashlib.sha256(b"SYNTHETIC key-facts file").hexdigest()
+OUTCOME_FIELD = "p_stressed_dscr_at_least_min_year2"
+
+# The findings the two narrowed allow-lists were written for: (path, secret, match, line). The match and line are
+# templates filled in at run time, so this file does not itself hold the key-shaped text the scan flags.
+NARROWED_ALLOWLIST_FINDINGS = [
+    ("results/injection/planned_requests.json", DIGEST, 'key_facts_sha256": "{}"', '  "key_facts_sha256": "{}",'),
+    ("results/smoke.json", DIGEST, 'rag_key_facts.jsonl": "{}"', '    "eval/rag_key_facts.jsonl": "{}"'),
+    ("frontend/components/studio/project/path-panel.tsx", OUTCOME_FIELD, 'key: "{}"', '  {{ key: "{}" }},'),
+]
+
+
+@pytest.mark.parametrize(("path", "secret", "match", "line"), NARROWED_ALLOWLIST_FINDINGS)
+def test_the_known_non_secrets_are_still_skipped(path: str, secret: str, match: str, line: str) -> None:
+    skipped_by = skipping_allowlists("generic-api-key", path, secret, match.format(secret), line.format(secret))
+    assert len(skipped_by) == 1
+
+
+def test_a_key_on_the_same_line_as_a_key_facts_digest_is_still_reported() -> None:
+    """A results JSON written on one line: the digest's allow-list must not hide the key next to it."""
+    key = synthetic_key("one-line results JSON")
+    line = json.dumps({"key_facts_sha256": DIGEST, "service_api_key": key})
+    match = f'service_api_key": "{key}"'
+    assert skipping_allowlists("generic-api-key", "results/one_line.json", key, match, line) == []
+
+
+def test_another_p_prefixed_key_in_the_path_panel_is_still_reported() -> None:
+    key = "p_live_" + synthetic_key("path panel")
+    line = f'const token = "{key}";'
+    path = "frontend/components/studio/project/path-panel.tsx"
+    assert skipping_allowlists("generic-api-key", path, key, f'token = "{key}"', line) == []
+
+
+def test_every_allowlist_regex_is_anchored_and_none_reads_the_whole_line() -> None:
+    """The header promises each allow-list matches the exact shape of the flagged value."""
+    for allowlist in allowlists():
+        assert allowlist.get("regexTarget", "secret") in {"secret", "match"}, allowlist["description"]
+        for pattern in [*allowlist["regexes"], *allowlist["paths"]]:
+            assert pattern.startswith("^") and pattern.endswith("$"), pattern
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Integration: a real gitleaks binary over a throwaway repository
+# ---------------------------------------------------------------------------------------------------------------
 
 
 def gitleaks_binary() -> str:
@@ -130,3 +204,25 @@ def test_gitleaks_reports_a_key_added_while_resolving_a_merge_conflict(tmp_path:
     assert {finding["File"] for finding in findings} == {"settings.txt"}
     assert {finding["Commit"] for finding in findings} == {merge_commit}
     assert {finding["Secret"] for finding in findings} == {key}
+
+
+@pytest.mark.integration
+def test_gitleaks_reports_keys_next_to_allowlisted_values_and_skips_the_values(tmp_path: Path) -> None:
+    """A key on a key_facts digest's line, or a p_ key in the path panel, is reported; the known values are not."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    one_line_key = synthetic_key("one-line results JSON")
+    panel_key = "p_live_" + synthetic_key("path panel")
+    panel = "frontend/components/studio/project/path-panel.tsx"
+    files = {
+        "results/digests.json": json.dumps({"key_facts_sha256": DIGEST}, indent=2) + "\n",
+        "results/one_line.json": json.dumps({"key_facts_sha256": DIGEST, "service_api_key": one_line_key}) + "\n",
+        panel: f'const rows = [{{ key: "{OUTCOME_FIELD}" }}];\nconst token = "{panel_key}";\n',
+    }
+    commit_files(repo, files, "SYNTHETIC files")
+
+    findings = run_gitleaks(repo, tmp_path / "report.json")
+
+    reported = {(finding["File"], finding["Secret"]) for finding in findings}
+    assert reported == {("results/one_line.json", one_line_key), (panel, panel_key)}

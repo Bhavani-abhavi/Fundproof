@@ -12,14 +12,16 @@
 useDefault = true
 
 # 20 findings: SHA-256 digests of committed eval files ("key_facts_sha256", "eval/rag_key_facts.jsonl") written into
-# the results JSON by the eval scripts. A file checksum is not a credential.
+# the results JSON by the eval scripts. A file checksum is not a credential. The regex is checked against the flagged
+# match alone (`key_facts_sha256": "<digest>"`), not the whole line, so another key on the same line (a results JSON
+# written on one line) is still reported.
 [[allowlists]]
 description = "SHA-256 digests of the key-facts file in results/*.json"
 targetRules = ["generic-api-key"]
 condition = "AND"
 paths = ['''^results/.+\.json$''']
-regexTarget = "line"
-regexes = ['''"[^"]*key_facts[^"]*": "[0-9a-f]{64}"''']
+regexTarget = "match"
+regexes = ['''^(?:rag_)?key_facts[a-z0-9_.]*": "[0-9a-f]{64}"$''']
 
 # 2 findings: Docker BuildKit secret flags (`--secret id=CENSUS_API_KEY,env=CENSUS_API_KEY`). They name the
 # environment variable that holds the key, never its value.
@@ -36,7 +38,7 @@ description = "Outcome field names used as React list keys"
 targetRules = ["generic-api-key"]
 condition = "AND"
 paths = ['''^frontend/components/studio/project/path-panel\.tsx$''']
-regexes = ['''^p_[a-z0-9_]+$''']
+regexes = ['''^p_stressed_dscr_at_least_min_year2$''']
 
 # 1 finding: prose in the build plan that lists which keys are Space secrets ("FRED/Census/BLS keys").
 [[allowlists]]
